@@ -30,9 +30,7 @@ Prerequisites
     supplies a workaround to a division by zero bug along with some buffer 
     overrun fixes. The program is available at: 
        http://www.repeatmasker.org/RECON-1.08.tar.gz. 
-    The original version is available at http://selab.janelia.org/recon.html.
-    Developed and tested with version 1.0.8. The program is available at
-    http://selab.janelia.org/recon.html.
+    The original version is available at http://eddylab.org/software/recon/.
 
   RepeatScout - De Novo Repeat Finder, Price A.L., Jones N.C. and Pevzner P.A.
     Developed and tested with our multiple sequence version of RepeatScout 
@@ -130,9 +128,11 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
                <database_name>-families.fa  : Consensus sequences
                <database_name>-families.stk : Seed alignments
 
-     The seed alignment file is in a Dfam compatible stockholm format and
-     can currently be uploaded to Dfam_consensus for inclusion in future
-     releases.
+     The seed alignment file is in a Dfam compatible Stockholm format and
+     may be uploaded to the new open Dfam_consensus database using the 
+     util/dfamConsensusTool.pl. 
+     See http://www.repeatmasker.org/RepeatModeler/dfamConsensusTool for
+     details.
 
      The fasta format is useful for running quick custom library searches
      using RepeatMasker.  Ie.:
@@ -173,8 +173,17 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
           round-n/
 
 
-Please see the RELEASE-NOTES file for more details.
+  Recover from a failure
 
+    If for some reason RepeatModeler fails, you may restart an
+    analysis starting from the last round it was working on.  The
+    -recoverDir [<i>ResultDir</i>] option allows you to specify a
+    diretory ( i.e RM_<PID>.<DATE>/ ) where a previous run of
+    RepeatModeler was working and it will automatically determine
+    how to continue the analysis.
+
+
+  Please see the RELEASE-NOTES file for more details.
 
 
 RepeatModeler Statistics

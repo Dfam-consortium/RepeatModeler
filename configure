@@ -68,6 +68,21 @@ use FindBin;
 use lib $FindBin::Bin;
 
 ##
+## Release Version
+##
+my $version = "DEV";
+open IN,"<version" or die "Could not open version file.";
+while ( <IN> )
+{
+  if ( /^\s*(\S+)\s*$/ )
+  {
+    $version = $1;
+    last;
+  }
+}
+close IN;
+
+##
 ## First...make sure we are running in the same directory
 ## as the script is located.  This avoids problems where
 ## this script ends up in someones path and they run it
@@ -419,20 +434,24 @@ searchEngineMenu( "RepModelConfig.pm" );
 ##
 ## Alter perl invocation headers
 ##
-print " -- Setting perl interpreter...\n";
+print " -- Setting perl interpreter and version...\n";
 ## Excluded modules: EdgeExtension, SegregationAnalysis
 my @progFiles = (
                   "BuildDatabase",    "Refiner",
                   "RepeatClassifier", "RepeatModeler",
-                  "TRFMask"
+                  "TRFMask", "util/dfamConsensusTool.pl",
+                  "util/renameIds.pl", "util/viewMSA.pl" 
 );
 my $perlLocEsc = $perlLocation;
 $perlLocEsc =~ s/\//\\\//g;
 
 foreach my $file ( @progFiles )
 {
-  system(
-         "$perlLocation -i -0pe \'s/^#\\!.*perl.*/#\\!$perlLocEsc/g\;' $file" );
+  if ( -s $file ) 
+  {
+    system("$perlLocation -i -0pe \'s/^#\\!.*perl.*/#\\!$perlLocEsc/g\;' $file" );
+    system("$perlLocation -i -0pe \'s/#VERSION#/$version/\;' $file" );
+  }
 }
 
 print "\nCongratulations!  RepeatModeler is now ready to use.\n";
