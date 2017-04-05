@@ -209,7 +209,7 @@ $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 #
 # Version
 #  -- NOTE: This is filled in by configure
-my $version = '#VERSION#';
+my $version = "#VERSION#";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
 #

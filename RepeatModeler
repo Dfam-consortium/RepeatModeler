@@ -135,7 +135,7 @@ $|     = 1;                                         # Turn autoflush on
 #
 # Version
 #  -- NOTE: This is filled in by configure
-my $version = '#VERSION#';
+my $version = "#VERSION#";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
 if ( $ARGV[ 0 ] && $ARGV[ 0 ] eq '-v' )

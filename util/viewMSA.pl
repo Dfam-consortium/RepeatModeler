@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl
+#!/u1/local/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) viewMSA
@@ -131,7 +131,7 @@ use RepeatMaskerConfig;
 #
 # Version
 #  -- NOTE: This is filled in by configure
-my $Version = '#VERSION#';
+my $Version = "#VERSION#";
 $Version = "DEV" if ( $Version =~ /\#VERSION\#/ );
 
 ##----------------------------------------------------------------------##
