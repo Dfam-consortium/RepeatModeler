@@ -72,30 +72,9 @@ $|     = 1;                                         # Turn autoflush on
 
 #
 # Version
-#
-#  This is a neat trick.  CVS allows you to tag
-#  files in a repository ( i.e. cvs tag "2003/12/03" ).
-#  If you check out that release into a new
-#  directory with "cvs co -r "2003/12/03" it will
-#  place this string into the $Name:  $ space below
-#  automatically.  This will help us keep track
-#  of which release we are using.  If we simply
-#  check out the code as "cvs co RepeatModeler" the
-#  $Name:  $ macro will be blank and thus we use
-#  this as the development version.
-#
-my $CVSTag = '$Name:  $';
-my $version;
-if ( $CVSTag =~ /\$\s*Name:\s*open-(\S+)\s*\$/ )
-{
-  $version = $1;
-  $version =~ s/-/./g;
-  $version = "open-$version";
-} else
-{
-  $version =
-      'development-$Id: Refiner,v 1.37 2017/04/05 00:03:31 rhubley Exp $';
-}
+#  -- NOTE: This is filled in by configure
+my $version = '#VERSION#';
+$version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
 if ( $ARGV[ 0 ] && $ARGV[ 0 ] eq '-v' )
 {

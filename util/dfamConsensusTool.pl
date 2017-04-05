@@ -141,23 +141,9 @@ use LWP::UserAgent;
 
 #
 # Version
-#
-#  This is a neat trick.  CVS allows you to tag
-#  files in a repository ( i.e. cvs tag "2003/12/03" ).
-#  If you check out that release into a new
-#  directory with "cvs co -r "2003/12/03" it will
-#  place this string into the $Name:  $ space below
-#  automatically.  This will help us keep track
-#  of which release we are using.  If we simply
-#  check out the code as "cvs co Program" the
-#  $Name:  $ macro will be blank so we should default
-#  to what the ID tag for this file contains.
-#
-my $CVSNameTag = '$Name:  $';
-my $CVSIdTag   =
-    '$Id: dfamConsensusTool.pl,v 1.4 2017/04/05 19:05:24 rhubley Exp $';
-my $Version = $CVSNameTag;
-$Version = $CVSIdTag if ( $Version eq "" );
+#  -- NOTE: This is filled in by configure
+my $Version = '#VERSION#';
+$Version = "DEV" if ( $Version =~ /\#VERSION\#/ );
 
 #
 # Magic numbers/constants here
