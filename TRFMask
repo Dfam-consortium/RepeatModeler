@@ -1,0 +1,221 @@
+#!/u1/local/bin/perl
+##---------------------------------------------------------------------------##
+##  File:
+##      @(#) TRFMask
+##  Author:
+##      Arian Smit <asmit@systemsbiology.org>
+##      Robert Hubley <rhubley@systemsbiology.org>
+##  Description:
+##      Use the TRF program to mask a sequence
+##
+#******************************************************************************
+#* Copyright (C) Institute for Systems Biology 2008 Developed by
+#* Arian Smit and Robert Hubley.
+#*
+#* This work is licensed under the Open Source License v2.1.  To view a copy
+#* of this license, visit http://www.opensource.org/licenses/osl-2.1.php or
+#* see the license.txt file contained in this distribution.
+#*
+###############################################################################
+#  ChangeLog:
+#
+#    $Log: TRFMask,v $
+#    Revision 1.30  2017/04/05 00:03:32  rhubley
+#    Cleanup before a distribution
+#
+#
+###############################################################################
+#
+# To Do:
+#
+#
+
+=head1 NAME
+
+TRFMask - Mask tandem repeats in a sequence file
+
+=head1 SYNOPSIS
+
+  TRFMask [-options]  <fastaFile>
+
+=head1 DESCRIPTION
+
+The options are:
+
+=over 4
+
+=item -h(elp)
+
+Detailed help
+
+=back
+
+=head1 SEE ALSO
+
+=over 4
+
+RepeatModeler
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright 2005 Institute for Systems Biology
+
+=head1 AUTHOR
+
+Robert Hubley <rhubley@systemsbiology.org>
+
+=cut
+
+#
+# Module Dependence
+#
+use strict;
+use FindBin;
+use lib $FindBin::RealBin;
+use Data::Dumper;
+use File::Spec;
+use Carp;
+use Getopt::Long;
+
+# RepeatModeler Libraries
+use RepModelConfig;
+use lib $RepModelConfig::REPEATMASKER_DIR;
+use TRF;
+use TRFSearchResult;
+
+# RepeatMasker Libraries
+use FastaDB;
+use SearchEngineI;
+
+#
+# Class Globals & Constants
+#
+my $CLASS = "TRFMask";
+my $DEBUG = 0;
+$DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
+
+#
+# Option processing
+#  e.g.
+#   -t: Single letter binary option
+#   -t=s: String parameters
+#   -t=i: Number paramters
+#
+my @opts = qw( help );
+
+#
+# Get the supplied command line options, and set flags
+#
+my %options = ();
+unless ( &GetOptions( \%options, @opts ) )
+{
+  exec "pod2text $0";
+  exit( 1 );
+}
+
+# Print the internal POD documentation if something is missing
+if ( $options{'help'} )
+{
+
+  # This is a nifty trick so we don't have to have
+  # a duplicate "USAGE()" subroutine.  Instead we
+  # just recycle our POD docs.  See PERL POD for more
+  # details.
+  exec "pod2text $0";
+  die;
+}
+
+die $CLASS . ": Missing fasta file!\n"
+    if ( !defined $ARGV[ 0 ] || -z $ARGV[ 0 ] );
+my $fastaFile = $ARGV[ 0 ];
+my $wrkDir    = ( File::Spec->splitpath( $fastaFile ) )[ 1 ];
+$wrkDir = "." if ( $wrkDir eq "" );
+print "Working directory = $wrkDir\n" if ( $DEBUG );
+
+print "Masking $fastaFile\n" if ( $DEBUG );
+my $maskedFile = $fastaFile . ".masked";
+
+# Open up the fasta file
+my $seqDB = FastaDB->new( fileName => $fastaFile,
+                          openMode => SeqDBI::ReadOnly );
+
+# TODO....determine if we should use /tmp or not?
+if ( $DEBUG )
+{
+  my $ver = `$RepModelConfig::TRF_PRGM 2>&1`;
+  ( $ver ) = ( $ver =~ /Tandem Repeats Finder, Version (\S+)/ );
+  print "Running: $RepModelConfig::TRF_PRGM  ( version = $ver )\n";
+}
+my $trf = TRF->new( pathToEngine => $RepModelConfig::TRF_PRGM,
+                    workDir      => $wrkDir );
+
+open OUT, ">$maskedFile";
+
+# Foreach sequence
+my $repeatsMasked = 0;
+foreach my $seqID ( $seqDB->getIDs() )
+{
+
+  print OUT ">" . $seqID . " " . $seqDB->getDescription( $seqID ) . "\n";
+  my $seqLen = $seqDB->getSeqLength( $seqID );
+
+  # Break into 5mb pieces
+  for ( my $i = 0 ; $i < $seqLen ; $i += 5000000 )
+  {
+
+    my $batchSeq;
+
+    # Create temp seq file
+    open TMPFILE, ">$wrkDir/tmpseq.fa"
+        || die $CLASS
+        . ": Could not open "
+        . "temporary file $wrkDir/tmpseq.fa for output!\n";
+    print TMPFILE ">seq1\n";
+    if ( $i + 5000000 > $seqLen )
+    {
+      $batchSeq = $seqDB->getSubstr( $seqID, $i );
+    } else
+    {
+      $batchSeq = $seqDB->getSubstr( $seqID, $i, 5000000 );
+    }
+    print TMPFILE "$batchSeq\n";
+    close TMPFILE;
+
+    # Run TRF
+    my ( $resultCode, $trfResults ) =
+        $trf->search( sequenceFile => "$wrkDir/tmpseq.fa" );
+
+    print $CLASS. ": TRF Returned " . $trfResults->size() . " results\n"
+        if ( $DEBUG );
+
+    for ( my $i = 0 ; $i < $trfResults->size() ; $i++ )
+    {
+      my $result = $trfResults->get( $i );
+      bless $result, "TRFSearchResult";
+
+      if (    $result->getCopyNumber() > 4
+           && $result->getPeriod() > 1 )
+      {
+        my $start = $result->getQueryStart() - 1;
+        my $len   = $result->getQueryEnd() - $start;
+
+        #print "Masking: ".$result->toString()."\n";
+        substr( $batchSeq, $start, $len ) = "N" x $len;
+        $repeatsMasked++;
+      }
+    }
+
+    # write chunk out
+    $batchSeq =~ s/(.{50})/$1\n/g;
+    print OUT "$batchSeq\n";
+
+  }
+}
+close OUT;
+unlink( "$wrkDir/tmpseq.fa" ) if ( -e "$wrkDir/tmpseq.fa" );
+
+print "       $repeatsMasked Tandem Repeats Masked\n";
+
+1;

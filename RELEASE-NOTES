@@ -1,0 +1,18 @@
+
+RepeatModeler 1.0.9
+===================
+
+   - RepeatModeler employs a genome sampling approach that is based
+     on a random number generator. In this release of RepeatModeler
+     we print out the random number generator seed at the start of 
+     a run.  This number can be used with the "-srand ####" in future
+     runs to exactly reproduce the samples taken from a given database.
+    
+   - Support for Dfam_consensus has been built into this release. Two
+     utilities dfamConsensusTool.pl and renameIds.pl can be found in the
+     RepeatModeler util/ directory.  The dfamConsensusTool script enables
+     one to upload curated seed alignments to the open Dfam_consensus 
+     database from the command line.  The renameIds script simplifies
+     the process of coming up with unique identifiers for a set of 
+     RepeatModeler generated families given a naming template.
+

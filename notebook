@@ -1,0 +1,208 @@
+
+
+TODO:
+  - RepeatClassifier output classification of "Buffer" oops
+
+Mon May 12 12:29:09 PDT 2008
+============================
+
+  Attempted to find the problem by first porting to 64bit.
+ 
+  sscanf needs updating Zhirong used %d for long formats!
+  printf ..     
+
+ele.h  
+  CP_t
+     long cp;
+  
+  BD_t
+     long bd;
+  
+  EDGE_t
+     long score;
+
+  long msp_in_mem
+       msp_left
+       msp_ct
+       msp_index
+       edge_index
+       edge_in_mem
+       edge_left
+       edge_ct
+       files_read 
+       clan_ct 
+       err_no
+
+msps.h
+   FRAG_t
+     long lb;
+     long rb;
+
+   MSP_t
+     long score;
+
+
+
+
+Fri May  9 13:53:21 PDT 2008
+============================
+
+  Ran the program through gcc bounds detection -- no errors
+  Running the program through valgrind -- no errors so far
+
+  Looking into section which fails:
+
+      img_ptr is pre_malloc'd to MAX_IMG * sizeof(Image_t)
+      for i = start to ele_ct or ele_array_size whichever is smaller
+      general_ele_redef( *(all_ele+i), img_ptr )
+         combo_update()
+             combo_edge_update()
+
+
+  Working theory:
+
+     Somehwere an unitialized variable is being used that corrupts
+     allocated memory.  This allocated memory falls in a tree
+     structure and creates a loop in a tree traversal routine.
+
+      - No seg faults
+      - No obvious memory corruption.
+
+ all_ele    
+   ele_info->index
+   ele_info->ele->edges ( EDGE_TREE ) 
+
+  Can't be combe_edge_update() bc there are no edges in e71
+
+
+Thu May  8 16:20:41 PDT 2008
+============================
+  Looking into RECON problem.
+
+  Example running on sine:/local/calJac1/RM_32549.WedMay71056342008
+   
+    round-3/ele_def_res/
+            ele_redef_res/  # No files touched since May 7th @18:16 
+                            #  including log file.
+            images/
+            summary/ # Nothing touched since 18:16 as well
+            msps.out
+            seqnames      
+            tmp -> ele_def_res
+            tmp2 -> ele_redef_res 
+
+  sine:/usr/local/RECON1.05/eleredef seqnames
+
+  Ran manually:
+
+    log file last indicates working on this step before hangup:
+       1a. evaluating definition of element 71
+ 
+  Added print statements and reran:
+
+   Last stdout log message is:
+
+      Adding print statements fixed the problem...classic memory leak 
+      behaviour
+
+  
+
+
+
+Tue Mar 15 18:03:29 PST 2005
+============================
+
+  - Todo tomorrow.  Fix RepeatClassifier. 
+     Done- Should not annotate the masked sequence.
+     - Should remove simple repeats if it finds them.
+     Done- Append to search samples which would clearly be less than the previous rounds sample size.
+     Done- Don't lower min until last round.
+
+
+Tue Mar  8 14:08:50 PST 2005
+============================
+
+  - Searching against Platypus....~20,000 reads 
+    each about 1000 bp.  
+
+     o Really slow at all-vs-all comparison because
+       of the # of times it has to invoke wublast.
+
+
+Fri Feb 25 10:48:40 PST 2005
+============================
+  Problem with RECON scaling:
+
+ 286671 RM_32*/round-2/msps.out: Original
+          Non ambigous bp:
+             Initial: 14733832 bp
+             After Masking: 10131282 bp
+             Masked: 31.2379698641874 %
+
+      RECON ~3hrs
+
+1589161 RM_79*/round-2/msps.out: 15 align thresh, AAAA...AAA problem fixed
+           Non ambigous bp:
+             Initial: 14710296 bp
+             After Masking: 11242841 bp
+             Masked: 23.5716194969836 %
+       RECON ~16hrs
+
+7428861 RM_31*/round-2/msps.out: + -gapW=32
+           Non ambigous bp:
+             Initial: 14737554 bp
+             After Masking: 11579522 bp
+             Masked: 21.428467709092 %
+       RECON ???
+
+
+Started 2 runs on local disks:
+   ltr:/local  min model size = 10, -gapW=32, sample increase factor = 3
+   alu:/local  min model size = 15, -gapW=32, sample increase factor = 3
+
+Thu Feb 24 14:40:30 PST 2005
+============================
+
+  Discovered that the -gapW parameter for WUBlast.  We found that
+  it is using 16 as the default for DNA.  In many cases this will
+  not be enough.  We had a set of alignments with an 11bp gap
+  in between them to the same consensus.  To join them we needed to use
+  a -gapW parameter of 22.  
+
+  -gapW benchmark:
+
+time /usr/local/wublast/blastn sampleDB-1.fa batch-1.fa -warnings -kap wordmask=dust wordmask=seg maskextra=10 -hspmax=0 V=0 B=100000000 Q=25 R=5 W=7 S=250 gapS2=250 S2=125 X=250 gapX=500 -matrix=comparison.matrix dbslice=2-87/87 > test1.out
+
+
+   default ( 16 ): 0:08.01   17015 hits
+   -gapw=20:       0:09.27   16771 hits
+   -gapw=30:       0:12.46   16640 hits
+   -gapw=40:       0:15.66   16559 hits
+   -gapw=50:       0:18.74   16491 hits
+   -gapw=70:       0:24.58   16145 hits
+   -gapw=100:      0:33.17   16025 hits
+
+
+
+Fri Nov 19 14:35:55 PST 2004
+============================
+
+   Reran DOG with RepeatModler:
+     o Chr-38
+     o BlastN parameters: -warnings -gapall -T=1000000 -p=1 -hspmax=2000000000 V=0 B=100000000 -span2 Q=25 R=5 W=14 S=200 gapS2=200 S2=100 X=200 gapX=400 -matrix=comparison.matrix
+     o Output directory: RM_31640.FriNov191507432004
+     o Output log: /usr/local/genomes/dog/chr38-run2.rmout
+
+
+
+
+
+
+  - Ran DOG with RepeatModler:
+      o Chr-38
+      o BlastN parameters: "M=5 N=-11 Q=22 R=11 -kap E=0.00001 wordmask=dust wordmask=seg maskextra=20 -hspmax 5000 "
+      o Output directory: RM_381.ThuNov41508582004
+      o Output log: /usr/local/genomes/dog/chr38-run1.rmout
+     
+
+

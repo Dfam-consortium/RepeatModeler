@@ -1,0 +1,851 @@
+#!/usr/local/bin/perl
+##---------------------------------------------------------------------------##
+##  File:
+##      @(#) configure
+##  Author:
+##      Robert Hubley <rhubley@systemsbiology.org>
+##  Description:
+##      A configuration utility for the RepeatModeler distribution.
+##
+#******************************************************************************
+#* Copyright (C) Institute for Systems Biology 2003-2005 Developed by
+#* Arian Smit and Robert Hubley.
+#*
+#* This work is licensed under the Open Source License v2.1.  To view a copy
+#* of this license, visit http://www.opensource.org/licenses/osl-2.1.php or
+#* see the license.txt file contained in this distribution.
+#*
+###############################################################################
+#
+# ChangeLog
+#
+#   $Log: configure,v $
+#   Revision 1.40  2017/04/05 00:03:32  rhubley
+#   Cleanup before a distribution
+#
+#
+###############################################################################
+#
+# To Do:
+#
+
+=head1 NAME
+
+configure - Configure the RepeatModeler distribution
+
+=head1 SYNOPSIS
+
+  perl ./configure 
+
+=head1 DESCRIPTION
+
+  An installation script for the RepeatModeler distribution
+
+=head1 SEE ALSO
+
+=over 4
+
+RepeatModeler
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright 2005-2012 Robert Hubley, Institute for Systems Biology
+
+=head1 AUTHOR
+
+Robert Hubley <rhubley@systemsbiology.org>
+
+=cut
+
+#
+# Module Dependence
+#
+use strict;
+use Cwd;
+use FindBin;
+use lib $FindBin::Bin;
+
+##
+## First...make sure we are running in the same directory
+## as the script is located.  This avoids problems where
+## this script ends up in someones path and they run it
+## unqualified from another installation directory.
+##
+if ( cwd() ne $FindBin::RealBin )
+{
+  print "\n    The RepeatModeler configure script must be run from\n"
+      . "    inside the RepeatModeler installation directory:\n\n"
+      . "       $FindBin::RealBin\n\n"
+      . "    Perhaps this is not the \"configure\" you are looking for?\n\n";
+  exit;
+}
+
+##
+## Check for RepeatMasker dependencies
+##
+BEGIN
+{
+  my @modDependencies = (
+                          "Tie::File",  "Getopt::Long",
+                          "POSIX",      "File::Copy",
+                          "File::Path", "Data::Dumper",
+                          "Cwd",        "JSON",
+                          "URI",        "LWP::UserAgent"
+  );
+
+  my @missingModules = ();
+  foreach my $module ( @modDependencies )
+  {
+    unless ( eval "require " . $module . ";" )
+    {
+      push @missingModules, $module;
+    }
+  }
+  if ( @missingModules )
+  {
+    print "\nThe following perl modules required by RepeatModeler "
+        . "are missing from\nyour system.  Please install these "
+        . "first:\n    "
+        . join( "\n    ", @missingModules ) . "\n";
+    exit;
+  }
+}
+
+##
+## Check for perl version
+##
+if ( $] && $] < 5.008 )
+{
+  system( "clear" );
+  print "RepeatModeler should be used with perl 5.008 or higher.\n"
+      . "Perl $] is being used to run configure.";
+  print "\n\n\n<PRESS ENTER TO CONTINUE>\n";
+  my $answer = <STDIN>;
+}
+
+##
+## Introduce ourselves
+##
+system( "clear" );
+print "\n\n\nRepeatModeler Configuration Program\n\n";
+print "This program assists with the configuration of the\n";
+print "RepeatModeler program.  The next set of screens will ask\n";
+print "you to enter information pertaining to your system\n";
+print "configuration.  At the end of the program your RepeatModeler\n";
+print "installation will be ready to use.\n";
+print "\n\n\n<PRESS ENTER TO CONTINUE>\n";
+my $answer = <STDIN>;
+
+##
+## Perl interpreter location
+##
+my $goodParam;
+my $perlLocation = $^X;
+do
+{
+  $goodParam = 1;
+  $perlLocation = &promptScreen(
+"**PERL INSTALLATION PATH**\n\n  This is the full path to the Perl interpreter.\n  ie. /usr/local/bin/perl\n",
+    "Enter path",
+    $perlLocation
+  );
+  if ( !( $perlLocation =~ /^.*perl$/ ) )
+  {
+    $perlLocation .= "/" if ( !( $perlLocation =~ /^.*\/$/ ) );
+    $perlLocation .= "perl";
+  }
+  if (    !-f $perlLocation
+       || !-x $perlLocation )
+  {
+    print "Perl not found at \"$perlLocation\"\n";
+    print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+    $answer    = <STDIN>;
+    $goodParam = 0;
+  }
+} while ( $goodParam != 1 );
+
+##
+## RepeatModeler location
+##
+my $rmLocation = "$FindBin::Bin";
+$rmLocation = &promptScreen(
+"**REPEATMODELER INSTALLATION PATH**\n\n  This is the path to the location where\n  the RepeatModeler program has been installed.\n",
+  "Enter path",
+  $rmLocation
+);
+
+##
+## RepeatMasker location
+##
+my $repMaskLocation;
+do
+{
+  $goodParam = 1;
+  my $prompt =
+"**REPEATMASKER INSTALLATION PATH**\n\n  This is the path to the location where\n  the RepeatMasker program suite can be found.\n";
+  $repMaskLocation = &promptScreen( $prompt, "Enter path", "" );
+  if ( $repMaskLocation ne "" )
+  {
+    unless ( -d "$repMaskLocation" )
+    {
+      print "$repMaskLocation does not exist\n";
+      $goodParam = 0;
+    }
+    unless (    -s "$repMaskLocation/WUBlastSearchEngine.pm"
+             && -s "$repMaskLocation/Libraries/RepeatMaskerLib.embl" )
+    {
+      print "$repMaskLocation does not appear to contain a complete\n"
+          . "set of files.  Perhaps you haven't installed the RepeatMasker\n"
+          . "libraries yet?\n";
+      $goodParam = 0;
+    }
+    my $result = `$repMaskLocation/RepeatMasker -v 2>&1`;
+
+    # Two responses are expected:
+    # Good Version:
+    #    RepeatMasker version open-4.0.0
+    # or RepeatMasker version development-
+    #
+    if ( $result =~ /RepeatMasker version open-(\S+)/ )
+    {
+      my $version = $1;
+      $version =~ s/\.//g;
+      if ( $version <= 400 )
+      {
+        die "$repMaskLocation/RepeatMasker is too old.  Must be open-4.0.5 "
+            . "or later.  Install a newer version of RepeatMasker and re-run "
+            . "configure.\n";
+      }
+    }
+    if ( $goodParam == 0 )
+    {
+      print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+      my $answer = <STDIN>;
+    }
+  } else
+  {
+    print "This is a required parameter.\n";
+    print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+    $answer    = <STDIN>;
+    $goodParam = 0;
+  }
+} while ( $goodParam != 1 );
+$repMaskLocation =~ s/(.*)\/$/$1/;
+
+##
+## RECON location
+##
+my $reconLocation;
+do
+{
+  $goodParam = 1;
+  my $prompt =
+"**RECON INSTALLATION PATH**\n\n  This is the path to the location where\n  the RECON program suite can be found.\n";
+  $reconLocation = &promptScreen( $prompt, "Enter path", "" );
+  if ( $reconLocation ne "" )
+  {
+    unless ( -d "$reconLocation" )
+    {
+      print "$reconLocation does not exist\n";
+      $goodParam = 0;
+    }
+    unless (    -s "$reconLocation/eledef"
+             && -s "$reconLocation/eleredef" )
+    {
+      print "$reconLocation does not appear to contain a complete\n"
+          . "set of files.\n";
+      $goodParam = 0;
+    }
+    if ( $goodParam == 0 )
+    {
+      print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+      my $answer = <STDIN>;
+    }
+  } else
+  {
+    print "This is a required parameter.\n";
+    print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+    $answer    = <STDIN>;
+    $goodParam = 0;
+  }
+} while ( $goodParam != 1 );
+$reconLocation =~ s/(.*)\/$/$1/;
+
+##
+## RepeatScout location
+##
+my $rscoutLocation;
+do
+{
+  $goodParam = 1;
+  my $prompt =
+        "**RepeatScout INSTALLATION PATH**\n\n  This is the path to the"
+      . " location where\n  the RepeatScout program suite can be found.\n";
+  $rscoutLocation = &promptScreen( $prompt, "Enter path", "" );
+  if ( $rscoutLocation ne "" )
+  {
+    unless ( -d "$rscoutLocation" )
+    {
+      print "$rscoutLocation does not exist\n";
+      $goodParam = 0;
+    }
+    unless (    -s "$rscoutLocation/build_lmer_table"
+             && -s "$rscoutLocation/RepeatScout" )
+    {
+      print "$rscoutLocation does not appear to contain a complete\n"
+          . "set of files ( Looking for build_lmer_table and "
+          . "RepeatScout ).\n";
+      print "RepeatScout has been distributed with the main program named\n"
+          . "various ways ( RepeatScout, RepeatScout-v1, "
+          . "RepeatScout-103 etc. )\n"
+          . "Please create a link from \"RepeatScout\" to one of these "
+          . "versions\nin this directory and rerun configure.\n";
+      $goodParam = 0;
+    }
+    if ( $goodParam == 0 )
+    {
+      print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+      my $answer = <STDIN>;
+    }
+  } else
+  {
+    print "This is a required parameter.\n";
+    print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+    $answer    = <STDIN>;
+    $goodParam = 0;
+  }
+} while ( $goodParam != 1 );
+$rscoutLocation =~ s/(.*)\/$/$1/;
+
+##
+## NSEG location
+##
+my $nsegLocation;
+do
+{
+  $goodParam = 1;
+  my $prompt =
+"**NSEG INSTALLATION PATH**\n\n  This is the path to the location where\n  the NSEG program can be found.\n";
+  $nsegLocation = &promptScreen( $prompt, "Enter path", "" );
+  if ( $nsegLocation ne "" )
+  {
+    unless ( -d "$nsegLocation" )
+    {
+      print "$nsegLocation does not exist\n";
+      $goodParam = 0;
+    }
+    unless ( -s "$nsegLocation/nseg" )
+    {
+      print "$nsegLocation does not appear to contain the trf program.\n";
+      $goodParam = 0;
+    }
+    if ( $goodParam == 0 )
+    {
+      print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+      my $answer = <STDIN>;
+    }
+  } else
+  {
+    print "This is a required parameter.\n";
+    print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+    $answer    = <STDIN>;
+    $goodParam = 0;
+  }
+} while ( $goodParam != 1 );
+$nsegLocation =~ s/(.*)\/$/$1/;
+
+##
+## TRF location
+##
+my $trfLocation;
+do
+{
+  $goodParam = 1;
+  my $prompt =
+"**TRF INSTALLATION PATH**\n\n  This is the path to the location where\n  the TRF program can be found.\n";
+  $trfLocation = &promptScreen( $prompt, "Enter path", "" );
+  if ( $trfLocation ne "" )
+  {
+    unless ( -d "$trfLocation" )
+    {
+      print "$trfLocation does not exist\n";
+      $goodParam = 0;
+    }
+    unless ( -s "$trfLocation/trf" )
+    {
+      print "$trfLocation does not appear to contain the trf program.\n";
+      $goodParam = 0;
+    }
+    if ( $goodParam == 0 )
+    {
+      print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+      my $answer = <STDIN>;
+    }
+  } else
+  {
+    print "This is a required parameter.\n";
+    print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
+    $answer    = <STDIN>;
+    $goodParam = 0;
+  }
+} while ( $goodParam != 1 );
+$trfLocation =~ s/(.*)\/$/$1/;
+
+##
+## Alter program parameters
+##
+print " -- Setting RepeatModeler Parameters...\n";
+open IN,  "<RepModelConfig.pm.tmpl" || die "Could not open RepModelConfig.pm";
+open OUT, ">RepModelConfig.pm"      || die "Could not open temp file";
+while ( <IN> )
+{
+  s/(\s*\$REPEATMASKER_DIR\s*=\s*)\S+;/$1\"$repMaskLocation\";/;
+  s/(\s*\$RECON_DIR\s*=\s*)\S+;/$1\"$reconLocation\";/;
+  s/(\s*\$RSCOUT_DIR\s*=\s*)\S+;/$1\"$rscoutLocation\";/;
+  s/(\s*\$TRF_PRGM\s*=\s*)\S+;/$1\"$trfLocation\/trf\";/;
+  s/(\s*\$NSEG_PRGM\s*=\s*)\S+;/$1\"$nsegLocation\/nseg\";/;
+  print OUT $_;
+}
+close IN;
+close OUT;
+
+##
+## Search Engine Configuration
+##
+searchEngineMenu( "RepModelConfig.pm" );
+
+##
+## Alter perl invocation headers
+##
+print " -- Setting perl interpreter...\n";
+## Excluded modules: EdgeExtension, SegregationAnalysis
+my @progFiles = (
+                  "BuildDatabase",    "Refiner",
+                  "RepeatClassifier", "RepeatModeler",
+                  "TRFMask"
+);
+my $perlLocEsc = $perlLocation;
+$perlLocEsc =~ s/\//\\\//g;
+
+foreach my $file ( @progFiles )
+{
+  system(
+         "$perlLocation -i -0pe \'s/^#\\!.*perl.*/#\\!$perlLocEsc/g\;' $file" );
+}
+
+print "\nCongratulations!  RepeatModeler is now ready to use.\n";
+print "Simply place:\n";
+print "   $rmLocation\n";
+print "in your user's path and review the RepeatModeler documentation here:\n";
+print "   $rmLocation/README" . "\n\n";
+
+####################### S U B R O U T I N E S ##############################
+
+sub searchEngineMenu
+{
+  my $configFile = shift;
+
+  my @searchEngines = (
+                  {
+                    name => "ncbi",
+                    desc => "RMBlast - NCBI Blast with RepeatMasker extensions",
+                    status       => 0,
+                    configurator => \&configRMBlast
+                  },
+                  {
+                    name         => "wublast",
+                    desc         => "WUBlast/ABBlast",
+                    status       => 0,
+                    configurator => \&configWUBlast
+                  }
+  );
+  my $done          = 0;
+  my $defaultEngine = "";
+  do
+  {
+    system( "clear" );
+    print "\n\n\n";
+    print "Add a Search Engine:\n";
+    my $i;
+    for ( $i = 0 ; $i <= $#searchEngines ; $i++ )
+    {
+      print "   " . ( $i + 1 ) . ". $searchEngines[$i]->{'desc'}: [ ";
+      if ( $searchEngines[ $i ]->{'status'} == 0 )
+      {
+        print "Un-configured ]\n";
+      } elsif ( $searchEngines[ $i ]->{'status'} == 1 )
+      {
+        print "Configured ]\n";
+      } else
+      {
+        print "Configured, Default ]\n";
+      }
+    }
+    print "\n";
+    print "   " . ( $i + 1 ) . ". Done\n";
+
+    print "\n\nEnter Selection: ";
+    $answer = <STDIN>;
+    $answer =~ s/[\n\r]+//g;
+
+    if ( $answer =~ /\d+/ && $answer > 0 && $answer <= ( $#searchEngines + 2 ) )
+    {
+      if ( $answer == ( $#searchEngines + 2 ) )
+      {
+        if ( $defaultEngine eq "" )
+        {
+          print "You must configure at least one search engine!\n";
+          print "<PRESS ENTER TO CONTINUE - CTRL-C to QUIT>\n";
+          $answer = <STDIN>;
+        } else
+        {
+          $done = 1;
+        }
+      } else
+      {
+        $searchEngines[ $answer - 1 ]->{'status'} =
+            $searchEngines[ $answer - 1 ]->{'configurator'}->( $configFile );
+        if ( $searchEngines[ $answer - 1 ]->{'status'} == 2 )
+        {
+          $defaultEngine = $searchEngines[ $answer - 1 ]->{'name'};
+
+          # Reset other default status
+          for ( my $j = 0 ; $j <= $#searchEngines ; $j++ )
+          {
+            next if ( $j == ( $answer - 1 ) );
+            $searchEngines[ $j ]->{'status'} = 1
+                if ( $searchEngines[ $j ]->{'status'} == 2 );
+          }
+        } elsif (    $searchEngines[ $answer - 1 ]->{'status'} == 1
+                  && $defaultEngine eq "" )
+        {
+          $defaultEngine = $searchEngines[ $answer - 1 ]->{'name'};
+        }
+      }
+    } else
+    {
+      print "Invalid selection!\n";
+      print "<PRESS ENTER TO CONTINUE>\n";
+      $answer = <STDIN>;
+    }
+  } while ( $done == 0 );
+
+  # Figure out who is the default.
+  if ( $defaultEngine ne "" )
+  {
+    open IN,  "<$configFile"     || die "Could not open $configFile";
+    open OUT, ">$configFile.tmp" || die "Could not open $configFile.tmp";
+    while ( <IN> )
+    {
+      s/^(\s*\$DEFAULT_SEARCH_ENGINE\s*=\s*)\S+;/$1\"$defaultEngine\";/;
+      print OUT $_;
+    }
+    close IN;
+    close OUT;
+    system( "mv $configFile.tmp $configFile" );
+  }
+
+}
+
+sub configRMBlast
+{
+  my $configFile = shift;
+
+  my $answer;
+  my $pgLocation;
+  do
+  {
+    $goodParam = 1;
+    $pgLocation = &promptScreen(
+"**RMBlast (rmblastn) INSTALLATION PATH**\n\n  This is the path to the location where\n  the rmblastn and makeblastdb programs can be found.\n",
+      "Enter path",
+      ""
+    );
+    if ( $pgLocation ne "" )
+    {
+      unless ( -d "$pgLocation" )
+      {
+        print "$pgLocation does not exist\n";
+        $goodParam = 0;
+      }
+      unless ( -s "$pgLocation/rmblastn" )
+      {
+        print "$pgLocation/blastp does not exist\n";
+        $goodParam = 0;
+      }
+      unless ( -s "$pgLocation/makeblastdb" )
+      {
+        print "$pgLocation/setdb does not exist\n";
+        $goodParam = 0;
+      }
+      if ( $goodParam == 0 )
+      {
+        print "<PRESS ENTER TO CONTINUE>\n";
+        my $answer = <STDIN>;
+      }
+    }
+  } while ( $goodParam != 1 );
+
+  if ( $pgLocation eq "" )
+  {
+    print "RMBlast not configured!\n";
+    print "<PRESS ENTER TO CONTINUE>\n";
+    $answer = <STDIN>;
+    return 0;
+  }
+  $pgLocation =~ s/(.*)\/$/$1/;
+
+  # Make changes to file.
+  open IN,  "<$configFile"     || die "Could not open $configFile";
+  open OUT, ">$configFile.tmp" || die "Could not open $configFile.tmp";
+  while ( <IN> )
+  {
+    s/^(\s*\$RMBLAST_DIR\s*=\s*)\S+;/$1\"$pgLocation\";/;
+    print OUT $_;
+  }
+  close IN;
+  close OUT;
+  system( "mv $configFile.tmp $configFile" );
+
+  open INVERS, "<$repMaskLocation/Libraries/RepeatMaskerLib.embl"
+      || die "Error! Could not open RepeatMasker library file!\n";
+  while ( <INVERS> )
+  {
+    if ( /CC\s+RELEASE\s+(\d+)(-min)*;/ )
+    {
+      if ( $2 ne "" )
+      {
+        print " \nMissing full RepeatMasker repeat library!\n\n\n"
+            . "  The version of RepeatMasker you have selected was installed\n"
+            . "  with the minimal RepeatMasker repeat library.  This library\n"
+            . "  is not sufficient for use with RepeatModeler and\n"
+            . "  RepeatClassifier.  Please obtain the full repeat database\n"
+            . "  from http://www.girinst.org and rerun RepeatMasker/configure\n"
+            . "  and the RepeatModeler/configure scripts.\n";
+        exit;
+      }
+    }
+  }
+  close INVERS;
+
+  #
+  # Check that the RepeatMasker has the correct frozen libraries
+  #
+  if (    !-s "$repMaskLocation/Libraries/RepeatMasker.lib"
+       || !-s "$repMaskLocation/Libraries/RepeatMasker.lib.nsq" )
+  {
+    print
+        " WARNING: $repMaskLocation/Libraries/RepeatMasker.lib.[n??] doesn't\n"
+        . "        exist!  RepeatModeler will not run correctly without these\n"
+        . "        files.  Please re-run $repMaskLocation/configure to create\n"
+        . "        these files automatically.  Then re-run this script.\n";
+    exit;
+  }
+
+  if (    !-s "$repMaskLocation/Libraries/RepeatPeps.lib"
+       || !-s "$repMaskLocation/Libraries/RepeatPeps.lib.psq" )
+  {
+    print " WARNING: $repMaskLocation/Libraries/RepeatPeps.lib.[p??] doesn't\n"
+        . "        exist!  RepeatModeler will not run correctly without these\n"
+        . "        files.  Please re-run $repMaskLocation/configure to create\n"
+        . "        these files automatically.  Then re-run this script.\n";
+    exit;
+  }
+
+  my $pgDefault = &promptScreen(
+    "",
+"Do you want RMBlast to be your default\nsearch engine for Repeatmasker? (Y/N) ",
+    "Y",
+  );
+
+  $pgDefault = lc( $pgDefault );
+  return ( 2 ) if ( $pgDefault eq "y" || $pgDefault eq "yes" );
+
+  return ( 1 );
+
+}
+
+sub configWUBlast
+{
+  my $configFile = shift;
+
+  my $answer;
+  my $wuLocation;
+  do
+  {
+    $goodParam = 1;
+    $wuLocation = &promptScreen(
+"**ABBlast/WUBlast BLASTP INSTALLATION PATH**\n\n  This is the path to the location where\n  the ABblast/WUblast blastx, and blastn programs can be found.\n",
+      "Enter path",
+      ""
+    );
+    if ( $wuLocation ne "" )
+    {
+      unless ( -d "$wuLocation" )
+      {
+        print "$wuLocation does not exist\n";
+        $goodParam = 0;
+      }
+      unless ( -s "$wuLocation/blastn" )
+      {
+        print "$wuLocation/blastn does not exist\n";
+        $goodParam = 0;
+      }
+      unless ( -s "$wuLocation/blastx" )
+      {
+        print "$wuLocation/blastx does not exist\n";
+        $goodParam = 0;
+      }
+      unless ( -s "$wuLocation/xdformat" )
+      {
+        print "$wuLocation/xdformat does not exist\n";
+        $goodParam = 0;
+      } else
+      {
+        my $result = `$wuLocation/xdformat -m 2>&1`;
+
+        # Two responses are expected:
+        # Good Version:
+        #   /blah/wublast/xdformat: option requires an argument -- m
+        #   /blah/abblast/xdformat: option requires an argument -- 'm'
+        # Old Version:
+        #   /blah/wublast/xdformat: invalid option -- m
+        unless ( $result =~ /option requires an argument -- ('m'|m)/ )
+        {
+          die "$wuLocation/xdformat is too old.  Must have one dated 3/16/2005 "
+              . "or newer.  Install a newer version of wublast and re-run "
+              . "configure.\n";
+        }
+      }
+      if ( $goodParam == 0 )
+      {
+        print "<PRESS ENTER TO CONTINUE>\n";
+        my $answer = <STDIN>;
+      }
+    }
+  } while ( $goodParam != 1 );
+
+  if ( $wuLocation eq "" )
+  {
+    print "WUBlast/ABBlast not configured!\n";
+    print "<PRESS ENTER TO CONTINUE>\n";
+    $answer = <STDIN>;
+    return 0;
+  }
+  $wuLocation =~ s/(.*)\/$/$1/;
+
+  # Make changes to file.
+  open IN,  "<$configFile"     || die "Could not open $configFile";
+  open OUT, ">$configFile.tmp" || die "Could not open $configFile.tmp";
+  while ( <IN> )
+  {
+    s/^(\s*\$WUBLAST_DIR\s*=\s*)\S+;/$1\"$wuLocation\";/;
+    print OUT $_;
+  }
+  close IN;
+  close OUT;
+  system( "mv $configFile.tmp $configFile" );
+
+  #
+  # Check that the RepeatMasker has the correct frozen libraries
+  #
+  if (    !-s "$repMaskLocation/Libraries/RepeatMasker.lib"
+       || !-s "$repMaskLocation/Libraries/RepeatMasker.lib.xnd" )
+  {
+    print
+        " WARNING: $repMaskLocation/Libraries/RepeatMasker.lib.[xn?] doesn't\n"
+        . "          exist!  RepeatModeler will not run correctly without these\n"
+        . "          files.  Please re-run $repMaskLocation/configure to create\n"
+        . "          these files automatically.  Then re-run this script.\n";
+    exit;
+  }
+
+  if (    !-s "$repMaskLocation/Libraries/RepeatPeps.lib"
+       || !-s "$repMaskLocation/Libraries/RepeatPeps.lib.xpd" )
+  {
+    print " WARNING: $repMaskLocation/Libraries/RepeatPeps.lib.[xp?] doesn't\n"
+        . "          exist!  RepeatModeler will not run correctly without these\n"
+        . "          files.  Please re-run $repMaskLocation/configure to create\n"
+        . "          these files automatically.  Then re-run this script.\n";
+    exit;
+  }
+
+  # Freeze RM and RMPep libraries
+  my $rmLocation = "$FindBin::Bin";
+  print "Building WUBlast/ABBlast frozen libraries..\n";
+  system(   "$wuLocation/xdformat -n -I "
+          . "$rmLocation/Libraries/RepeatMasker.lib > /dev/null 2>&1" );
+  system(   "$wuLocation/xdformat -p -I "
+          . "$rmLocation/Libraries/RepeatPeps.lib > /dev/null 2>&1" );
+
+  my $wuDefault = &promptScreen(
+    "",
+"Do you want ABBlast/WUBlast to be your default\nsearch engine for Repeatmasker? (Y/N) ",
+    "Y",
+  );
+
+  $wuDefault = lc( $wuDefault );
+  return ( 2 ) if ( $wuDefault eq "y" || $wuDefault eq "yes" );
+
+  return ( 1 );
+
+}
+
+##-------------------------------------------------------------------------##
+
+=over 4
+
+=item Use: my $retVal =  &promptScreen( $screenText, $promptText, 
+                                        $defaultAnswer, [$validResponses] );
+
+Clear the screen and prompt the user for input
+
+=back
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub promptScreen
+{
+  my $screenText     = shift;
+  my $promptText     = shift;
+  my $defaultAnswer  = shift;
+  my $validResponses = shift;
+
+  my $answer = undef;
+
+  # Clear the screen
+  system( "clear" );
+
+  print "\n\n\n";
+  print $screenText;
+  my $numLines = ( $screenText =~ s/(\n)/$1/g );
+  for ( my $i = 0 ; $i < 15 - $numLines ; $i++ )
+  {
+    print "\n";
+  }
+  if ( defined $validResponses )
+  {
+    $promptText .= " ( " . $validResponses . " )";
+  }
+  if ( defined $defaultAnswer )
+  {
+    $promptText .= " [ " . $defaultAnswer . " ]: ";
+  }
+  print $promptText;
+  $answer = <STDIN>;
+
+  if ( $answer =~ /^\s*$/ )
+  {
+    $answer = $defaultAnswer;
+  } else
+  {
+    $answer =~ s/[\n\r]+//g;
+  }
+
+  return ( $answer );
+}
+
+1;

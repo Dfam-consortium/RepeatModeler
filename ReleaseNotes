@@ -1,0 +1,13 @@
+
+1.0.8
+  - New "-recoverDir <dir>" option.  This allows RepeatModeler to 
+    restart where it left off after a failure occurs.  
+  - BLAST searches can now be run in parallel on a shared memory 
+    multiprocessor machine.  The new "-pa #" option is used to
+    specify how many parallel searches to start up at any one time.
+
+1.0.7
+  - Added support for new RMBlastn version 2.2.27
+  - TRFMask updated to work with the new RepeatMasker 4.0 release.
+  - New viewMSA.pl utility
+

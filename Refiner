@@ -1,0 +1,1709 @@
+#!/u1/local/bin/perl
+##---------------------------------------------------------------------------##
+##  File:
+##      @(#) Refiner
+##  Author:
+##      Arian Smit <asmit@systemsbiology.org>
+##      Robert Hubley <rhubley@systemsbiology.org>
+##  Description:
+##      Given a set of instances of a particular interspersed
+##      repeat develop and refine a consensus model for
+##      them.
+##
+#******************************************************************************
+#* Copyright (C) Institute for Systems Biology 2008 Developed by
+#* Arian Smit and Robert Hubley.
+#*
+#* This work is licensed under the Open Source License v2.1.  To view a copy
+#* of this license, visit http://www.opensource.org/licenses/osl-2.1.php or
+#* see the license.txt file contained in this distribution.
+#*
+###############################################################################
+#  ChangeLog:
+#
+#    $Log: Refiner,v $
+#    Revision 1.37  2017/04/05 00:03:31  rhubley
+#    Cleanup before a distribution
+#
+#
+###############################################################################
+#
+# To Do:
+#
+#
+#
+# Module Dependence
+#
+use strict;
+use FindBin;
+use lib $FindBin::RealBin;
+use Getopt::Long;
+use POSIX qw(:sys_wait_h);
+use File::Copy;
+use File::Spec;
+use File::Path;
+use File::Basename;
+use Cwd;
+use Data::Dumper;
+
+# RepeatModeler Libraries
+use RepModelConfig;
+use lib $RepModelConfig::REPEATMASKER_DIR;
+use MultAln;
+use NeedlemanWunschGotohAlgorithm;
+
+# RepeatMasker Libraries
+use SearchResult;
+use SearchResultCollection;
+use WUBlastSearchEngine;
+use NCBIBlastSearchEngine;
+use SequenceSimilarityMatrix;
+use SeqDBI;
+use SimpleBatcher;
+use FastaDB;
+
+#
+# Class Globals & Constants
+#
+my $CLASS = "Refiner";
+my $DEBUG = 0;
+$DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
+$|     = 1;                                         # Turn autoflush on
+
+#
+# Version
+#
+#  This is a neat trick.  CVS allows you to tag
+#  files in a repository ( i.e. cvs tag "2003/12/03" ).
+#  If you check out that release into a new
+#  directory with "cvs co -r "2003/12/03" it will
+#  place this string into the $Name:  $ space below
+#  automatically.  This will help us keep track
+#  of which release we are using.  If we simply
+#  check out the code as "cvs co RepeatModeler" the
+#  $Name:  $ macro will be blank and thus we use
+#  this as the development version.
+#
+my $CVSTag = '$Name:  $';
+my $version;
+if ( $CVSTag =~ /\$\s*Name:\s*open-(\S+)\s*\$/ )
+{
+  $version = $1;
+  $version =~ s/-/./g;
+  $version = "open-$version";
+} else
+{
+  $version =
+      'development-$Id: Refiner,v 1.37 2017/04/05 00:03:31 rhubley Exp $';
+}
+
+if ( $ARGV[ 0 ] && $ARGV[ 0 ] eq '-v' )
+{
+  print "Refiner version $version\n";
+  exit;
+}
+
+#
+# Option processing
+#  e.g.
+#   -t: Single letter binary option
+#   -t=s: String parameters
+#   -t=i: Number paramters
+#
+my @opts = qw( help noTmp debug engine=s giToID=s );
+
+#
+# Get the supplied command line options, and set flags
+#
+my %options = ();
+unless ( &GetOptions( \%options, @opts ) )
+{
+  exec "pod2text $0";
+  exit( 1 );
+}
+
+# Print the internal POD documentation if something is missing
+if ( $#ARGV == -1 || $options{'help'} )
+{
+  print "No query sequence file indicated\n\n";
+
+  # This is a nifty trick so we don't have to have
+  # a duplicate "USAGE()" subroutine.  Instead we
+  # just recycle our POD docs.  See PERL POD for more
+  # details.
+  exec "pod2text $0";
+  die;
+}
+
+$DEBUG = 1 if ( $options{'debug'} );
+
+#
+# If used as part of the RepeatModeler system
+# read in the seq IDs from the original database
+# so we can place them in the stockholm file.
+#
+my %genomeDBToSeqID = ();
+if ( $options{'giToID'} )
+{
+  open IN, "<$options{'giToID'}"
+      or die "Could not open $options{'giToID'} file for reading!\n";
+  while ( <IN> )
+  {
+    if ( /^(\S+)\s+(\d+)/ )
+    {
+      $genomeDBToSeqID{"gi|$2"} = $1;
+    }
+  }
+  close IN;
+}
+
+#
+# Setup the search engines
+#
+my $srchEngAllVsAll;
+my $srchEngOneVsAll;
+my $engine = $RepModelConfig::DEFAULT_SEARCH_ENGINE;
+$engine = $options{'engine'} if ( $options{'engine'} );
+if ( $engine )
+{
+  if ( $engine =~ /wublast|abblast/i )
+  {
+    $engine          = "abblast";
+    $srchEngAllVsAll =
+        WUBlastSearchEngine->new(
+                               pathToEngine => $RepModelConfig::WUBLASTN_PRGM );
+    $srchEngOneVsAll =
+        WUBlastSearchEngine->new(
+                               pathToEngine => $RepModelConfig::WUBLASTP_PRGM );
+    if ( not defined $srchEngAllVsAll )
+    {
+      die
+"Refiner Failed: Cannot execute $RepModelConfig::WUBLASTN_PRGM please make "
+          . "sure you have setup RepeatModeler to use AB/WUBlast "
+          . "by running the configure script.\n";
+    }
+  } elsif ( $engine =~ /ncbi/i )
+  {
+    $engine          = "ncbi";
+    $srchEngAllVsAll =
+        NCBIBlastSearchEngine->new(
+                               pathToEngine => $RepModelConfig::RMBLASTN_PRGM );
+    $srchEngOneVsAll =
+        NCBIBlastSearchEngine->new(
+                               pathToEngine => $RepModelConfig::RMBLASTN_PRGM );
+    if ( not defined $srchEngAllVsAll )
+    {
+      die
+"Refiner Failed: Cannot execute $RepModelConfig::RMBLASTN_PRGM please make "
+          . "sure you have setup RepeatModeler to use NCBI (RMBlast) by "
+          . "running the configure script.\n";
+    }
+  } else
+  {
+    print "I don't recognize the search engine type:  $engine\n";
+    exec "pod2text $0";
+    die;
+  }
+}
+
+#
+# Parse filenames
+#
+foreach my $file ( @ARGV )
+{
+  if ( $file =~ /\s/ )
+  {
+    die "RepeatModeler can not handle filenames with spaces "
+        . "like the file \"$file\"\n";
+  } elsif ( $file =~ /([\`\!\$\^\&\*\(\)\{\}\[\]\|\\\;\"\'\<\>\?])/ )
+  {
+    die "RepeatModeler can not handle filenames with the special "
+        . "character \"$1\" as in the file \"$file\"\n";
+  }
+}
+
+my @tmpDirPath = ( cwd(), ( File::Spec->splitpath( $ARGV[ 0 ] ) )[ 1 ] );
+print "TempDirPath = " . join( ", ", @tmpDirPath ) . "\n" if ( $DEBUG );
+
+my $tmpDir;
+
+#
+# Main loop
+#
+my @TimeBefore = ();
+elapsedTime( 0 );
+foreach my $file ( @ARGV )
+{
+
+  unless ( -r $file )
+  {
+    print "cannot read file $file\n";
+    next;
+  }
+
+  print "\nanalyzing file $file\n" if ( $#ARGV >= 0 && $DEBUG );
+  $tmpDir = dirname( $file );
+  unless ( $options{'noTmp'} )
+  {
+    $tmpDir = createTempDir( \@tmpDirPath );
+  }
+  print "Tmpdir = $tmpDir\n" if ( $DEBUG );
+
+  my ( $cons, $maSize, $avgKDiv ) = &buildConsensus(
+                                    $RepModelConfig::REPEATMODELER_MATRICES_DIR,
+                                    $RepModelConfig::XDFORMAT_PRGM,
+                                    $srchEngAllVsAll,
+                                    $srchEngOneVsAll,
+                                    $file,
+                                    $tmpDir
+  );
+
+  $cons =~ s/-//g;
+  open OUTC, ">$file.refiner_cons";
+
+  # Save the consensus to the consensi file.
+  print OUTC ">family ( Final Multiple Alignment Size = " . $maSize
+      . " , Avg Kimura = $avgKDiv )\n";
+  print OUTC "$cons\n";
+  close OUTC;
+}
+
+##########################################################################
+##########################################################################
+##########################################################################
+##########################################################################
+
+sub buildConsensus
+{
+  my $matrixDir       = shift;
+  my $xdformatPrgm    = shift;
+  my $srchEngAllVsAll = shift();
+  my $srchEngOneVsAll = shift();
+  my $pathToFastaFile = shift();
+  my $wrkDir          = shift();
+
+  # Break down fastaFile path to directory/file
+  # components
+  my $consName = basename( $pathToFastaFile );
+
+  # TODO: This is a hack!
+  $consName =~ s/\.fa//g;
+
+  my $cons = "";
+  my $db;
+  my @multiSeqs               = ();
+  my %uniqSeqIDs              = ();
+  my $finalMultiAlignmentSize = 0;
+  my $avgKDiv                 = 0;
+  my $round1ConsLen           = 0;
+  my $round1NumUnAlignSeqs    = 0;
+  if ( $DEBUG )
+  {
+    print "========================="
+        . $consName
+        . "=========================\n";
+    print " -------------------ROUND 1 ------------------ \n";
+  }
+
+  ## Build database of input file
+  if ( $engine eq "abblast" )
+  {
+
+    # Build wublast databases for fasta file.
+    system(
+           "$xdformatPrgm -n $pathToFastaFile >> " . "$wrkDir/setdb.log 2>&1" );
+    $srchEngAllVsAll->setMatrix( "$matrixDir/wublast/nt/comparison.matrix" );
+    $srchEngOneVsAll->setMatrix( "$matrixDir/wublast/aa/comparison.matrix" );
+  } else
+  {
+
+    # MAKEBLASTDB the database
+    #. "-parse_seqids -dbtype nucl -in $pathToFastaFile >> "
+    system(   "$RepModelConfig::NCBIBLASTDB_PRGM -out $pathToFastaFile "
+            . "-dbtype nucl -in $pathToFastaFile >> "
+            . "$wrkDir/makeblastdb.log 2>&1" );
+    $srchEngAllVsAll->setMatrix( "$matrixDir/ncbi/nt/comparison.matrix" );
+    $srchEngOneVsAll->setMatrix( "$matrixDir/ncbi/nt/comparison.matrix" );
+  }
+
+  ## Setup the general search parameters
+  $srchEngAllVsAll->setMinScore( 150 );
+  $srchEngAllVsAll->setGenerateAlignments( 1 );
+  $srchEngAllVsAll->setGapInit( -25 );
+  $srchEngAllVsAll->setInsGapExt( -5 );
+  $srchEngAllVsAll->setDelGapExt( -5 );
+  $srchEngAllVsAll->setMinMatch( 7 );
+  $srchEngAllVsAll->setTempDir( dirname( $pathToFastaFile ) );
+  $srchEngAllVsAll->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
+
+  $srchEngOneVsAll->setMinScore( 150 );
+  $srchEngOneVsAll->setGenerateAlignments( 1 );
+  $srchEngOneVsAll->setGapInit( -25 );
+  $srchEngOneVsAll->setInsGapExt( -5 );
+  $srchEngOneVsAll->setDelGapExt( -5 );
+  $srchEngOneVsAll->setMinMatch( 7 );
+  $srchEngOneVsAll->setTempDir( dirname( $pathToFastaFile ) );
+  $srchEngOneVsAll->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
+  $srchEngOneVsAll->setMaskLevel( 80 );
+
+  # Search family file against itself.
+  $srchEngAllVsAll->setQuery( $pathToFastaFile );
+  $srchEngAllVsAll->setSubject( $pathToFastaFile );
+
+  print $CLASS
+      . "::buildConsensus(): Running All-vs-All "
+      . "on $pathToFastaFile \n"
+      if ( $DEBUG );
+
+  my $round = "1";
+  my ( $runStat, $familyCollection ) = $srchEngAllVsAll->search();
+
+  ## Cleanup after run
+  if ( $engine eq "abblast" )
+  {
+
+    # Remove wublast databases
+    system( "rm $pathToFastaFile.xn*" ) unless ( $DEBUG );
+  } else
+  {
+
+    # Remove ncbi databases
+    system(   "rm $pathToFastaFile.nin "
+            . "$pathToFastaFile.nhr $pathToFastaFile.nsq " )
+        unless ( $DEBUG );
+  }
+
+  print $CLASS
+      . "::buildConsensus(): Returned "
+      . $familyCollection->size()
+      . " hits\n"
+      if ( $DEBUG );
+
+  my $malign;
+  my $unalignedFastaSeqs = "";
+
+  if ( $runStat )
+  {
+    print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
+  } else
+  {
+    ## Find highest scoring element
+    my $MOUT;
+    open $MOUT, ">$wrkDir/$consName-cons.html";
+
+    my $refID =
+        &findHighestScoringAlignmentSet(
+                                        searchCollection => $familyCollection );
+
+    if ( $familyCollection->size() > 0 )
+    {
+
+      $db = FastaDB->new( fileName => $pathToFastaFile,
+                          openMode => SeqDBI::ReadOnly );
+
+      # Grab the reference sequence
+      my $refSeq = $db->getSequence( $refID );
+
+      # Develop a pseudo mutiple alignment based on the
+      # remaining common sequence alignments.
+      $malign = MultAln->new(
+                              referenceSeq              => $refSeq,
+                              searchCollection          => $familyCollection,
+                              searchCollectionReference => MultAln::Query,
+                              flankingSequenceDatabase  => $db,
+                              maxFlankingSequenceLen    => -1
+      );
+      $cons = $malign->consensus( "$matrixDir/linupmatrix" );
+
+      my (
+           $leftMostSequence,  $leftMostSequenceID,
+           $rightMostSequence, $rightMostSequenceID
+          )
+          = &getLongestFlankingExtension( multAln => $malign );
+
+      writeHTMLMultAlign(
+                          multAln         => $malign,
+                          destination     => $MOUT,
+                          leftFlankingID  => $leftMostSequenceID,
+                          rightFlankingID => $rightMostSequenceID
+      );
+      $malign->serializeOUT( "$wrkDir/$consName-cons.malign" );
+      undef $malign;
+
+      # Print unalignable sequences
+      my %seqNames = ();
+      my $qryID    = $familyCollection->get( 0 )->getQueryName();
+      $seqNames{$qryID} = 1;
+      for ( my $j = 0 ; $j < $familyCollection->size() ; $j++ )
+      {
+        my $sbjID = $familyCollection->get( $j )->getSubjName();
+        $seqNames{$sbjID} = 1;
+      }
+      my $unAlignSeqs    = "";
+      my $numUnAlignSeqs = 0;
+      foreach my $seqID ( $db->getIDs() )
+      {
+        unless ( exists $seqNames{$seqID} )
+        {
+          $unAlignSeqs .=
+              "Unaligned ( $seqID ): " . $db->getSequence( $seqID ) . "\n";
+          $numUnAlignSeqs++;
+        }
+      }
+      if ( $numUnAlignSeqs > 0 )
+      {
+        print $MOUT "$numUnAlignSeqs sequences could not be aligned to "
+            . "this particular reference sequence:\n";
+        print $MOUT "<PRE>\n$unAlignSeqs\n</PRE>\n";
+      }
+
+      print $CLASS
+          . "::buildConsensus(): "
+          . $familyCollection->size()
+          . " elements left after initial multiple alignment\n"
+          if ( $DEBUG );
+
+      ## Build Consensus
+      $cons =~ s/-//g;
+
+      $round1ConsLen        = length( $cons );
+      $round1NumUnAlignSeqs = $numUnAlignSeqs;
+
+      if ( $DEBUG )
+      {
+        print "  - Unaligned sequences = $numUnAlignSeqs\n";
+        print "  - Consensus Length = " . length( $cons ) . "\n";
+      }
+
+      ##########################################
+      ######### Consensus refinement ###########
+      ##########################################
+      my $prevCons = "";
+      my $newConsBlocks;
+      my $finalRound = 0;
+      do
+      {
+        print $MOUT "\n<br>\n<br><hr>\n<br>\n<br>";
+        $round++;
+        if ( $DEBUG )
+        {
+          print " -------------------ROUND $round ------------------ \n";
+        }
+        $prevCons = $cons;
+
+        # Save the consensus to a fasta file
+        open CONF, ">$wrkDir/$consName-cons-$round.fa";
+        print CONF ">$consName ( "
+            . $familyCollection->size()
+            . " hsps from initial "
+            . "mulitiple alignment)\n";
+        my $consFa = $cons;
+        $consFa =~ s/-//g;
+
+        print CONF "$consFa\n";
+        close CONF;
+        $leftMostSequence  = "";
+        $rightMostSequence = "";
+
+        if ( $engine eq "abblast" )
+        {
+          system(   "$xdformatPrgm -p $wrkDir/$consName-cons-$round.fa >> "
+                  . "$wrkDir/setdb.log 2>&1" );
+        } else
+        {
+
+          # MAKEBLASTDB the database
+          #. "-parse_seqids -dbtype nucl -in "
+          system(   "$RepModelConfig::NCBIBLASTDB_PRGM -out "
+                  . "$wrkDir/$consName-cons-$round.fa "
+                  . "-dbtype nucl -in "
+                  . "$wrkDir/$consName-cons-$round.fa >> "
+                  . "$wrkDir/makeblastdb.log 2>&1" );
+        }
+
+        # Setup the search parameters
+        $srchEngOneVsAll->setSubject( "$wrkDir/$consName-cons-$round.fa" );
+        $srchEngOneVsAll->setQuery( $pathToFastaFile );
+
+        print $CLASS
+            . "::buildConsensus(): Cons-vs-All WUBlastP "
+            . "$consName\n"
+            if ( $DEBUG );
+
+        print "Params: " . $srchEngOneVsAll->getParameters() . "\n"
+            if ( $DEBUG );
+        ( $runStat, $familyCollection ) = $srchEngOneVsAll->search();
+
+        if ( $engine eq "abblast" )
+        {
+
+          # Remove the wublast databases
+          system( "rm $wrkDir/$consName-cons-$round.fa.xp*" ) unless ( $DEBUG );
+        } else
+        {
+
+          # Remove the ncbi databases
+          system( "rm $wrkDir/$consName-cons-$round.fa.n*" ) unless ( $DEBUG );
+        }
+
+        print $CLASS
+            . "::buildConsensus(): AB/RM Blast returned "
+            . $familyCollection->size()
+            . " hits\n"
+            if ( $DEBUG );
+
+        if ( $runStat )
+        {
+          print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
+        } else
+        {
+
+          # Create multiple alignment of results
+          $malign = MultAln->new(
+                                  referenceSeq     => $consFa,
+                                  searchCollection => $familyCollection,
+                                  searchCollectionReference => MultAln::Subject,
+                                  flankingSequenceDatabase  => $db,
+                                  maxFlankingSequenceLen    => -1
+          );
+
+          # Build consensus
+          $cons = $malign->consensus( "$matrixDir/linupmatrix" );
+          my $sumDiv = $malign->kimuraDivergence( $cons );
+          $avgKDiv = 0;
+          if ( $malign->getNumAlignedSeqs() > 0 )
+          {
+            $avgKDiv = $sumDiv / $malign->getNumAlignedSeqs();
+          }
+          $malign->serializeOUT( "$wrkDir/$consName-malign-$round.ser" )
+              if ( $DEBUG );
+
+          # Determine if we are at the end of our loop
+          if ( $finalRound == 0 && ( $prevCons eq $cons || $round == 10 ) )
+          {
+            if ( $DEBUG )
+            {
+              print "  - Consensus stable...resolving low quality blocks..\n";
+            }
+            $newConsBlocks = resolveLowQualityBlocks( multAln => $malign );
+
+            # Patch up the cons
+            for ( my $j = 0 ; $j <= $#{$newConsBlocks} ; $j++ )
+            {
+              my $colWidth =
+                  $newConsBlocks->[ $j ]->{'end'} -
+                  $newConsBlocks->[ $j ]->{'start'} + 1;
+              my $colSeq = $newConsBlocks->[ $j ]->{'cons'};
+              my $seq = $colSeq . "-" x ( $colWidth - length( $colSeq ) );
+              substr( $cons, $newConsBlocks->[ $j ]->{'start'}, length( $seq ) )
+                  = $seq;
+            }
+            writeHTMLMultAlign(
+                                multAln         => $malign,
+                                destination     => $MOUT,
+                                leftFlankingID  => $leftMostSequenceID,
+                                rightFlankingID => $rightMostSequenceID,
+                                printHistogram  => 1,
+                                newConsBlocks   => $newConsBlocks,
+                                finalConsensus  => $cons
+            );
+            $finalRound++;
+          } else
+          {
+            $finalRound++ if ( $finalRound == 1 );
+            if ( $finalRound == 2 )
+            {
+
+              # TODO: Put this back when we work on this again
+              #writeHTMLMultAlign(
+              #                    multAln         => $malign,
+              #                    destination     => $MOUT,
+              #                    leftFlankingID  => $leftMostSequenceID,
+              #                    rightFlankingID => $rightMostSequenceID,
+              #                    printDupDelCols => 1
+              #);
+              writeHTMLMultAlign(
+                                  multAln         => $malign,
+                                  destination     => $MOUT,
+                                  leftFlankingID  => $leftMostSequenceID,
+                                  rightFlankingID => $rightMostSequenceID,
+              );
+            } else
+            {
+              writeHTMLMultAlign(
+                                  multAln         => $malign,
+                                  destination     => $MOUT,
+                                  leftFlankingID  => $leftMostSequenceID,
+                                  rightFlankingID => $rightMostSequenceID
+              );
+            }
+
+            #$malign->_getEndStartPairs() if ( $finalRound == 2 );
+          }
+
+          # Determine which sequences were not aligned.
+          my %seqNames = ();
+          my $sbjID    = $familyCollection->get( 0 )->getSubjName();
+          $seqNames{$sbjID} = 1;
+          for ( my $j = 0 ; $j < $familyCollection->size() ; $j++ )
+          {
+
+            # Testing
+            #print "OUT: "
+            #    . $familyCollection->get( $j )
+            #    ->toStringFormatted( SearchResult::AlignWithQuerySeq ) . "\n";
+            my $qryID = $familyCollection->get( $j )->getQueryName();
+            $seqNames{$qryID} = 1;
+          }
+          $unAlignSeqs        = "";
+          $unalignedFastaSeqs = "";
+          $numUnAlignSeqs     = 0;
+          foreach my $seqID ( $db->getIDs() )
+          {
+            unless ( exists $seqNames{$seqID} )
+            {
+              $unalignedFastaSeqs .=
+                  ">$seqID\n" . $db->getSequence( $seqID ) . "\n";
+              $unAlignSeqs .=
+                  "Unaligned ( $seqID ): " . $db->getSequence( $seqID ) . "\n";
+              $numUnAlignSeqs++;
+            }
+          }
+          if ( $numUnAlignSeqs > 0 )
+          {
+            print $MOUT "$numUnAlignSeqs sequences could not be aligned to "
+                . "this reference sequence:\n";
+            print $MOUT "<PRE>\n$unAlignSeqs\n</PRE>\n";
+          }
+
+          # Find out how many uniq sequences made it into the
+          # final multiple alignment.
+          %uniqSeqIDs = ();
+          foreach my $seqNum ( 0 .. $malign->getNumAlignedSeqs() - 1 )
+          {
+            $uniqSeqIDs{ $malign->getAlignedName( $seqNum ) } = {
+                               consStart => $malign->getAlignedStart( $seqNum ),
+                               consEnd   => $malign->getAlignedEnd( $seqNum )
+            };
+          }
+
+          # TODO: Get alignment position ( ie. consensus pos ) so we can
+          #       store this in with the final instances.
+          $finalMultiAlignmentSize = keys( %uniqSeqIDs );
+        }
+
+        #close $MOUT;
+      } until ( $finalRound == 2 );
+
+      my $gaplessCons = $cons;
+      $gaplessCons =~ s/-//g;
+      print "  - numRounds = $round\n";
+      print "  - Consensus Length = "
+          . length( $gaplessCons )
+          . " ( orig = $round1ConsLen )\n";
+      print "  - Avg Kimura Divergence = "
+          . sprintf( "%0.2f", $avgKDiv ) . "\n";
+      print
+"  - Unaligned sequences = $numUnAlignSeqs ( orig = $round1NumUnAlignSeqs )\n";
+    } else
+    {
+      print $CLASS
+          . "::buildConsensus(): $pathToFastaFile ( $consName ) "
+          . "didn't have any hsps!!!!!\n";
+    }
+  }    # if Run stat from first pass
+
+  ## Testing: Saving out unaligned fasta for experimentation
+  open OUT, ">unaligned.fa"
+      or die "Refiner Failed: Could not open unaligned\.fa file!\n";
+
+  #my $ff = $cons;
+  #$ff =~ s/-//g;
+  #print OUT ">consensus\n$ff\n";
+  print OUT $unalignedFastaSeqs;
+  close OUT;
+
+  # Adjust identifiers in MultAln
+  for ( my $i = 0 ; $i < $malign->getNumAlignedSeqs() ; $i++ )
+  {
+    my $id     = $malign->getAlignedName( $i );
+    my $dbDesc = $db->getDescription( $id );
+
+    # If we are provided a translation system -- do the translation
+    if ( $dbDesc =~ /^\s*(\S+:)?(\S+):(\d+)-(\d+)\s*.*$/ )
+    {
+      my $originAssembly = $1;
+      my $originSeq      = $2;
+      my $originStart    = $3;
+      my $originEnd      = $4;
+      my $trueStart      = $malign->getAlignedSeqStart( $i ) + $originStart;
+      my $trueEnd        = $malign->getAlignedSeqEnd( $i ) + $originStart;
+      if ( $options{'giToID'}
+           && defined $genomeDBToSeqID{$originSeq} )
+      {
+        $originSeq = $genomeDBToSeqID{$originSeq};
+      }
+      $malign->setAlignedName( $i, $originSeq );
+      $malign->setAlignedSeqStart( $i, $trueStart );
+      $malign->setAlignedSeqEnd( $i, $trueEnd );
+    }
+  }
+  $malign->toSTK( filename => "$pathToFastaFile.refiner.stk" );
+
+  print "  Build Consensus: " . elapsedTime( 0 ) . "\n";
+  undef @multiSeqs;
+  return $cons, $finalMultiAlignmentSize, $avgKDiv;
+
+}
+
+##############################################################################
+##############################################################################
+
+##-------------------------------------------------------------------------##
+##
+##  Use: my = writeHTMLMultAlign( multAln => $multAlignRef,
+##                                    [destination => $filename|$FH],
+##                                    [leftFlankingID => 1],
+##                                    [rightFlankingID => 1] );
+##
+##
+##
+##-------------------------------------------------------------------------##
+sub writeHTMLMultAlign
+{
+  my %parameters = @_;
+
+  my $method = "writeHTMLMultAlign";
+  croak $CLASS. "::$method() missing multAln parameter!\n"
+      if ( !exists $parameters{'multAln'} );
+
+  my $mAlign = $parameters{'multAln'};
+
+  my $OUT = *STDOUT;
+  if ( defined $parameters{'destination'} )
+  {
+    if ( ref( $parameters{'destination'} ) !~ /GLOB|FileHandle/ )
+    {
+      print $CLASS
+          . "::$method() Opening file "
+          . $parameters{'destination'} . "\n"
+          if ( $DEBUG );
+      open $OUT, $parameters{'destination'}
+          or die $CLASS
+          . "::$method: Unable to open "
+          . "results file: $parameters{'destination'} : $!";
+    } else
+    {
+      $OUT = $parameters{'destination'};
+    }
+  }
+
+  print $OUT <<"END";
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+  <title>Alignments</title>
+  <style type="text/css">
+  font.lowQual {
+    background: #CD5C5C;
+  }
+  font.deletion {
+    background: #FF0000;
+  }
+  font.duplication {
+    background: #0000FF;
+  }
+  font.unknown {
+    background: #FFFF00;
+  }
+  font.dupFlank {
+    background: #C0C0C0;
+  }
+  </style>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+</head>
+END
+
+  # Find max padding.
+  my $maxLeftLen  = 0;
+  my $maxRightLen = 0;
+  my $maxQueryEnd = length( $mAlign->getReferenceSeq() );
+  foreach my $seqNum ( 0 .. $mAlign->getNumAlignedSeqs() - 1 )
+  {
+    my $relLeftLen =
+        length( $mAlign->getLeftFlankingSequence( $seqNum ) ) -
+        $mAlign->getAlignedStart( $seqNum );
+    my $relRightLen =
+        length( $mAlign->getRightFlankingSequence( $seqNum ) ) -
+        ( $maxQueryEnd - $mAlign->getAlignedEnd( $seqNum ) );
+    $maxLeftLen  = $relLeftLen  if ( $maxLeftLen < $relLeftLen );
+    $maxRightLen = $relRightLen if ( $maxRightLen < $relRightLen );
+  }
+
+  ## Calculate Del/Dup candidates
+  my @dupDelCols = ();
+  if ( $parameters{'printDupDelCols'} == 1 )
+  {
+    my $endStartPairs = $mAlign->_getEndStartPairs();
+    foreach my $pair ( @{$endStartPairs} )
+    {
+      if ( abs( $pair->{'refEnd'} - $pair->{'refStart'} ) < 50 )
+      {
+        my $adjStart = 0;
+        my $adjEnd   = 0;
+        my $absStart = $pair->{'refEnd'};
+        my $absEnd   = $pair->{'refStart'};
+        if ( $pair->{'refEnd'} > $pair->{'refStart'} )
+        {
+          $absStart = $pair->{'refStart'};
+          $absEnd   = $pair->{'refEnd'};
+        }
+        $adjStart = $mAlign->getAlignPosFromBPPos( $absStart );
+        $adjEnd   = $mAlign->getAlignPosFromBPPos( $absEnd );
+        print " adjStart = $adjStart adjEnd=$adjEnd\n" if ( $DEBUG );
+        if ( $pair->{'avgGapWidth'} > 30 )
+        {
+          print "Calling a deletion\n";
+
+          # Deletion
+          push @dupDelCols,
+              {
+                'start' => $adjStart,
+                'end'   => $adjEnd,
+                'type'  => "deletion"
+              };
+
+        } elsif ( $pair->{'avgGapWidth'} < 0 )
+        {
+
+          # Duplication
+          print "Calling a duplication\n";
+          my $flnkStart =
+              $mAlign->getAlignPosFromBPPos(
+                                    $absStart - abs( $pair->{'avgGapWidth'} ) );
+          my $flnkEnd = $mAlign->getAlignPosFromBPPos( $absStart - 1 );
+          push @dupDelCols,
+              {
+                'start' => $flnkStart,
+                'end'   => $flnkEnd,
+                'type'  => 'dupFlank'
+              };
+          push @dupDelCols,
+              {
+                'start' => $adjStart,
+                'end'   => $adjEnd,
+                'type'  => "duplication"
+              };
+          $flnkStart = $mAlign->getAlignPosFromBPPos( $absEnd + 1 );
+          $flnkEnd   =
+              $mAlign->getAlignPosFromBPPos(
+                                      $absEnd + abs( $pair->{'avgGapWidth'} ) );
+          push @dupDelCols,
+              {
+                'start' => $flnkStart,
+                'end'   => $flnkEnd,
+                'type'  => 'dupFlank'
+              };
+        } else
+        {
+
+          # Unknown
+          print "Calling an Unknown\n";
+          push @dupDelCols,
+              {
+                'start' => $adjStart,
+                'end'   => $adjEnd,
+                'type'  => "unknown"
+              };
+        }
+      }
+    }
+  }
+
+  ## Calculate low scoring columns
+  my $matrix = SequenceSimilarityMatrix->new();
+  $matrix->parseFromFile(
+      "$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix"
+  );
+  my $columns;
+  my $scoreArray;
+  if ( defined $parameters{'threshold'} )
+  {
+    ( $columns, $scoreArray ) = $mAlign->getLowScoringAlignmentColumns(
+                                           matrix    => $matrix,
+                                           threshold => $parameters{'threshold'}
+    );
+  } else
+  {
+    ( $columns, $scoreArray ) =
+        $mAlign->getLowScoringAlignmentColumns( matrix => $matrix );
+  }
+
+  #print "Low scoring columns:\n";
+  #foreach my $col ( @{$columns} ) {
+  #  print "Col  start = " . $col->[0] . " end = " . $col->[1] . "\n";
+  #}
+
+  print $OUT "<PRE>\n";
+
+  # Print out scoreArray just for fun
+  #   find the largest/smallest score
+  my $max = 0;
+  for ( my $j = 0 ; $j <= $#{$scoreArray} ; $j++ )
+  {
+    my $num = sprintf( "%0.1f", $scoreArray->[ $j ] );
+    $max = length( $num ) if ( $max < length( $num ) );
+    $scoreArray->[ $j ] = $num;
+  }
+  my $numCols = $max;
+  my @lines   = ();
+  foreach my $num ( @{$scoreArray} )
+  {
+    my $paddedNum = ' ' x ( $numCols );
+    if ( $num != 0 )
+    {
+      $paddedNum = ' ' x ( $numCols - length( $num ) ) . $num;
+    }
+    for ( my $j = 0 ; $j < $numCols ; $j++ )
+    {
+      $lines[ $j ] .= substr( $paddedNum, $j, 1 );
+    }
+  }
+  my $label = "lowQualScore";
+  my $paddedLabel = $label . " " x ( 30 - length( $label ) );
+  foreach my $line ( @lines )
+  {
+    print $OUT $paddedLabel . ": " . ' ' x ( $maxLeftLen ) . $line . "\n";
+  }
+
+  # First print the consensus sequence
+  my $lineStart = 0;
+  my $name      = "consensus";
+  my $namePad   = 30 - length( $name );
+  my $seq       =
+      $mAlign->consensus(
+                    "$RepModelConfig::REPEATMODELER_MATRICES_DIR/linupmatrix" );
+  print $OUT "<b><i>$name</i></b>"
+      . ' ' x $namePad . ": "
+      . ' ' x ( $maxLeftLen )
+      . "<font color=\"blue\">$seq</font>\n";
+
+  my $name    = "Reference ( " . $mAlign->getReferenceName() . " )";
+  my $namePad = 30 - length( $name );
+  my $seq     = $mAlign->getReferenceSeq();
+  print $OUT "<b><i>$name</i></b>"
+      . ' ' x $namePad . ": "
+      . ' ' x ( $maxLeftLen )
+      . "<font color=\"blue\">$seq</font>\n";
+
+  # Now print the reference and the instances.
+  for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs() ; $i++ )
+  {
+    $name = $mAlign->getAlignedName( $i );
+    if ( length( $name ) > 30 )
+    {
+      $name = substr( $name, 0, 30 );
+    }
+    $namePad = 30 - length( $name );
+
+    my $lfSeq = $mAlign->getLeftFlankingSequence( $i );
+
+    my $seq .=
+        ' ' x
+        ( $maxLeftLen - ( length( $lfSeq ) - $mAlign->getAlignedStart( $i ) ) );
+    if ( $parameters{'leftFlankingID'} eq $i - 1 )
+    {
+      $seq .= "<font color=\"blue\">" . lc( $lfSeq ) . "</font>";
+    } else
+    {
+      $seq .= lc( $lfSeq );
+    }
+
+    # Highlight low scoring columns
+    if ( $parameters{'printDupDelCols'} == 1 )
+    {
+      $seq .= "<b>";
+      my $seqPos = 0;
+      foreach my $col ( @dupDelCols )
+      {
+        my $start = $col->{'start'} - $mAlign->getAlignedStart( $i );
+        my $end   = $col->{'end'} - $mAlign->getAlignedStart( $i );
+        next if ( $start < 0 && $end < 0 );
+        $start = 0 if ( $start < 0 );
+        $end = length( $mAlign->getAlignedSeq( $i ) ) - $start - 1
+            if ( $end < 0 );
+        $seq .=
+            substr( $mAlign->getAlignedSeq( $i ), $seqPos, $start - $seqPos );
+        $seq .= "<font class=\"" . $col->{'type'} . "\">";
+        $seq .=
+            substr( $mAlign->getAlignedSeq( $i ), $start, $end - $start + 1 );
+        $seq .= "</font>";
+        $seqPos = $end + 1;
+      }
+      if ( $seqPos < length( $mAlign->getAlignedSeq( $i ) ) - 1 )
+      {
+        $seq .= substr( $mAlign->getAlignedSeq( $i ), $seqPos );
+      }
+      $seq .= "</b>";
+    } elsif ( $#{$columns} >= 0 )
+    {
+      $seq .= "<b>";
+      my $seqPos = 0;
+      foreach my $col ( @{$columns} )
+      {
+        my $start = $col->[ 0 ] - $mAlign->getAlignedStart( $i );
+        my $end   = $col->[ 1 ] - $mAlign->getAlignedStart( $i );
+        next if ( $start < 0 && $end < 0 );
+        $start = 0 if ( $start < 0 );
+        $end = length( $mAlign->getAlignedSeq( $i ) ) - $start - 1
+            if ( $end < 0 );
+        $seq .=
+            substr( $mAlign->getAlignedSeq( $i ), $seqPos, $start - $seqPos );
+        $seq .= "<font class=\"lowQual\">";
+        $seq .=
+            substr( $mAlign->getAlignedSeq( $i ), $start, $end - $start + 1 );
+        $seq .= "</font>";
+        $seqPos = $end + 1;
+      }
+      if ( $seqPos < length( $mAlign->getAlignedSeq( $i ) ) - 1 )
+      {
+        $seq .= substr( $mAlign->getAlignedSeq( $i ), $seqPos );
+      }
+      $seq .= "</b>";
+    } else
+    {
+      $seq .= "<b>" . $mAlign->getAlignedSeq( $i ) . "</b>";
+    }
+
+    if ( $parameters{'rightFlankingID'} eq $i - 1 )
+    {
+      $seq .=
+            "<font color=\"blue\">"
+          . lc( $mAlign->getRightFlankingSequence( $i ) )
+          . "</font>";
+    } else
+    {
+      $seq .= lc( $mAlign->getRightFlankingSequence( $i ) );
+    }
+
+    print $OUT "<b>$name</b>" . ' ' x $namePad . ": $seq\n";
+  }
+
+  ## TESTING
+  if ( defined $parameters{'printHistogram'} )
+  {
+    print $OUT "\n\n";
+    my @columnSeqs = ();
+    my $maxRows    = 0;
+    foreach my $col ( @{$columns} )
+    {
+      my ( $cons, $seqsRef ) = $mAlign->getAlignmentBlock(
+                                                           start => $col->[ 0 ],
+                                                           end   => $col->[ 1 ],
+                                                           rawSequences => 1
+      );
+      push @columnSeqs, [ sort { length( $b ) <=> length( $a ) } @{$seqsRef} ];
+      $maxRows = $#{$seqsRef} + 1 if ( $maxRows < ( $#{$seqsRef} + 1 ) );
+    }
+    $label = "blockSeqs";
+    $paddedLabel = $label . " " x ( 30 - length( $label ) );
+    for ( my $i = 0 ; $i < $maxRows ; $i++ )
+    {
+      my $seq = " " x ( $maxLeftLen );
+      my $pos = 0;
+      for ( my $j = 0 ; $j <= $#{$columns} ; $j++ )
+      {
+        my $col      = $columns->[ $j ];
+        my $colWidth = $col->[ 1 ] - $col->[ 0 ] + 1;
+        $seq .= " " x ( $col->[ 0 ] - $pos );
+        my $colSeqArray = $columnSeqs[ $j ];
+        my $colSeq      = "";
+        if ( $#{$colSeqArray} >= 0 )
+        {
+          $colSeq = shift @{$colSeqArray};
+          $colSeq = "." if ( $colSeq eq "" );
+        }
+        $seq .= $colSeq . " " x ( $colWidth - length( $colSeq ) );
+        $pos = $col->[ 1 ] + 1;
+      }
+      print $OUT "$paddedLabel: $seq\n";
+    }
+    print $OUT "\n\n";
+    if ( defined $parameters{'newConsBlocks'} )
+    {
+      my $newConsBlocks = $parameters{'newConsBlocks'};
+      $label = "blockSeqCons";
+      $paddedLabel = $label . " " x ( 30 - length( $label ) );
+      my $seq = " " x ( $maxLeftLen );
+      my $pos = 0;
+      for ( my $j = 0 ; $j <= $#{$newConsBlocks} ; $j++ )
+      {
+        my $colWidth =
+            $newConsBlocks->[ $j ]->{'end'} -
+            $newConsBlocks->[ $j ]->{'start'} + 1;
+        $seq .= " " x ( $newConsBlocks->[ $j ]->{'start'} - $pos );
+        my $colSeq = $newConsBlocks->[ $j ]->{'cons'};
+        $seq .=
+              "<font color=\"blue\">" . $colSeq
+            . "</font>"
+            . "*" x ( $colWidth - length( $colSeq ) );
+        $pos = $newConsBlocks->[ $j ]->{'end'} + 1;
+      }
+      print $OUT "$paddedLabel: $seq\n";
+    }
+    if ( defined $parameters{'finalConsensus'} )
+    {
+      $label = "originalCons";
+      $paddedLabel = $label . " " x ( 30 - length( $label ) );
+      my $seq =
+            " " x ( $maxLeftLen )
+          . "<font color=\"red\">"
+          . $mAlign->consensus(
+                     "$RepModelConfig::REPEATMODELER_MATRICES_DIR/linupmatrix" )
+          . "</font>";
+      print $OUT "$paddedLabel: $seq\n";
+      $label = "finalCons";
+      $paddedLabel = $label . " " x ( 30 - length( $label ) );
+      my $seq =
+            " " x ( $maxLeftLen )
+          . "<font color=\"blue\">"
+          . $parameters{'finalConsensus'}
+          . "</font>";
+      print $OUT "$paddedLabel: $seq\n";
+    }
+  }
+
+  print $OUT "</PRE>\n";
+
+}
+
+## TODO: Question for Arian.  Should we consider the reference
+##       when looking for the longest flanking extension?
+sub getLongestFlankingExtension
+{
+  my %parameters = @_;
+
+  my $mAlign = $parameters{'multAln'};
+
+  my $maxLeftFlankingSeq  = "";
+  my $maxLeftID           = -1;
+  my $maxRightFlankingSeq = "";
+  my $maxRightEnd         = length( $mAlign->getReferenceSeq() );
+  my $maxRightID          = -1;
+  foreach my $seqNum ( 0 .. $mAlign->getNumAlignedSeqs() - 1 )
+  {
+    if ( $mAlign->getAlignedStart( $seqNum ) == 0
+         && length( $mAlign->getLeftFlankingSequence( $seqNum ) ) >
+         length( $maxLeftFlankingSeq ) )
+    {
+      $maxLeftFlankingSeq = $mAlign->getLeftFlankingSequence( $seqNum );
+      $maxLeftID          = $seqNum;
+    }
+    if ( $mAlign->getAlignedEnd( $seqNum ) == $maxRightEnd
+         && length( $mAlign->getRightFlankingSequence( $seqNum ) ) >
+         length( $maxRightFlankingSeq ) )
+    {
+      $maxRightFlankingSeq = $mAlign->getRightFlankingSequence( $seqNum );
+      $maxRightID          = $seqNum;
+    }
+  }
+  ## TODO: The IDs have been adjusted to reflect the number in the Search
+  ##       result collection....should adjust this back after we move
+  ##       this routine into an object.
+  print $CLASS
+      . "::getLongestFlankingExtension: Returned ($maxLeftFlankingSeq," . " "
+      . ( $maxLeftID - 1 )
+      . ", $maxRightFlankingSeq, "
+      . ( $maxRightID - 1 ) . "\n"
+      if ( $DEBUG );
+
+  return (
+           $maxLeftFlankingSeq,  $maxLeftID - 1,
+           $maxRightFlankingSeq, $maxRightID - 1
+  );
+}
+
+##-------------------------------------------------------------------------##
+## Use
+##-------------------------------------------------------------------------##
+sub resolveLowQualityBlocks
+{
+  my %parameters = @_;
+
+  croak $CLASS. "::resolveLowQualityBlocks: multAln parameter is missing!\n"
+      if ( !defined $parameters{'multAln'} );
+  my $mAlign = $parameters{'multAln'};
+
+  my $matrix = SequenceSimilarityMatrix->new();
+  $matrix->parseFromFile(
+      "$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix"
+  );
+  my $lupMatrix = SequenceSimilarityMatrix->new();
+  $lupMatrix->parseFromFile(
+                    "$RepModelConfig::REPEATMODELER_MATRICES_DIR/linupmatrix" );
+  ## TODO: pass in penalties
+  my ( $columns, $scoreArray ) =
+      $mAlign->getLowScoringAlignmentColumns( matrix => $matrix );
+
+  my @columnCons = ();
+  foreach my $col ( @{$columns} )
+  {
+    my $blockWidth = $col->[ 1 ] - $col->[ 0 ] + 1;
+
+    # TODO: Make this a parameter?
+    if ( $blockWidth > 1 && $blockWidth <= 50 )
+    {
+      my ( $refSeq, $instSeqs ) = $mAlign->getAlignmentBlock(
+                                                           start => $col->[ 0 ],
+                                                           end   => $col->[ 1 ],
+                                                           rawSequences => 1
+      );
+
+      print "Considering column with cons: $refSeq\n" if ( $DEBUG );
+
+      # Only consider blocks with 3 or more sequences
+      if ( ( $#{$instSeqs} + 1 ) >= 4 )
+      {
+
+        # Determine the most frequent length sequence
+        my %seqLengthHisto = ();
+        foreach my $seq ( @{$instSeqs} )
+        {
+          print "  S: " . $seq . "\n" if ( $DEBUG );
+          $seqLengthHisto{ length( $seq ) }++;
+        }
+        my @keysSortedByLength =
+            sort { $seqLengthHisto{$b} <=> $seqLengthHisto{$a} }
+            keys( %seqLengthHisto );
+        my $mostFreqLen   = shift @keysSortedByLength;
+        my $mostFreqCount = $seqLengthHisto{$mostFreqLen};
+
+        # Check to see if it's the same length as the reference/consensus
+        if ( $mostFreqLen != length( $refSeq ) )
+        {
+
+          print "  - Block mostfreqLen = $mostFreqLen occurs in "
+              . "$mostFreqCount out of "
+              . ( $#{$instSeqs} + 1 )
+              . " sequences.\n"
+              if ( $DEBUG );
+          if (    $mostFreqCount > ( .5 * ( $#{$instSeqs} + 1 ) )
+               && $mostFreqCount >= 3 )
+          {
+
+            # There is a much better choice here.
+            my @newConsSeqs = ();
+            foreach my $seq ( @{$instSeqs} )
+            {
+              if ( length( $seq ) == $mostFreqLen )
+              {
+                push @newConsSeqs, $seq;
+              }
+            }
+
+          # create a new consensus
+          #my $newCons = MultAln::buildConsensusFromArray(
+          #                                          matrix    => $lupMatrix,
+          #                                          sequences => \@newConsSeqs
+          #);
+          # Lineupmatrix is now the hardcoded default.  No need to load it here.
+            my $newCons =
+                MultAln::buildConsensusFromArray( sequences => \@newConsSeqs );
+            print "  -- Made a call! newCons = $newCons\n" if ( $DEBUG );
+            push @columnCons,
+                {
+                  'start' => $col->[ 0 ],
+                  'end'   => $col->[ 1 ],
+                  'cons'  => $newCons
+                };
+
+          } else
+          {
+            print "  -- Aligning block....\n" if ( $DEBUG );
+            ## Perform an all vs all of the sequences
+            my %seqScore = ();
+            my @results  = ();
+            for ( my $i = 0 ; $i <= $#{$instSeqs} ; $i++ )
+            {
+              for ( my $j = 0 ; $j <= $#{$instSeqs} ; $j++ )
+              {
+                next if ( $j == $i );
+                my $searchResult = NeedlemanWunschGotohAlgorithm::search(
+                  querySeq   => $instSeqs->[ $i ],
+                  subjectSeq => $instSeqs->[ $j ],
+
+                 #matrixFile =>
+                 #    "$RepModelConfig::REPEATMODELER_MATRICES_DIR/linupmatrix",
+                  matrix         => $lupMatrix,
+                  insOpenPenalty => -25,
+                  insExtPenalty  => -5,
+                  delOpenPenalty => -25,
+                  delExtPenalty  => -5
+                );
+
+                $seqScore{$i} += $searchResult->getScore();
+                push @{ $results[ $i ] }, $searchResult;
+              }
+            }
+
+            my @instSeqSortedByScore = sort { $seqScore{$b} <=> $seqScore{$a} }
+                keys( %seqScore );
+            my $maxScoreQueryIdx = shift @instSeqSortedByScore;
+            my $maxScore         = $seqScore{$maxScoreQueryIdx};
+
+            # For now just print out the alignments
+            print "---------------Alignments for col-----------------\n"
+                if ( $DEBUG );
+            my $src = SearchResultCollection->new();
+            print "Score = $maxScore\n" if ( $DEBUG );
+            foreach my $align ( @{ $results[ $maxScoreQueryIdx ] } )
+            {
+              print ""
+                  . $align->toStringFormatted( SearchResult::AlignWithQuerySeq )
+                  . "\n"
+                  if ( $DEBUG );
+              $src->add( $align );
+            }
+
+            my $ma = MultAln->new( searchCollection          => $src,
+                                   searchCollectionReference => MultAln::Query
+            );
+
+           #my $newCons =
+           #    $ma->consensus(
+           #        "$RepModelConfig::REPEATMODELER_MATRICES_DIR/linupmatrix" );
+            my $newCons = $ma->consensus();
+
+            print "The new block consensus = $newCons\n" if ( $DEBUG );
+            print "--------------------------------------------------\n"
+                if ( $DEBUG );
+
+            $newCons =~ s/-//g;
+
+            push @columnCons,
+                {
+                  'start' => $col->[ 0 ],
+                  'end'   => $col->[ 1 ],
+                  'cons'  => $newCons
+                };
+            undef $ma;
+            undef $src;
+
+          }
+        } else
+        {
+
+          #print " -- Same length as consensus!\n";
+        }
+      }
+    } elsif ( $blockWidth > 100 && $DEBUG )
+    {
+      warn $CLASS
+          . "::resolveLowQualityBlocks(): Skipping low quality block "
+          . "because it is too big to align with perl. blockWidth=$blockWidth\n";
+    }
+  }
+
+  return ( \@columnCons );
+
+}
+
+##-------------------------------------------------------------------------##
+## Use: findHighestScoringAlignmentSet(
+##                                      useSubjAsRef => scalar,
+##                                      searchCollection => ref,
+##                                    );
+##
+##  Returns
+##
+##    Given a set of All-vs-All alignments find the set of hits against
+##    one sequence which scores the highest.  In this case score is the
+##    sum of all the individual alignment scores.  Prior to suming the
+##    scores alignments are trimmed if they overlap an existing alignment
+##    by more than 20%, are on the same strand and have a lower score.
+##
+##    Modifies searchCollection.
+##
+##-------------------------------------------------------------------------##
+sub findHighestScoringAlignmentSet
+{
+  my %parameters = @_;
+
+  # Which sequence (Query/Subject) represents the reference
+  # sequence and which one represents the instance sequences.
+  my $refStart      = "getQueryStart";
+  my $refEnd        = "getQueryEnd";
+  my $refName       = "getQueryName";
+  my $refRemaining  = "getQueryRemaining";
+  my $instStart     = "getSubjStart";
+  my $instEnd       = "getSubjEnd";
+  my $instName      = "getSubjName";
+  my $instRemaining = "getSubjRemaining";
+  if ( defined $parameters{'useSubjectAsRef'} )
+  {
+    $refStart      = "getSubjStart";
+    $refEnd        = "getSubjEnd";
+    $refName       = "getSubjName";
+    $refRemaining  = "getSubjRemaining";
+    $instStart     = "getQueryStart";
+    $instEnd       = "getQueryEnd";
+    $instName      = "getQueryName";
+    $instRemaining = "getQueryRemaining";
+  }
+  print "findHighestScoringAlignmentSet:\n" if ( $DEBUG );
+
+  my $searchCollection = $parameters{'searchCollection'};
+  my $highestScoringElement;
+
+  # Deal with multiple instances.  Only keep ones which can
+  # be seen as part of a global alignment
+  my %elements   = ();
+  my %deleteHash = ();
+  for ( my $l = $searchCollection->size() - 1 ; $l >= 0 ; $l-- )
+  {
+    my $resultRef = $searchCollection->get( $l );
+
+    my $refID  = $resultRef->$refName();
+    my $instID = $resultRef->$instName();
+
+    if ( $refID eq $instID )
+    {
+      $deleteHash{$l} = 1;
+      next;
+    }
+    if ( $resultRef->getOrientation() eq "C" )
+    {
+      push @{ $elements{$refID}->{'reverse'}->{$instID} },
+          {
+            'start' => $resultRef->$refStart(),
+            'end'   => $resultRef->$refEnd(),
+            'score' => $resultRef->getScore(),
+            'index' => $l
+          };
+    } else
+    {
+      push @{ $elements{$refID}->{'forward'}->{$instID} },
+          {
+            'start' => $resultRef->$refStart(),
+            'end'   => $resultRef->$refEnd(),
+            'score' => $resultRef->getScore(),
+            'index' => $l
+          };
+    }
+  }
+
+  my $maskLevel = 80;
+  foreach my $seqID ( keys( %elements ) )
+  {
+
+    print "Looking for overlaps in set $seqID\n" if ( $DEBUG );
+
+    # Only consider elements with more than one match
+    foreach my $strand ( 'forward', 'reverse' )
+    {
+      my $strandRec = $elements{$seqID}->{$strand};
+      foreach my $instanceName ( keys( %{$strandRec} ) )
+      {
+        if ( $#{ $strandRec->{$instanceName} } > 0 )
+        {
+
+          # Sort by score
+          my @sortedResults =
+              sort { $b->{'score'} <=> $a->{'score'} }
+              @{ $strandRec->{$instanceName} };
+
+          #print "     - $instanceName appears $#sortedResults times.\n";
+          for ( my $i = 0 ; $i <= $#sortedResults ; $i++ )
+          {
+            for ( my $j = $i + 1 ; $j <= $#sortedResults ; $j++ )
+            {
+              my $overlap = 0;
+              my $perc    = 0;
+              my $result1 = $sortedResults[ $i ];
+              my $result2 = $sortedResults[ $j ];
+
+              # Get members
+              my $begin1 = $result1->{'start'};
+              my $begin2 = $result2->{'start'};
+              my $end1   = $result1->{'end'};
+              my $end2   = $result2->{'end'};
+
+              # Check if they overlap
+              next if ( $begin2 > $end1 || $begin1 > $end2 );
+
+              print "OVERLAP: $begin1-$end1 and $begin2-$end2\n" if ( $DEBUG );
+
+              # Calc overlap
+              $overlap = $begin1 - $begin2 if ( $begin2 < $begin1 );
+              $overlap += $end2 - $end1 if ( $end2 > $end1 );
+              $perc = ( $overlap / ( $end2 - $begin2 + 1 ) ) * 100
+                  if ( $overlap );
+              if ( $perc < ( 100 - $maskLevel ) )
+              {
+
+                print "Scheduling deletion for " . $result2->{'index'} . "\n"
+                    if ( $DEBUG );
+                $deleteHash{ $result2->{'index'} } = 1;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  undef %elements;
+
+  # Remove all hits which were filtered above
+  if ( keys( %deleteHash ) )
+  {
+    foreach my $index ( sort { $b <=> $a } keys( %deleteHash ) )
+    {
+      $searchCollection->remove( $index );
+    }
+  }
+
+  my %results = ();
+  for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ )
+  {
+    my $resultRef = $searchCollection->get( $l );
+
+    next if ( $resultRef->$instName() eq $resultRef->$refName() );
+
+    print "Considering a hit: "
+        . $resultRef->$refName() . " to "
+        . $resultRef->$instName() . "\n"
+        if ( $DEBUG );
+
+    my $refID = $resultRef->$refName();
+    $elements{$refID} += $resultRef->getScore();
+
+    # DISABLE
+    if ( $DEBUG )
+    {
+      push @{ $results{ $resultRef->$refName() } }, $resultRef;
+    }
+  }
+
+  if ( keys %elements )
+  {
+    my @sortedElementKeys =
+        sort { $elements{$b} <=> $elements{$a} } keys( %elements );
+
+    if ( $DEBUG )
+    {
+      foreach my $key ( @sortedElementKeys )
+      {
+        print "Results for $key ( score = " . $elements{$key} . " )\n";
+        foreach my $result ( @{ $results{$key} } )
+        {
+          print "" . $result->toStringFormatted( SearchResult::NoAlign ) . "";
+        }
+      }
+    }
+
+    $highestScoringElement = shift @sortedElementKeys;
+    print "Highest scoring element vs family is $highestScoringElement with "
+        . "a score of "
+        . $elements{$highestScoringElement} . "\n"
+        if ( $DEBUG );
+
+    # Keep only the alignments against the highest scoring
+    # element.
+    for ( my $l = $searchCollection->size() - 1 ; $l >= 0 ; $l-- )
+    {
+      my $resultRef = $searchCollection->get( $l );
+      my $refID     = $resultRef->$refName();
+      my $instID    = $resultRef->$instName();
+      if (
+           $refID ne $highestScoringElement
+           || (    $refID eq $highestScoringElement
+                && $instID eq $highestScoringElement )
+          )
+      {
+        $searchCollection->remove( $l );
+      }
+    }
+  } else
+  {
+    $searchCollection->clear();
+  }
+
+  return ( $highestScoringElement );
+}
+
+##-------------------------------------------------------------------------##
+## Use:  my ( $tempDir ) = &createTempDir( \@tmpPath );
+##
+##  Returns
+##
+##-------------------------------------------------------------------------##
+sub createTempDir
+{
+  my $tmpPathRef = shift;
+
+  ## Get date
+  my $date = localtime( time() );
+
+  # Windows does not support the use of ":" in a filename.
+  $date =~ s/[ ,\t,\n:]//g;
+
+  my $runnumber = "$$" . ".$date";
+  my $tempDir   = "";
+  foreach my $directory ( @{$tmpPathRef} )
+  {
+
+    if ( $directory =~ /\/$/ )
+    {
+      $tempDir = $directory . "RM_$runnumber";
+    } else
+    {
+      $tempDir = $directory . "/RM_$runnumber";
+    }
+
+    if ( -d "$tempDir" || mkdir $tempDir, 0777 )
+    {
+      if ( open( IN, ">$tempDir/deleteMe" ) )
+      {
+        close IN;
+        unlink( "$tempDir/deleteMe" );
+        last;
+      }
+    }
+    $tempDir = "";
+  }
+  return ( $tempDir );
+}
+
+##-------------------------------------------------------------------------##
+## Use: my $string = elapsedTime( $index );
+##
+##   Returns
+##
+##      Great little utility for measuring the elapsed
+##      time between one or more lines of perl code.
+##
+##      --- Depends on a global variable $TimeBefore
+##-------------------------------------------------------------------------##
+sub elapsedTime
+{
+  my ( $TimeHistIdx ) = @_;
+  if ( defined $TimeBefore[ $TimeHistIdx ] )
+  {
+    my $DiffTime = time - $TimeBefore[ $TimeHistIdx ];
+    $TimeBefore[ $TimeHistIdx ] = time;
+    my $Min = int( $DiffTime / 60 );
+    $DiffTime -= $Min * 60;
+    my $Hours = int( $Min / 60 );
+    $Min -= $Hours * 60;
+    my $Sec = $DiffTime;
+    return "$Hours:$Min:$Sec Elapsed Time";
+  } else
+  {
+    $TimeBefore[ $TimeHistIdx ] = time;
+    return 0;
+  }
+}
+
+1;
+

@@ -1,0 +1,1623 @@
+#!/u1/local/bin/perl
+##---------------------------------------------------------------------------##
+##  File:
+##      @(#) RepeatClassifier
+##  Author:
+##      Arian Smit <asmit@systemsbiology.org>
+##      Robert Hubley <rhubley@systemsbiology.org>
+##  Description:
+##      Given a set of repeat models, and some hand crafted databases,
+##      this script attempts to classify the models.  The classification
+##      is compatable with the RepeatMasker program.
+##
+#******************************************************************************
+#* Copyright (C) Institute for Systems Biology 2008 Developed by
+#* Arian Smit and Robert Hubley.
+#*
+#* This work is licensed under the Open Source License v2.1.  To view a copy
+#* of this license, visit http://www.opensource.org/licenses/osl-2.1.php or
+#* see the license.txt file contained in this distribution.
+#*
+###############################################################################
+#  ChangeLog:
+#
+#    $Log: RepeatClassifier,v $
+#    Revision 1.29  2017/04/04 23:57:12  rhubley
+#     - Nearing a release
+#
+#    Revision 1.28  2017/03/31 17:25:39  rhubley
+#      - Lots-o-improvements.  Starting preparation for release.
+#
+#    Revision 1.27  2014/05/08 19:38:00  rhubley
+#      - Added -pa option and parallelized the blast all-vs-other searches
+#
+#    Revision 1.26  2013/10/28 23:01:07  rhubley
+#      - Updates
+#
+#    Revision 1.25  2012/08/22 18:46:24  rhubley
+#     -- a refresh checkin and adding a new utility
+#
+#    Revision 1.24  2010/06/11 23:45:30  rhubley
+#     -- Getting ready for a release
+#
+#    Revision 1.23  2010/06/10 18:15:44  rhubley
+#     - Fixed a bug that Arian found with RepeatScout models refined by the
+#       RMBLAST engine.  The problem had to do with a rev/compl operation
+#       in BuildRSConsensi
+#
+#     - Readying RepeatModeler for release with RMBLAST
+#
+#    Revision 1.22  2010/06/04 22:55:18  rhubley
+#      - Some bug fixes.
+#      - Changes to support rmblast package
+#
+#    Revision 1.21  2009/03/26 17:32:01  rhubley
+#      - Fixed stupid Debian/Ubuntu choice of using DASH as /bin/sh.
+#
+#    Revision 1.20  2008/05/01 22:09:59  rhubley
+#      - Merged the libraries and placed in RepeatMasker distribution
+#
+#    Revision 1.19  2008/04/28 17:02:26  rhubley
+#      - Fixed temp directory problems repoted by Hans-Rudolf Hotz at Sanger
+#
+#    Revision 1.18  2008/04/16 18:29:33  rhubley
+#      - Refinements of the RS instance collection mechanism
+#      - Refinements of the masking mechanism. May switch to using
+#        RM for this step.
+#      - Found a few more hard coded directory dependencies
+#
+#    Revision 1.17  2008/03/27 19:55:08  rhubley
+#      - Refining the output messages
+#      - RepeatPeps distributed with this release
+#      - Configure now builds wublast libraries during installation
+#
+#    Revision 1.16  2008/03/25 22:48:29  rhubley
+#     - Removed all debuging output and cleaned up RepeatModeler's
+#       parameter settings.
+#
+#    Revision 1.15  2008/03/25 21:29:47  rhubley
+#      - Recent updates include
+#         - Fixes to RepeatClassifier
+#         - Addition of RepeatScout
+#
+#    Revision 1.14  2008/01/24 22:11:34  rhubley
+#      - Starting fresh 1/1/24
+#
+#    Revision 1.13  2006/07/07 22:11:05  rhubley
+#     - general update to MultAln.pm
+#
+#    Revision 1.12  2005/04/12 17:55:32  rhubley
+#     - Misc changes.  Moved allpeps library out to RepeatMasker
+#
+#    Revision 1.11  2005/03/17 22:04:02  rhubley
+#      Silenced the XDFORMAT program
+#
+#    Revision 1.10  2005/03/16 22:55:37  rhubley
+#     - Clean up
+#
+#    Revision 1.9  2005/03/16 19:53:14  rhubley
+#     - Last minute changes
+#
+#    Revision 1.8  2005/03/16 01:38:35  rhubley
+#     - Fixed a few bugs in RepeatClassifier
+#
+#    Revision 1.7  2005/03/12 00:44:06  rhubley
+#      - Misc
+#
+#    Revision 1.6  2005/03/11 23:42:37  rhubley
+#      - Tidying et al
+#
+#    Revision 1.5  2005/03/11 20:49:09  rhubley
+#     - New master configuration file
+#
+#    Revision 1.4  2005/03/11 00:29:53  rhubley
+#      - Ran perltidy and added some more info output
+#
+#    Revision 1.3  2005/03/10 23:26:58  rhubley
+#      - Working my way to the first release
+#
+#    Revision 1.2  2005/03/08 19:35:30  rhubley
+#      - Incorporated name sanitizing into buildXDFDatabase.pl
+#      - RepeatModeler can now change it's family minimum size
+#      - Added buildXDFDatabase to Makefile
+#
+#    Revision 1.1  2005/03/07 22:32:53  rhubley
+#      - Initial checkn's of some modules
+#      - See lab notebook
+#
+###############################################################################
+#
+# To Do:
+#
+#
+
+=head1 NAME
+
+RepeatClassifier - Classify Repeat Models
+
+=head1 SYNOPSIS
+
+  RepeatClassifier [-options] -consensi <repeat model file>
+                   [-stockholm <stockholm file>]
+                   [-engine <abblast|ncbi>]
+
+=head1 DESCRIPTION
+
+The options are:
+
+=over 4
+
+=item -h(elp)
+
+Detailed help
+
+=back
+
+=head1 SEE ALSO
+
+=over 4
+
+RepeatModeler
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright 2005-2010 Institute for Systems Biology
+
+=head1 AUTHOR
+
+Robert Hubley <rhubley@systemsbiology.org>
+
+=cut
+
+#
+# Module Dependence
+#
+use strict;
+use FindBin;
+use lib $FindBin::RealBin;
+use Data::Dumper;
+use Cwd;
+use Carp;
+use File::Basename;
+use Getopt::Long;
+
+# RepeatModeler Libraries
+use RepModelConfig;
+use lib $RepModelConfig::REPEATMASKER_DIR;
+use RepeatUtil;
+
+# RepeatMasker Libraries
+use WUBlastSearchEngine;
+use NCBIBlastSearchEngine;
+use SearchResult;
+use SearchResultCollection;
+use SeqDBI;
+use FastaDB;
+use SeedAlignmentCollection;
+use SeedAlignment;
+
+
+#
+# Class Globals & Constants
+#
+my $CLASS = "RepeatClassifier";
+my $DEBUG = 0;
+$DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
+
+#
+# Version
+#
+#  This is a neat trick.  CVS allows you to tag
+#  files in a repository ( i.e. cvs tag "2003/12/03" ).
+#  If you check out that release into a new
+#  directory with "cvs co -r "2003/12/03" it will
+#  place this string into the $Name:  $ space below
+#  automatically.  This will help us keep track
+#  of which release we are using.  If we simply
+#  check out the code as "cvs co RepeatModeler" the
+#  $Name:  $ macro will be blank and thus we use
+#  this as the development version.
+#
+my $CVSTag = '$Name:  $';
+my $version;
+if ( $CVSTag =~ /\$\s*Name:\s*open-(\S+)\s*\$/ ) {
+  $version = $1;
+  $version =~ s/-/./g;
+  $version = "open-$version";
+}
+else {
+  $version =
+      'development-$Id: RepeatClassifier,v 1.29 2017/04/04 23:57:12 rhubley Exp $';
+}
+
+#
+# Option processing
+#  e.g.
+#   -t: Single letter binary option
+#   -t=s: String parameters
+#   -t=i: Number paramters
+#
+my @opts = qw( help consensi=s engine=s stockholm=s );
+
+#
+# Get the supplied command line options, and set flags
+#
+my %options = ();
+unless ( &GetOptions( \%options, @opts ) ) {
+  exec "pod2text $0";
+  exit( 1 );
+}
+
+# Print the internal POD documentation if something is missing
+if ( !defined $options{'consensi'} || ! -s $options{'consensi'} || $options{'help'} ) {
+  print "No database indicated or it is an empty file.\n\n";
+
+  # This is a nifty trick so we don't have to have
+  # a duplicate "USAGE()" subroutine.  Instead we
+  # just recycle our POD docs.  See PERL POD for more
+  # details.
+  exec "pod2text $0";
+  die;
+}
+
+die $CLASS . ": Cannot run classification on an empty consensus file!\n"
+    if ( -z $options{'consensi'} );
+
+#
+# Setup the search engine
+#
+my $searchEngineN;
+my $engine = $RepModelConfig::DEFAULT_SEARCH_ENGINE;
+$engine = $options{'engine'} if ( $options{'engine'} );
+if ( $engine )
+{
+  if ( $engine =~ /wublast|abblast/i )
+  {
+    $engine = "abblast";
+    $searchEngineN = WUBlastSearchEngine->new(
+                        pathToEngine => $RepModelConfig::WUBLASTN_PRGM );
+    if ( not defined $searchEngineN )
+    {
+       die   "Cannot execute $RepModelConfig::WUBLASTN_PRGM please make "
+           . "sure you have setup RepeatModeler to use AB/WUBlast "
+           . "by running the configure script.\n";
+    }
+  }elsif ( $engine =~ /ncbi/i )
+  {
+    $engine = "ncbi";
+    $searchEngineN = NCBIBlastSearchEngine->new(
+                        pathToEngine => $RepModelConfig::RMBLASTN_PRGM );
+    if ( not defined $searchEngineN )
+    {
+       die   "Cannot execute $RepModelConfig::RMBLASTN_PRGM please make "
+           . "sure you have setup RepeatModeler to use NCBI (RMBlast) by "
+           . "running the configure script.\n";
+    }
+  }else {
+    print "I don't recognize the search engine type:  $engine\n";
+    exec "pod2text $0";
+    die;
+  }
+}
+
+#                       
+# Print greeting
+#   
+print "RepeatClassifier Version $version\n";
+print "===============================\n";
+print "Search Engine = $engine\n";
+
+
+if ( $DEBUG )
+{
+  print "\nRepeatClassifier run as: $0 " . join( @ARGV ) . "\n";
+  print "Current Working Directory: " . getcwd() . "\n";
+  print "Perl Version: $]\n\n";
+}
+my $cmdSuffix = "> /dev/null 2>&1";
+$cmdSuffix = "" if ( $DEBUG );
+
+#-------------------------------------------------------------------------##
+#
+# Step 1: Simple repeat / low complexity identification
+#
+# Before any comparison, identify simple-repetitive DNA that sneaked
+# through. 
+#
+# We currently use TRF and RepeatMasker to scan for low_complexity and
+# and tandem repeats.
+#
+print "  - Looking for Simple and Low Complexity sequences..\n";
+system( "cp $options{'consensi'} tmpConsensi.fa" );
+my $cmd = "$RepModelConfig::REPEATMODELER_DIR/TRFMask tmpConsensi.fa "
+         ."$cmdSuffix";
+print "Running: $cmd\n" if ( $DEBUG );
+system( $cmd );
+if ( ! -s "tmpConsensi.fa.masked" )
+{
+  die "Something went wrong with the TRFMask program.  The tmpConsensi.fa.masked file was missing or empty!\n";
+}
+system("mv tmpConsensi.fa.masked tmpConsensi.fa");
+
+$cmd = "$RepModelConfig::REPEATMASKER_DIR/RepeatMasker -qq -noint "
+       ."-no_is tmpConsensi.fa $cmdSuffix";
+print "Running: $cmd\n" if ( $DEBUG );
+system( $cmd );
+system( "mv tmpConsensi.fa $options{'consensi'}.masked" );
+if ( ! -s "$options{'consensi'}.masked" )
+{
+  die "Something went wrong with the RepeatMasker program.  The "
+     ."$options{'consensi'}.masked file is missing or empty\n";
+}
+
+# Those sequences longer than 50 bp that have no consecutive strings
+# of unmasked bases >= 50 bp left should be marked as potential
+# tandem/simple/segmental duplication type repeats.  If they don't 
+# hit anything significant in the blastx comparison then remove
+# them and only put them back if we can mark them as tandem with
+# a specific base consensus pattern.
+my $maskedDB = FastaDB->new( fileName => "$options{'consensi'}.masked",
+                             openMode => SeqDBI::ReadOnly );
+
+my %simpleRepeats = ();
+
+foreach my $seqID ( $maskedDB->getIDs() ) 
+{
+  my $seq = $maskedDB->getSequence( $seqID );
+  $seq =~ s/[Nn]+/\#/g;
+  my $numAmbig = ($seq =~ tr/\#/\#/);
+  if ( ( $numAmbig / length( $seq ) ) > 0.8 )
+  {
+    warn "Consensus $seqID is >80% ambiguous sequence after masking!\n"
+              if ( $DEBUG );
+    $simpleRepeats{ $seqID }++;
+  }
+}
+
+
+###### TODO
+# Selfcomparison of this file should reveal if we're dealing with a
+# satellite that needs to be included: if the sequence matches (much)
+# higher to itself, given a shift, than to the consensus simple repeat
+# string, there is bound to be a satellite here.
+#
+# We can also just run TRF on the entire consensus sequence database
+# to see if a satellite consensus has been build. It is possible that
+# individual copies may have been too diverged to detect as such.
+# I don't know if new satellites will come out of this, but it's worth a try.
+######
+
+
+#-------------------------------------------------------------------------##
+#
+# Step 2: comparison against database of transposon proteins
+#
+# wublastx the simple-masked consensi vs the transposable element
+# protein database with the fasta line format
+#      >TWIFBIG#DNA/HAT-Ac
+# This name may be *immediately* followed by #ReverseORF to indicate
+# that the product is encoded on the opposite strand of the
+# transposable element. It needs to be right after it, otherwise it
+# may fall on the next line in the blastx output's hit description.
+#
+# RepModelConfig::WUBLASTX_PRGM parameters default with -W 2
+# Originally I had: -filter xnu -wordmask seg
+# but the masking of simple repeats and low_complexity at the DNA
+# level seems better (more real matches reported)
+
+print "  - Looking for similarity to known repeat proteins..\n";
+
+#determines which matches above which P value will be ignored
+my $cutoffP = 0.001;
+
+# keeps only those matches not overlapped by > $masklevel % by matches
+# with a better p value
+# $masklevel 101 does not exist (same as masklevel 100)
+my $masklevel = 80;
+
+# initialize the search
+my $blastCmd;
+if ( $engine eq "abblast" )
+{
+  if ( ! -s "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatPeps.lib.xps" ) 
+  {
+    die "Missing $RepModelConfig::REPEATMASKER_DIR/Libraries/"
+       ."RepeatPeps.lib.xps!\n"
+       ."Please rerun the configure program in the RepeatModeler directory\n"
+       ."before running this script.\n";
+  }
+  # Setup the matrix directory so that wublast can find Blossom62
+  $ENV{BLASTMAT}   = "$RepModelConfig::WUBLAST_DIR/matrix";
+  $ENV{WUBLASTMAT} = $ENV{BLASTMAT};
+  $blastCmd = "$RepModelConfig::WUBLASTX_PRGM " .
+               "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatPeps.lib " .
+               "$options{'consensi'}.masked -W 2 > tmpBlastXResults.out 2>&1";
+  print "      + Running abblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
+}elsif ( $engine eq "ncbi"  )
+{
+  if ( ! -s "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatPeps.lib.psq" )
+  {
+    die "Missing $RepModelConfig::REPEATMASKER_DIR/Libraries/"
+       ."RepeatPeps.lib.psq!\n"
+       ."Please rerun the configure program in the RepeatModeler directory\n"
+       ."before running this script.\n";
+  }
+  $blastCmd = "$RepModelConfig::NCBIBLASTX_PRGM " .
+       "-db $RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatPeps.lib " .
+       "-query $options{'consensi'}.masked -word_size 2 > tmpBlastXResults.out 2>&1";
+  print "      + Running rmblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
+}
+
+print "        o Running: $blastCmd\n" if ( $DEBUG );
+system( $blastCmd );
+
+if ( ! -s "tmpBlastXResults.out" )
+{
+  die "Something went wrong while running blastX.  The tmpBlastXResults.out"
+     ." file was missing or is empty\n";
+}
+
+
+# Reads in the blastx output
+# creates %pval; rest is written to files
+my $blastXResults = &wublastxanalysis(
+                                    fileName     => "tmpBlastXResults.out",
+                                    pValueCutoff => $cutoffP,
+                                    #seqDB        => $consDB,
+                                    masklevel    => $masklevel
+);
+
+# This leaves us with a modified fasta file (some classified, even
+# fewer orientation adjusted based on blastx comparison), which is
+# next compared to RepeatMasker.lib.
+
+
+
+#-------------------------------------------------------------------------##
+#
+# Step 3: comparison against RepeatMasker.lib
+#
+# Use the comparison (?) matrix (the symmetrical one, with the same
+# gaps (-25 -5, I believe) as you're using in element comparison
+# Cutoff needs to be high enough to avoid false labels, but low enough
+# to see distant matches to SINEs, for example. So, 250 sounds good.
+#
+# One strategy (unexplored as yet) could be to do this in two
+# steps. First have a minimum score of, say, 350, that guarantees
+# significance. This will avoid many matches that cause conflicts in
+# annnotation and so much headache in the following code Then take all
+# the unclassified repeats (#Unknown) and check with minimum score 225
+# and a smaller minmatch.
+
+print "  - Looking for similarity to known repeat consensi..\n";
+
+$searchEngineN->setTempDir( dirname( $options{'consensi'} ) );
+$searchEngineN->setMinScore( 250 );
+$searchEngineN->setGenerateAlignments( 0 );
+$searchEngineN->setGapInit( -25 );
+$searchEngineN->setInsGapExt( -5 );
+$searchEngineN->setDelGapExt( -5 );
+$searchEngineN->setMinMatch( 7 );
+$searchEngineN->setUseDustSeg( 0 );
+$searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
+$searchEngineN->setQuery( $options{'consensi'} );
+
+if ( $engine eq "abblast" )
+{
+  $searchEngineN->setMatrix(
+   "$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix" );
+  if ( ! -s "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatMasker.lib.xns" )
+  {
+    die "Missing $RepModelConfig::REPEATMASKER_DIR/Libraries/"
+     ."RepeatMasker.lib.xns!\nPlease rerun the configure program "
+     ."in the RepeatModeler directory\nbefore running this script.\n";
+  }
+  $searchEngineN->setAdditionalParameters( " -gapW=32" );
+}else {
+  $searchEngineN->setMatrix(
+        "$RepModelConfig::REPEATMODELER_MATRICES_DIR/ncbi/nt/comparison.matrix"
+      );
+
+  if ( ! -s "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatMasker.lib.nsq" )
+  {
+    die "Missing $RepModelConfig::REPEATMASKER_DIR/Libraries/"
+     ."RepeatMasker.lib.nsq!\nPlease rerun the configure program "
+     ."in the RepeatModeler directory\nbefore running this script.\n";
+  }
+}
+
+$searchEngineN->setSubject( 
+    "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatMasker.lib" );
+
+print "    + Running blastn vs RepeatMasker.lib...\n" if ( $DEBUG );
+my ( $status, $searchResultCol ) = $searchEngineN->search();
+
+if ( $status ) {
+  die $CLASS . ": ERROR from search engine (", $? >> 8, ") \n";
+}
+
+my ( $classref, $oriref ) = &vsRMlibAnalysis( searchResults => $searchResultCol,
+                                              blastXResults => $blastXResults );
+
+print "DUMPER: classref = \n" . Dumper( $classref ) . "\n" if ( $DEBUG );
+print "DUMPER blastXResults = \n" . Dumper( $blastXResults ) . "\n" if ( $DEBUG );
+
+# reads in, at the moment, a modified cross_match file similar to the
+# repeatmasker .out file having "+" for forward strand matches so that
+# all lines have the same number of columns, but it does not have the
+# query and subject names split on #
+# Obviously to be replaced by your reader.
+
+# print out the new modifications
+# I suspect I could have used one subroutine to do this for both the
+# comparison against the proteins and against the repeatmasker.lib ,
+# but I incorporated the printing in step2 in a different way.
+
+&changeconsensusfastafile( $classref, $oriref, \%simpleRepeats,
+                           $options{'consensi'}, 
+                           "$options{'consensi'}.classified" );
+
+my $stkFilePrefix = $options{'stockholm'};
+$stkFilePrefix =~ s/^(\S+)\.stk$/$1/;
+&changeStockholmFile($classref, $oriref, \%simpleRepeats,
+                     $options{'stockholm'},
+                     "$stkFilePrefix-classified.stk" );
+
+# Output is a further classified and oriented fasta file of consensus sequences
+
+
+# TODO:
+# step 4: blastx comparison of complexity masked consensi vs nr
+# put aside all consensus sequences that
+#  1) don't match anything in transposon protein database and
+#  2) don't match anything in repeatmasker library and
+#  3) have a very clear match to a protein in nr database (p < 10-6)
+#  4) and the description line of the protein matched does not contain 
+#     the strings:
+#      transpos, retrovir, retroelement, reverse transcri, ribonuclease H,
+#      envelope, endonuclease, helicase, replicase, insertion sequence,
+#      insertion element, recombinase, rolling circle
+# Also put aside when
+#   match to nr protein p < 10-10        (much room to tweak)
+#   2) and 4) are true
+#   the best p value against the transposon protein database is > 10-6,
+#  or
+#   match to nr protein p < 10-8
+#   1) and 4) are true
+#   highest score vs repeatmasker library < 400
+
+## No code yet!
+
+# remember to add:
+# wu-blast of final consensus seqs against reverse, non-complimented
+# random genome batch to catch false positives
+unlink "tmpBlastXResults.out" if ( !$DEBUG && -e "tmpBlastXResults.out" );
+unlink "tmpBlastXResults.out.bxsummary"
+    if ( !$DEBUG && -e "tmpBlastXResults.out.bxsummary" );
+unlink "tmpConsensi.fa.cat"        if ( !$DEBUG && -e "tmpConsensi.fa.cat" );
+unlink "tmpConsensi.fa.log"        if ( !$DEBUG && -e "tmpConsensi.fa.log" );
+unlink "tmpConsensi.fa.masked"     if ( !$DEBUG && -e "tmpConsensi.fa.masked" );
+unlink "tmpConsensi.fa.out"        if ( !$DEBUG && -e "tmpConsensi.fa.out" );
+unlink "tmpConsensi.fa.tbl"        if ( !$DEBUG && -e "tmpConsensi.fa.tbl" );
+#unlink "tempoutfile"        if ( !$DEBUG && -e "tempoutfile" );
+#unlink "consensi.fa.masked" if ( !$DEBUG && -e "consensi.fa.masked" );
+
+# Cya!
+exit;
+
+
+
+
+
+#-------------------- S U B R O U T I N E S ------------------------------#
+
+##---------------------------------------------------------------------##
+## Use: my $pValuesRef = &wublastxanalysis( fileName => "",
+##                                          pValueCutoff => #,
+##                                          seqDB => SeqDBI,
+##                                          masklevel => # );
+##
+##      fileName       : Reads in a wublastx results file, interprets
+##                       matches and creates a semi-classified "tempoutfile".
+##
+##  Returns
+##
+##
+##---------------------------------------------------------------------##
+sub wublastxanalysis {
+  my %parameters = @_;
+
+  # Result file
+  die $CLASS . "::wublastxanalysis(): Bad or missing fileName parameter!"
+      if ( !defined $parameters{'fileName'} || !-s $parameters{'fileName'} );
+  my $summaryfile = $parameters{'fileName'} . ".bxsummary";
+  open BXTP, "<$parameters{'fileName'}"
+      || die $CLASS
+      . "::wublastxanalysis(): Could not open file $parameters{'fileName'}!\n";
+
+  die $CLASS . "::wublastxanalysis(): Missing pValueCutoff parameter!"
+      if ( !defined $parameters{'pValueCutoff'} );
+
+  die $CLASS . "::wublastxanalysis(): Missing output parameter!"
+      if ( !defined $parameters{'masklevel'} );
+  my $masklevel = $parameters{'masklevel'};
+
+
+  my $cutoffP = $parameters{'pValueCutoff'};
+
+  # Result datastructure which stores all the subject hits
+  # for a given query
+  #
+  #   $queryHits{ subjectID } -> { 'beg' => #,
+  #                                'end' => #,
+  #                                'or'  => "Minus",
+  #                                'p'   => #,
+  #                                'score' => #,
+  #                                'identical' => #,
+  #                                'aligned' => #,
+  #                                'positives' => # };
+  #   $queryHits{ 'query' }
+  #   $queryHits{ 'oppositestrand' }
+  #
+  my %bxResults = ();
+  my %queryHits = ();
+  my %pValues   = ();
+  my $on;
+  my $orientation;
+  my $sbjct;
+
+  open SUMR, ">$summaryfile";
+
+  #
+  # Read in blastx results and for each queryHitSet call
+  # "chooseBestBlastX".
+  #
+  while ( <BXTP> ) {
+    chomp;
+    if ( /^Query=\s+(\S+)/ ) {
+      if ( defined $queryHits{'query'} )
+      { 
+        my ( $class, $orient, $pVal ) =
+                 &chooseBestBlastX(
+                          queryHits => \%queryHits,
+                          pValues   => \%pValues,
+                          masklevel => $masklevel
+                              );
+        $bxResults{ $queryHits{'query'} } = { 'class' => $class,
+                                              'orient' => $orient,
+                                              'pVal' => $pVal };
+      }
+      %queryHits          = ();
+      $queryHits{'query'} = $1;
+      $on                 = 1;
+      $sbjct              = "";
+    }
+    elsif ( /^>\s*(\S+)/ ) {
+      # ab/ncbi blastx
+      $sbjct = $1;
+      if ( /\#ReverseORF/ ) {
+        $queryHits{'oppositestrand'} = 1;
+      }
+      else {
+        $queryHits{'oppositestrand'} = 0;
+      }
+    }
+    elsif ( /Frame\s*=\s*([-+])(\d+)/ )
+    {
+      # ncbi/ab blastx
+      $orientation = $1;
+      $orientation = "Plus" if ( $orientation eq "+" );
+      $orientation = "Minus" if ( $orientation eq "-" );
+    }
+    if ( /^ Score\s*=\s*([\d\.]+) .+ Expect(?:\(\d+\))? = (\S+)/ ) {
+      # ncbi/ab blastx
+      # NOTE: The PValue and EValue are essentially identical
+      #       values below 0.001
+      if ( $2 <= $cutoffP ) {
+        if ( defined $queryHits{$sbjct} ) {
+          $queryHits{$sbjct}->{'score'} = $1
+              unless $queryHits{$sbjct}->{'score'} > $1;
+          $queryHits{$sbjct}->{'p'} = $2
+              unless $queryHits{$sbjct}->{'p'} < $2;
+        }
+        else {
+          $queryHits{$sbjct}->{'score'} = $1;
+          $queryHits{$sbjct}->{'p'}     = $2;
+        }
+        $queryHits{$sbjct}->{'or'} = $orientation;
+        $on = 1;
+      }
+      else {
+        $on = 0;
+        # this and subsequent matches have a P value too high
+        # to consider
+      }
+    }
+    elsif ( $on && /^ Identities = (\d+)\/(\d+).+ Positives = (\d+)/ ) {
+      # ncbi/ab blastx
+      $queryHits{$sbjct}->{'identical'} += $1;
+      $queryHits{$sbjct}->{'aligned'}   += $2;
+      $queryHits{$sbjct}->{'positives'} += $3;
+
+      # we could consider extracting the number of Xs in the
+      # aligned portions of both the query and sbjct these can
+      # be subtracted from the mismatches to give a maximum
+      # identity and similarity. Currently an underestimate is
+      # given; calculation would involve checking for Xs
+      # opposite gaps though, so not so straight forward
+    }
+    elsif ( $on && /^Query:?\s+(\d+).*\s(\d+)\s*$/ ) {
+      # ncbi/ab blastx
+      my $beg = $1;
+      my $end = $2;
+      if ( $queryHits{$sbjct}->{'or'} eq "Minus" ) {
+        $beg = $2;
+        $end = $1;
+      }
+      if (    !defined $queryHits{$sbjct}
+           || !defined $queryHits{$sbjct}->{'beg'}
+           || $queryHits{$sbjct}->{'beg'} > $beg )
+      {
+        $queryHits{$sbjct}->{'beg'} = $beg;
+      }
+      if (    !defined $queryHits{$sbjct}
+           || !defined $queryHits{$sbjct}->{'end'}
+           || $queryHits{$sbjct}->{'end'} < $beg )
+      {
+        $queryHits{$sbjct}->{'end'} = $end;
+      }
+    }
+  }
+
+  # Trailing case
+  if ( defined $queryHits{'query'} )
+  {
+    my ( $class, $orient, $pVal ) =
+          &chooseBestBlastX(
+              queryHits => \%queryHits,
+              pValues   => \%pValues,
+              masklevel => $masklevel
+                          );
+    $bxResults{ $queryHits{'query'} } = { 'class' => $class,
+                                          'orient' => $orient,
+                                          'pVal' => $pVal };
+  }
+ 
+  close BXTP;
+
+  return ( \%bxResults );
+}
+
+##---------------------------------------------------------------------##
+## Use: &chooseBestBlastX( queryHits => $queryHitsRef,
+##                        pValues => \%pValues,
+##                        masklevel => $masklevel );
+##
+##  Returns
+##
+##---------------------------------------------------------------------##
+sub chooseBestBlastX {
+  my %parameters = @_;
+
+  die $CLASS . "::chooseBestBlastX(): Missing queryHits parameter!"
+      if ( !defined $parameters{'queryHits'} );
+
+  die $CLASS . "::chooseBestBlastX(): Missing output parameter!"
+      if ( !defined $parameters{'masklevel'} );
+  my $masklevel = $parameters{'masklevel'};
+
+  my $queryHits = $parameters{'queryHits'};
+
+  my $q              = $queryHits->{'query'};
+  my $oppositestrand = $queryHits->{'oppositestrand'};
+
+  my @pastscore = ( 0 );
+  my @pastend   = ( 0 );
+  my $skip      = 0;
+  my $mostSigPValue = 0;
+
+  my @sortedmatches = sort {
+    die "bega $a $b"   unless $queryHits->{$a}->{'beg'};
+    die "begb $a $b"   unless $queryHits->{$b}->{'beg'};
+    die "scorea $a $b" unless $queryHits->{$a}->{'score'};
+    die "scoreb $a $b" unless $queryHits->{$b}->{'score'};
+    ( $queryHits->{$a}->{'beg'} <=> $queryHits->{$b}->{'beg'} )
+        || ( $queryHits->{$a}->{'score'} <=> $queryHits->{$b}->{'score'} );
+  } grep { !/query|oppositestrand/ } keys %{$queryHits};
+
+  my $nr = 0;
+  my ( $lastclass, $lastori, $classunknown, $oriunknown );
+  if ( $#sortedmatches >= 0 ) {
+SUBJECTS:
+    foreach my $subj ( @sortedmatches ) {
+      my $matchlength =
+          $queryHits->{$subj}->{'end'} - $queryHits->{$subj}->{'beg'} + 1;
+      my $minlength =
+          ( $queryHits->{$subj}->{'end'} - $queryHits->{$subj}->{'beg'} + 1 ) *
+          ( 100 - $masklevel ) / 100;
+      my $i = $nr + 1;
+      while (    $sortedmatches[ $i ]
+              && $queryHits->{ $sortedmatches[ $i ] }->{'beg'} -
+              $queryHits->{$subj}->{'beg'} < $minlength )
+      {
+        if (
+          $queryHits->{ $sortedmatches[ $i ] }->{'p'} <
+          $queryHits->{$subj}->{'p'}
+          || $queryHits->{ $sortedmatches[ $i ] }->{'p'} ==
+          $queryHits->{$subj}->{'p'}    # i.e. usually: they're both 0.
+          && $queryHits->{ $sortedmatches[ $i ] }->{'score'} >
+          $queryHits->{$subj}->{'score'}
+            )
+        {
+          if ( $queryHits->{$subj}->{'end'} <=
+                  $queryHits->{ $sortedmatches[ $i ] }->{'end'}
+               || $queryHits->{ $sortedmatches[ $i ] }->{'beg'} -
+               $queryHits->{$subj}->{'beg'} + $queryHits->{$subj}->{'end'} -
+               $queryHits->{ $sortedmatches[ $i ] }->{'end'} < $minlength )
+          {
+            ++$nr;
+            next SUBJECTS;
+          }
+        }
+        ++$i;
+      }
+      $i = $nr - 1;
+      while ( $i >= 0 ) {
+        if (
+          (
+            $queryHits->{ $sortedmatches[ $i ] }->{'p'} <
+            $queryHits->{$subj}->{'p'}
+            || $queryHits->{ $sortedmatches[ $i ] }->{'p'} ==
+            $queryHits->{$subj}->{'p'}    # i.e. usually: they're both 0.
+            && $queryHits->{ $sortedmatches[ $i ] }->{'score'} >
+            $queryHits->{$subj}->{'score'}
+          )
+          && $queryHits->{$subj}->{'end'} -
+          $queryHits->{ $sortedmatches[ $i ] }->{'end'} < $minlength
+            )
+        {
+          ++$nr;
+          next SUBJECTS;
+        }
+        --$i;
+      }
+
+      # I want to actually compare the matches that come through here
+      # and discard those that score much lower and are overlapped
+      # by > 90% by a combination of other matches
+      if ( $subj =~ /(\S+)\#(\S+)/ ) {
+        my $name  = $1;
+        my $class = $2;
+
+        # Though usually the orientation of the genes define the
+        # orientation of the transposable element, proteins can be
+        # encoded on both strands. Proteins on the reverse strand
+        # are found for example in Gypsy retrotransposons and MuDR
+        # DNA transposons. They're indicated with the label
+        # "#ReverseORF" right after the name
+        print SUMR "$q\t$queryHits->{ $subj }->{ 'beg' } "
+            . "$queryHits->{ $subj }->{ 'end' }\t$name\t$class\t"
+            . "$queryHits->{ $subj }->{ 'or' }\t"
+            . "$queryHits->{ $subj }->{ 'score' }\t"
+            . "$queryHits->{ $subj }->{ 'identical' }\/"
+            . "$queryHits->{ $subj }->{ 'aligned' }\t"
+            . "$queryHits->{ $subj }->{ 'positives' }\/"
+            . "$queryHits->{ $subj }->{ 'aligned' }\t"
+            . "$queryHits->{ $subj }->{ 'p' }\n";
+        $class =~ s/-gene$//;
+        if ( $lastclass && $class !~ /^$lastclass/ && $lastclass !~ /^$class/ )
+        {
+          print "      ! Clashing classes: $q $lastclass $class\n"
+                if ( $DEBUG );
+
+          # perhaps if a p value is > 10 orders of magnitude smaller for one
+          # class than an other, and the protein matches at least partially
+          # overlap, take the better p value
+          if ( $class =~ /LTR\/ERV/ && $lastclass =~ /LTR\/ERV/ ) {
+
+            # there are some proteins in the database of
+            # mosaic elements combining the three families
+            $class = "LTR/ERV";
+          }
+          else {
+            $lastclass =~ s/\/.+//;    # deleting backslash and stuff after it
+            if ( $class =~ /^$lastclass/ ) {
+              $class = $lastclass;
+            }
+            else {
+              ++$classunknown;
+            }
+          }
+        }
+        if ( $queryHits->{$subj}->{'$oppositestrand'} ) {
+          $queryHits->{$subj}->{'or'}        =~ s/Minus/Plus/
+              || $queryHits->{$subj}->{'or'} =~ s/Plus/Minus/;
+        }
+        if ( $lastori && $queryHits->{$subj}->{'or'} ne $lastori ) {
+          print "      ! Clashing orientations: $q\n"
+               if ( $DEBUG );
+          ++$oriunknown;
+        }
+        $lastclass = $class;
+        $lastori   = $queryHits->{$subj}->{'or'};
+      }
+      else {
+        print SUMR "$q\t$queryHits->{ $subj }->{ 'beg' } "
+            . "$queryHits->{ $subj }->{ 'end' }\t$subj\t-\t-"
+            . "$queryHits->{ $subj }->{ 'or' }\t"
+            . "$queryHits->{ $subj }->{ 'score' }\t"
+            . "$queryHits->{ $subj }->{ 'identical' }\/"
+            . "$queryHits->{ $subj }->{ 'aligned' }\t"
+            . "$queryHits->{ $subj }->{ 'positives' }\/"
+            . "$queryHits->{ $subj }->{ 'aligned' }\t"
+            . "$queryHits->{ $subj }->{ 'p' }\n";
+      }
+      $mostSigPValue = $queryHits->{$subj}->{'p'}
+          if (    $mostSigPValue == 0
+               || $queryHits->{$subj}->{'p'} < $mostSigPValue );
+
+      #print "Most sig pVal = $mostSigPValue, lastclass = $lastclass\n" if ( $DEBUG );
+      ++$nr;
+    }
+
+    $lastclass = "Unknown" if $classunknown;
+    $lastori = "" if ( $oriunknown );
+    print "ChooseBestBlastX::Returning( $lastclass, $lastori, $mostSigPValue )\n" if ( $DEBUG );   
+    return( $lastclass, $lastori, $mostSigPValue );
+  }
+  else {
+    print "ChooseBestBlastX::Returning( Unknown )\n" if ( $DEBUG );   
+    return( "Unknown", "", "" );
+  }
+}
+
+##---------------------------------------------------------------------##
+## Use: &vsRMLibAnalysis( searchResults => $resultsRef,
+##                         pValues => \%pValues );
+##
+##  Returns
+##
+##---------------------------------------------------------------------##
+sub vsRMlibAnalysis {
+  my %parameters = @_;
+
+  die $CLASS . "::vsRMlibAnalysis(): Missing searchResults parameter!"
+      if ( !defined $parameters{'searchResults'} );
+  my $resultCol = $parameters{'searchResults'};
+
+  die $CLASS . "::vsRMlibAnalysis(): Missing blastXResults parameter!"
+      if ( !defined $parameters{'blastXResults'} );
+
+  my ( %class, %ori ) = ();
+  my $blastXResults = $parameters{'blastXResults'};
+
+  # note that this sub is reading in a modified cross_match file
+  # similar to the repeatmasker .out file having "+" for forward strand matches
+  # so that all lines have the same number of columns.
+  # They do not have the query and subject names split on #
+  my ( %combscore, $oriented, @dnaclass, @ori );
+  my $query;
+  my $origquery;
+  my $protclass;
+
+
+  # Initialize ds with bx results
+  foreach my $bxResultsKey ( keys( %{ $blastXResults } ) ) 
+  {
+    $class{ $bxResultsKey } = $blastXResults->{ $bxResultsKey }->{'class'}; 
+    $ori{ $bxResultsKey } = $blastXResults->{ $bxResultsKey }->{'orient'};
+  }
+
+  for ( my $i = 0 ; $i < $resultCol->size() ; $i++ ) {
+    my $result = $resultCol->get( $i );
+
+    #print "RESULT:" . $result->toStringFormatted() . "\n" if ( $DEBUG );
+    #print "RESULT:" . $result->toStringFormatted() . "\n";
+    #print "RESULT: $query\n";
+
+    if ( $query && $result->getQueryName() ne $query ) {
+
+      # see if there were conflicts for the last query
+      # either as compared to the protein annotation
+      # or within the repeatmasker library comparison
+      #print "Running conflict solver on: " . Dumper( \@dnaclass ) . "\n";
+      ( $class{$query}, $ori{$query} ) =
+          &conflictsolver( $query, 
+                           $blastXResults,
+                           \@dnaclass, \@ori,
+                           \%combscore );
+      %combscore = @dnaclass = @ori = ();
+    }
+
+    $query = $result->getQueryName();
+    my $subj = $result->getSubjName();
+    $subj =~ /.*\#(\S+)/;
+    my $dnaclass = $1;
+
+    my $orient = "Plus";
+    if ( $result->getOrientation() eq "C" ) {
+      $orient = "Minus";
+    }
+
+    my $combination = "$query" . "\#$dnaclass" . "\#$orient";
+    $combscore{$combination} += $result->getScore();
+    push( @dnaclass, $dnaclass );
+    push( @ori,      $orient );
+
+  }
+
+  if ( @dnaclass ) {
+    #print "Running conflict solver on2: " . Dumper( \@dnaclass ) . "\n";
+    ( $class{$query}, $ori{$query} ) =
+          &conflictsolver( $query, 
+                           $blastXResults,
+                           \@dnaclass, \@ori,
+                           \%combscore );
+  }
+
+  return ( \%class, \%ori );
+
+}
+
+sub conflictsolver {
+  my ( $query, $blastXResults, $classref, $oriref, $combscoreref )
+      = @_;
+
+  my @conflict    = ();
+  my $combination = "";
+  my %noconflict  = ();
+  my ( $temp1, $temp2 );    # placeholders; get more than I want from subroutine
+
+    # consensus is in an orientation that is confirmed by a
+    # significant blastx match to a transposon protein
+    #
+    # usually when there is a class assignment, the
+    # orientation is known too. The exception would be that
+    # the consensus is a chimaera of elements, in which case
+    # it needs to be broken up. So, the $orient = "Minus|Plus"
+    # may be skipped eventually
+    my $orient = $blastXResults->{$query}->{'orient'};
+    my $protclass = $blastXResults->{$query}->{'class'};
+    my $protPVal = $blastXResults->{$query}->{'pVal'};
+ 
+  # Determine conflict status for each DNA match vs the top Protein
+  # match.
+  foreach my $comb ( keys %$combscoreref ) {
+    ( $temp1, $temp2, $noconflict{$comb} ) =
+        &matchprotanddnaclass( $protclass, $orient, $comb, $combscoreref,
+                               $protPVal );
+  }
+  # Find the highest scoring DNA match among all the rest
+  #print "SOLVING CONFLICT: query=$query protclass=$protclass orient=$orient\n";
+  foreach my $comb ( keys %$combscoreref ) {
+    if ( $combination ) {
+      #print "  -trying comb=$comb vs previous $combination\n";
+      #print"       - scores " . $$combscoreref{$comb} . " and " . $$combscoreref{$combination} . "\n";
+      #print"       - conflicts " . $noconflict{$comb} . " and " . $noconflict{$combination} . "\n";
+      if (
+        $$combscoreref{$comb} >= 2 * $$combscoreref{$combination}
+        ||
+
+        # if total SW score for matches to this
+        # combination of repeat class and orientation is
+        # twice better than the previous best one
+        (
+          $$combscoreref{$comb} >= 2 * $$combscoreref{$combination} / 3
+          &&
+
+          # scores are "close" and
+          $noconflict{$comb}
+        )
+          )
+      {    # $comb matches protein class and orientation
+        #print "      - PICKING $comb\n";
+        $combination = $comb;
+        @conflict    = ();
+      }
+      elsif (    $$combscoreref{$comb} >= 3 * $$combscoreref{$combination} / 2
+              && $noconflict{$combination} )
+      {
+
+       # previous one matched protein class, but this one scores somewhat better
+       #        push (@conflict, $combination, $comb);
+       # if there's more than one conflict, there will be duplicates
+      }
+      elsif (    $$combscoreref{$comb} <= 2 * $$combscoreref{$combination} / 3
+              && $noconflict{$comb} )
+      {
+        #        push (@conflict, $combination, $comb);
+        # RMH: I have no idea what this is doing...but it really doesn't look
+        #      right!
+        #print "      - PICKING2 $comb\n";
+        #$combination = $comb;
+      }
+    }
+    else {
+      $combination = $comb;
+    }
+  }
+  #print "final combination: $combination\n";
+
+  # Pick between highest scoring DNA match and highest scoring Protein match
+  &matchprotanddnaclass( $protclass,    $orient, $combination,
+                         $combscoreref, $protPVal );
+
+# returns preferred class and orientation, and if there is a conflict (yes = 0!)
+}
+
+##------------------------------------------------------------------------------##
+## No Clue
+##------------------------------------------------------------------------------##
+sub matchprotanddnaclass {
+  my ( $protclass, $orient, $comb, $combscoreref, $pval ) = @_;
+
+  #print $CLASS
+  #    . "::matchprotanddnaclass( $protclass, $orient, " . Dumper($comb) . ", "
+  #    . Dumper($combscoreref) . ", $pval ): Called.\n"
+  #    if (  $DEBUG );
+
+  my %combscore = %$combscoreref;
+  my ( $q, $dnaclass, $dnaori ) = split /\#/, $comb;
+  my $class      = $protclass;
+  my $ori        = $orient;
+  my $noconflict = 0;
+
+  #note that at this point in the consensus sequence file the class
+  #is $protclass and the orientation is $protori, so if blastx based
+  #identification wins or blastn based classification is
+  #inconclusive, the classification and orientation do not change
+  my $dnaroot;
+  ( $dnaroot = $dnaclass ) =~ /\/.*/;
+  my $protroot;
+  ( $protroot = $protclass ) =~ /\/.*/;
+
+  # some classifications of repeatmasker entries are uncertain
+  # themselves and indicate with a question mark. I'm just removing
+  # them now, to allow easier merging, but should consider them as
+  # some of the classifications are quite dubious
+  $protclass =~ s/\?$//;
+  $dnaclass  =~ s/\?$//;
+
+  # which one has the better score?
+  my $choice = "";
+  if ( defined $pval ) {
+    if ( $combscore{$comb} < 333 && $pval < 0.00001 ) {
+      $choice = $protclass;
+      $ori        = $orient;
+    }
+    elsif ( $combscore{$comb} >= 333 && $pval >= 0.00001 ) {
+      $choice = $dnaclass;
+      $ori        = $dnaori;
+    }
+  }
+  #print $CLASS
+  #    . "::matchprotanddnaclass(): choice = $choice\n"
+  #    if ( $DEBUG );
+ 
+  if ( $protclass =~ /Unknown/ ) {
+    $class = $dnaclass;
+    $ori   = $dnaori;
+    $noconflict = 1;
+  }
+  elsif ( !$orient ) {
+
+    # Why do I still catch simple / low ? Shouldn't be there
+    # anymore (working with a simple/low masked file , but they
+    # still are.
+    if ( $dnaroot !~ /^Unknown|^Satellite|^Other|^Low_|^Simple/ ) {
+      $class = $dnaclass;
+      $ori   = $dnaori;
+    }
+    $noconflict = 1;
+
+    # the consensus will be reverse-complimented if $ori is "Minus"
+  }
+  elsif ( $orient eq $dnaori  ) {
+    if ( $protclass !~ /^$dnaclass/i ) {
+
+      # different nomenclature in protein database as current
+      # repeatmasker library will fix repeatmasker library;
+      # nomenclature will also change over time
+      if ( $protroot eq $dnaroot ) {
+        if ( $protroot eq 'DNA' ) {
+          if (    $protclass =~ /^DNA\/DDE-(\S+)/ && $dnaclass =~ /$1$/
+               || $protclass =~ /^DNA\/HAT-(\S+)/ && $dnaclass  =~ /$1$/
+               || $dnaclass  =~ /AcHobo$/         && $protclass =~ /\/HAT/
+               || $dnaclass  =~ /Charlie$/        && $protclass =~ /Charlie$/
+               || $dnaclass  =~ /En-Spm$/         && $protclass =~ /EnSpm$/
+               || $dnaclass  =~ /hAT_Tol2$/       && $protclass =~ /HAT-Tol2/
+               || $dnaclass  =~ /MER1_type$/      && $protclass =~ /Charlie$/
+               || $dnaclass  =~ /MER2_type$/      && $protclass =~ /Tigger$/ )
+          {
+
+            # should consider refinement for if protein class
+            # is HAT and DNA is AcHobo or charlie etc. (also for DDE)
+            $noconflict = 1;
+          }
+          else {
+            $class = $choice;
+            $class = 'DNA' unless $class;
+          }
+        }
+        elsif ( $dnaclass eq 'LINE/BovB' && $protclass eq 'LINE/RTE' ) {
+          $class      = 'LINE/RTE';
+          $noconflict = 1;
+        }
+        elsif ( $dnaclass =~ /^$protclass/ ) {
+          $class      = $dnaclass;
+          $noconflict = 1;
+        }
+        elsif ( $dnaclass =~ /^LTR\/ERV/ && $protclass =~ /^LTR\/ERV/ ) {
+          $class = 'LTR/ERV';
+        }
+        else {
+          $class = $choice;
+          $class = $protroot unless $class;
+        }
+      }
+      elsif ( $dnaclass =~ /^Unknown|^Satellite/ ) {
+        $class = $protclass;
+      }
+    }
+    else {
+      $noconflict = 1;
+    }
+  }
+  else {
+    die "$q $protclass $dnaclass $dnaori\n" unless $pval;
+
+    # we have an orientational problem check if either the protein
+    # match p value (the global variable %score{consensus_name} )
+    # or Smith-Waterman score %combscore{name_class_orientation}
+    # is bad enough to ignore that analysis
+    if ( $choice eq $protclass ) {
+
+      # don't change class or orientation
+      #print "rejected repeatmasker match $comb of score $combscore{$comb}; "
+      #    . "different orientation that blastx match with p "
+      #    . "value $pval\n"
+      #    if ( $DEBUG );
+      $ori = $orient;
+    }
+    elsif ( $choice ) {
+      $class = $dnaclass;
+      $ori   = $dnaori;
+      #print "rejected blastx match to $q with p value $pval "
+      #    . "because of a Smith Waterman score $combscore{$comb} "
+      #    . "to the opposite strand\n"
+      #    if ( $DEBUG );
+    }
+    else {
+      $class = "Unknown";
+      $ori   = 'Plus';
+      #print "Changed class $protclass to \'Unknown\' because of a "
+      #    . "poor blastn match in opposite orientation and an equally "
+      #    . "poor p value of the blastx match ($pval)\n"
+      #    if ( $DEBUG );
+    }
+  }
+  if ( $class =~ /^SINE/ ) {
+    if ( $class =~ /Cichlid$|Insectivore$|Mermaid$|Salmon$|Toad$|Tortoise$/ ) {
+      $class = "SINE";
+    }
+  }
+  elsif ( $class eq 'tRNA' ) {
+    $class = "SINE\?";
+
+    # TO FIX: if length of sequence > 80 bp, but I did not save
+    # length -> these could be genuine tRNAs
+  }
+  print "matchprotanddnaclass RETURNING $class, $ori, $noconflict\n" if ( $DEBUG );
+  return ( $class, $ori, $noconflict );
+}
+
+##--------------------------------------------------------------------------##
+##--------------------------------------------------------------------------##
+sub changeconsensusfastafile {
+  my $classref = shift;
+  my $oriref   = shift;
+  my $simpleRepeatsRef = shift;
+  my $infile   = shift;
+  my $outfile  = shift;
+  my %class    = %$classref;    # I find it easier that way
+  my %ori      = %$oriref;
+  open( OUT, ">$outfile" );
+
+  my $consDB = FastaDB->new( fileName => $infile,
+                             openMode => SeqDBI::ReadOnly );
+
+  foreach my $seqID ( $consDB->getIDs() ) {
+    
+    my $className = $class{ $seqID };
+    $className = "Unknown" if ( $className eq "" );
+    if ( defined $simpleRepeatsRef->{ $seqID } ) {
+      $className = "Simple_repeat";
+    }
+    print OUT ">" . $seqID . "#$className " . $consDB->getDescription( $seqID ) . "\n";
+    my $seq = $consDB->getSequence( $seqID );
+    if ( defined $ori{ $seqID } && 
+         $ori{ $seqID } eq "Minus" ) {
+      $seq =~ tr/ACGTYRMKHBVDacgtyrmkhbvd/TGCARYKMDVBHtgcarykmdvbh/;
+      $seq = reverse $seq;
+    }
+    $seq =~ s/(.{50})/$1\n/g;
+    print OUT "$seq\n";
+
+  }
+  close OUT;
+  undef $consDB;
+}
+
+
+sub changeStockholmFile 
+{
+  my $classref = shift;
+  my $oriref   = shift;
+  my $simpleRepeatsRef = shift;
+  my $infile   = shift;
+  my $outfile  = shift;
+  my %class    = %$classref;  
+  my %ori      = %$oriref;
+
+#
+# NOTE: This is a temporary translation table from the RepeatMasker classication
+#       scheme to the Dfam_consensus one.  It's temporary for two reasons.  First
+#       the RM scheme has a one-one mapping with the Dfam_consensus scheme at this
+#       stage but that is not guaranteed to last.  Second, we intend to use the
+#       new scheme in the classifier at some point making it nuncessary to do this
+#       mapping or maintain this table.
+my %rmToDfamClass = (
+    'dna/crypton' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton',
+    'dna/crypton-a' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-A',
+    'dna/crypton-c' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-C',
+    'dna/crypton-f' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-F',
+    'dna/crypton-h' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-H',
+    'dna/crypton-i' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-I',
+    'dna/crypton-r' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-R',
+    'dna/crypton-s' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-S',
+    'dna/crypton-v' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-V',
+    'dna/crypton-x' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-X',
+    'dna/maverick' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;DNA_Polymerase;Maverick',
+    'rc' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Rolling_Circle',
+    'rc/helitron' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Rolling_Circle;Helitron-1',
+    'rc/helitron-2' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Rolling_Circle;Helitron-2',
+    'dna' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat',
+    'dna/academ-1' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Academ_Group;Academ-1',
+    'dna/academ-2' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Academ_Group;Academ-2',
+    'dna/academ-h' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Academ_Group;Academ-H',
+    'dna/casposons' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;DNA_pol;Casposon',
+    'dna/cmc-chapaev' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;CACTA_element;CMC;Chapaev_group;Chapaev',
+    'dna/cmc-chapaev-3' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;CACTA_element;CMC;Chapaev_group;Chapaev-3',
+    'dna/cmc-enspm' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;CACTA_element;CMC;EnSpm',
+    'dna/cmc-mirage' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;CACTA_element;CMC;Mirage',
+    'dna/cmc-transib' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;CACTA_element;Transib',
+    'dna/dada' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Dada',
+    'dna/ginger' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Ginger',
+    'dna/hat' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element',
+    'dna/hat-ac' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Activator',
+    'dna/hat-blackjack' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Blackjack',
+    'dna/hat-charlie' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Charlie',
+    'dna/hat-pegasus' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Pegasus',
+    'dna/hat-restless' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Restless',
+    'dna/hat-tag1' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Tag1',
+    'dna/hat-tip100' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Tip100',
+    'dna/hat-hat1' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hAT1',
+    'dna/hat-hat19' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hAT19',
+    'dna/hat-hat5' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hAT5',
+    'dna/hat-hat6' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hAT6',
+    'dna/hat-hatm' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hATm',
+    'dna/hat-hatw' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hATw',
+    'dna/hat-hatx' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hATx',
+    'dna/hat-hobo' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hobo',
+    'dna/is3eu' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;IS3EU',
+    'dna/kolobok' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Kolobok_Group;Kolobok',
+    'dna/kolobok-e' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Kolobok_Group;Kolobok-E',
+    'dna/kolobok-h' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Kolobok_Group;Kolobok-H',
+    'dna/kolobok-hydra' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Kolobok_Group;Hydra-specific_Branch',
+    'dna/kolobok-t2' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Kolobok_Group;T2',
+    'dna/mule' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Mutator-like_Element',
+    'dna/mule-f' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Mutator-like_Element;F',
+    'dna/mule-mudr' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Mutator-like_Element;MuDR',
+    'dna/mule-nof' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Mutator-like_Element;NOF',
+    'dna/merlin' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Merlin',
+    'dna/novosib' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Novosib',
+    'dna/p' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;P_Element',
+    'dna/p-fungi' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;P_Element;Fungi-specific_Branch',
+    'dna/pif-harbs' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PIF-like_Elements;HarbS',
+    'dna/pif-harbinger' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PIF-like_Elements;Harbinger',
+    'dna/pif-isl2eu' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PIF-like_Elements;ISL2EU',
+    'dna/pif-spy' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PIF-like_Elements;Spy',
+    'dna/piggybac' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PiggyBac-like_element;PiggyBac',
+    'dna/piggybac-a' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PiggyBac-like_element;PiggyBac-A',
+    'dna/piggybac-x' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PiggyBac-like_element;PiggyBac-X',
+    'dna/sola-1' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Sola-group;Sola-1',
+    'dna/sola-2' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Sola-group;Sola-2',
+    'dna/sola-3' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Sola-group;Sola-3',
+    'dna/tcmar-ant1' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Ant1',
+    'dna/tcmar-cweed' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Cweed',
+    'dna/tcmar-gizmo' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Gizmo',
+    'dna/tcmar-isrm11' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;ISRm11',
+    'dna/tcmar-m44' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;m44',
+    'dna/tcmar-mariner' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Mariner',
+    'dna/tcmar-mogwai' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Mogwai',
+    'dna/tcmar-fot1' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Pogo-group;Fot1',
+    'dna/tcmar-pogo' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Pogo-group;Pogo',
+    'dna/tcmar-tigger' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Pogo-group;Tigger',
+    'dna/tcmar-sagan' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Sagan',
+    'dna/tcmar-stowaway' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Stowaway',
+    'dna/tcmar-tc1' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Tc1',
+    'dna/tcmar-tc2' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Tc2',
+    'dna/tcmar-tc4' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Tc4',
+    'dna/tcmar' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element',
+    'dna/zator' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Zator',
+    'dna/zisupton' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Zisupton',
+    'line' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE',
+    'line/cre-ambal' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-I;Ambal',
+    'line/cre' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-I;CRE
+',
+    'line/cre-1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-I;CRE;CRE-1',
+    'line/cre-2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-I;CRE;CRE-2',
+    'line/cre-odin' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-I;Odin',
+    'line/genie' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Genie',
+    'line/l1-dre' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;L1-like;DRE',
+    'line/l1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;L1-like;L1-group;L1',
+    'line/l1-tx1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;L1-like;L1-group;Tx1',
+    'line/l1-zorro' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;L1-like;Zorro',
+    'line/proto1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;Proto-1',
+    'line/r2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R2-like;R2',
+    'line/r2-hero' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R2-like;Hero',
+    'line/r2-nesl' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R2-like;NeSL',
+    'line/deceiver' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R4-like;Deceiver',
+    'line/dong-r4' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R4-like;Dong-R4',
+    'line/dualen' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R4-like;Dualen',
+    'line/proto2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;Proto-2',
+    'line/cr1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;CR1-group;CR1',
+    'line/cr1-zenon' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;CR1-group;CR1;Zenon',
+    'line/l2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;CR1-group;L2-group;L2',
+    'line/rex-babar' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;CR1-group;Rex-Babar',
+    'line/i' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;R1-group;I-group;I',
+    'line/i-jockey' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;R1-group;I-group;Jockey',
+    'line/r1-loa' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;R1-group;R1-subgroup;LOA',
+    'line/r1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;R1-group;R1-subgroup;R1',
+    'line/tad1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;Tad1',
+    'line/rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;RTE-like',
+    'line/rte-bovb' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;RTE-like;RTE-group;BovB',
+    'line/rte-orte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;RTE-like;ORTE',
+    'line/rte-rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;RTE-like;RTE-group;RTE',
+    'line/rte-x' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;RTE-like;RTE-group;RTE-X',
+    'retroposon' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter',
+    'sine/i' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;I-derived',
+    'retroposon/sva' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L1-dependent;SVA',
+    'retroposon/l1-dep' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L1-dependent',
+    'retroposon/rte-derived' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;RTE-derived',
+    'sine/l1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L1-derived',
+    'sine/l2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L2-derived',
+    'sine/dong-r4' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;R4-derived',
+    'sine' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE',
+    'sine/5s-deu' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;Deu-core;Unknown_LINE-dependent',
+    'sine/5s-deu-l2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;Deu-core;L2-end',
+    'sine/5s-core-rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;MIR-core;RTE-end',
+    'sine/5s-sauria-rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;Sauria-core;RTE-end',
+    'sine/5s' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter',
+    'sine/5s-rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;No_or_Unknown_Core;RTE-end',
+    'sine/alu' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter;No-core;L1-dependent;Alu',
+    'sine/b2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter;No-core;L1-dependent;B2',
+    'sine/7sl' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter',
+    'sine/trna-5s' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_and_5S_RNA;No_or_Unknown_Core;Unknown_LINE-dependent',
+    'sine/b4' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_and_7SL_RNA;No-core;L1-dependent',
+    'sine/trna-7sl' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_and_7SL_RNA;No_or_Unknown_Core;Unknown_LINE-dependent',
+    'sine/trna-ceph' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Ceph-core;Unknown_LINE-dependent',
+    'sine/trna-ceph-rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Ceph-core;RTE-end',
+    'sine/trna-deu' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;Unknown_LINE-dependent',
+    'sine/trna-deu-cr1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;CR1-end',
+    'sine/trna-deu-i' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;I-end',
+    'sine/trna-deu-l2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;L2-end',
+    'sine/trna-deu-rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;RTE-end',
+    'sine/trna-meta' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Meta-core;Unknown_LINE-dependent',
+    'sine/mir' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;L2-end',
+    'sine/trna-core' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;Unknown_LINE-dependent',
+    'sine/trna-core-rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;RTE-end',
+    'sine/trna-mermaid' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;Mermaid',
+    'sine/id' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No-core;L1-dependent',
+    'sine/rte-bovb' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;BovB-end',
+    'sine/trna-cr1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;CR1-end',
+    'sine/trna-i' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;I-end',
+    'sine/trna-jockey' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Jockey-end',
+    'sine/trna-l1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;L1-dependent',
+    'sine/trna-l2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;L2-end',
+    'sine/r1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;R1-end',
+    'sine/trna-r2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;R2-end',
+    'sine/trna-rex' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Rex-end',
+    'sine/trna-rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;RTE-end',
+    'sine/trna-tad1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Tad1_End',
+    'sine/trna-sauria' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Sauria-core;Unknown_LINE-dependent',
+    'sine/trna-sauria-l2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Sauria-core;L2-end',
+    'sine/trna-sauria-rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Sauria-core;RTE-end',
+    'sine/trna-v-core-l2' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V_and_MIR-core;L2-end',
+    'sine/trna-v' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V-core;Unknown_LINE-dependent',
+    'sine/trna-v-cr1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V-core;CR1-end',
+    'sine/trna' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Unknown_LINE-dependent',
+    'sine/u' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;U-RNA_Promoter;No_or_Unknown_Core;Unknown_LINE-dependent',
+    'sine/ceph' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;Unknown_Promoter;Ceph-core;RTE-end',
+    'sine/core' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;Unknown_Promoter;MIR-core;Unknown_LINE-dependent',
+    'sine/core-rte' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;Unknown_Promoter;MIR-core;RTE-end',
+    'ltr/dirs' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Inverted_Long_Terminal_Repeat_Elements;Tyrosine_Recombinase_Elements;DIRS',
+    'ltr/ngaro' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Inverted_Long_Terminal_Repeat_Elements;Tyrosine_Recombinase_Elements;Ngaro',
+    'ltr/viper' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Inverted_Long_Terminal_Repeat_Elements;Tyrosine_Recombinase_Elements;Viper',
+    'ltr' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element',
+    'ltr/pao' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Bel-Pao',
+    'ltr/gypsy' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Gypsy',
+    'ltr/caulimovirus' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Pararetroviridae;Caulimoviridae',
+    'ltr/erv1' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV1',
+    'ltr/erv-lenti' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2;Lenti',
+    'ltr/ervk' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV2',
+    'ltr/ervl' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV3;ERVL
+',
+    'ltr/ervl-malr' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV3;MaLR
+',
+    'ltr/erv4' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV4',
+    'ltr/erv' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae',
+    'ltr/erv-foamy' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Spumaretrovirinae',
+    'ltr/cassandra' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae',
+    'ltr/trim' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;TRIM',
+    'ltr/copia' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Ty1-Copia',
+    'line/penelope' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Penelope-like_Elements',
+    'unknown/tate' => 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;TATE',
+    'rrna' => 'Interspersed_Repeat;Pseudogene;RNA;rRNA',
+    'scrna' => 'Interspersed_Repeat;Pseudogene;RNA;scRNA',
+    'snrna' => 'Interspersed_Repeat;Pseudogene;RNA;snRNA',
+    'trna' => 'Interspersed_Repeat;Pseudogene;RNA;tRNA',
+    'unknown' => 'Interspersed_Repeat;Unknown',
+    'unknown/centromeric' => 'Interspersed_Repeat;Unknown;Centromeric',
+    'satellite' => 'Tandem_Repeat;Satellite',
+    'satellite/acromeric' => 'Tandem_Repeat;Satellite;Acromeric',
+    'satellite/centromeric' => 'Tandem_Repeat;Satellite;Centromeric',
+    'satellite/macro' => 'Tandem_Repeat;Satellite;Macro',
+    'satellite/subtelomeric' => 'Tandem_Repeat;Satellite;Subtelomeric',
+    'satellite/w-chromosome' => 'Tandem_Repeat;Satellite;W-chromosomal',
+    'satellite/y-chromosome' => 'Tandem_Repeat;Satellite;Y-chromosomal',
+    'simple_repeat' => 'Tandem_Repeat;Simple',
+    'other/dna_virus' => 'Accidental;Normally_Non-integrating_Virus',
+    'artefact' => 'Artifact ',
+    'low_complexity' => 'Low_Complexity',
+    'other' => 'Other',
+    'segmental' => 'Segmental_Duplication',
+);
+
+  open( OUT, ">$outfile" );
+
+  my $stockholmFile = SeedAlignmentCollection->new();
+  open my $IN,"<$infile" or
+    die "Could not open up stockholm file $infile for reading!\n";
+  $stockholmFile->read_stockholm( $IN );
+  close $IN;
+
+  for ( my $i = 0; $i < $stockholmFile->size(); $i++ )
+  {
+    my $seedAlign = $stockholmFile->get($i);
+    my $id = $seedAlign->getId();
+    my $className = $class{ $id };
+    $className = "Unknown" if ( $className eq "" );
+    if ( defined $simpleRepeatsRef->{ $id } ) {
+      $className = "Simple_repeat";
+    }
+    my $dfamClass = "";
+    if ( defined $rmToDfamClass{lc($className)} )
+    {
+      $dfamClass = $rmToDfamClass{lc($className)};
+    }
+    $seedAlign->setClassification( $dfamClass );
+    # TODO: Reverse the seed alignments if we determine
+    #       the element to be reversed.
+    if ( defined $ori{ $id } &&
+         $ori{ $id } eq "Minus" ) {
+      $seedAlign->reverseComplementAlignment();
+    }
+    print OUT "" . $seedAlign->toString();
+  }
+}
+
+
+1;

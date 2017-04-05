@@ -1,0 +1,322 @@
+#!/usr/local/bin/perl
+##---------------------------------------------------------------------------##
+##  File:
+##      @(#) Linup
+##  Author:
+##      Robert M. Hubley   rhubley@systemsbiology.org
+##  Description:
+##
+#******************************************************************************
+#*  This software is provided ``AS IS'' and any express or implied            *
+#*  warranties, including, but not limited to, the implied warranties of      *
+#*  merchantability and fitness for a particular purpose, are disclaimed.     *
+#*  In no event shall the authors or the Institute for Systems Biology        *
+#*  liable for any direct, indirect, incidental, special, exemplary, or       *
+#*  consequential damages (including, but not limited to, procurement of      *
+#*  substitute goods or services; loss of use, data, or profits; or           *
+#*  business interruption) however caused and on any theory of liability,     *
+#*  whether in contract, strict liability, or tort (including negligence      *
+#*  or otherwise) arising in any way out of the use of this software, even    *
+#*  if advised of the possibility of such damage.                             *
+#*                                                                            *
+#******************************************************************************
+#
+# ChangeLog
+#
+#     $Log: Linup,v $
+#     Revision 1.12  2017/04/05 00:03:32  rhubley
+#     Cleanup before a distribution
+#
+#
+###############################################################################
+#
+# To Do:
+#
+
+=head1 NAME
+
+Linup - 
+
+=head1 SYNOPSIS
+
+  Linup [-version] [-i] [ -matrix <matrix_file>  -cgParam # 
+                          -taParam #  -cgTransParam # ]
+                   [ -stockholm || -msf ]
+        <crossmatch file> | <stockholm file>
+
+
+=head1 DESCRIPTION
+
+The options are:
+
+=over 4
+
+=item -version
+
+Displays the version of the program
+
+=item -i
+
+Include reference sequence in new consensus calculation.
+
+=item -stockholm
+
+Write out multiple alignment in Stockholm format.
+
+=item -msf
+
+Write out the multiple aligment in MSF format.
+
+=back
+
+=head1 SEE ALSO
+
+=head1 COPYRIGHT
+
+Copyright 2012-2013 Robert Hubley, Institute for Systems Biology
+
+=head1 AUTHOR
+
+Robert Hubley <rhubley@systemsbiology.org>
+Arian Smit <asmit@systemsbiology.org>
+
+=cut
+
+#
+# Module Dependence
+#
+use strict;
+use FindBin;
+use Getopt::Long;
+use Data::Dumper;
+
+# RepeatModeler Libraries
+use lib $FindBin::RealBin;
+use lib "$FindBin::RealBin/..";
+use RepModelConfig;
+use lib $RepModelConfig::REPEATMASKER_DIR;
+use MultAln;
+use SeedAlignment;
+
+# RepeatMasker Libraries
+use SearchResult;
+use SearchResultCollection;
+use WUBlastSearchEngine;
+use NCBIBlastSearchEngine;
+use CrossmatchSearchEngine;
+
+#
+# Version
+#
+#  This is a neat trick.  CVS allows you to tag
+#  files in a repository ( i.e. cvs tag "2003/12/03" ).
+#  If you check out that release into a new
+#  directory with "cvs co -r "2003/12/03" it will
+#  place this string into the $Name:  $ space below
+#  automatically.  This will help us keep track
+#  of which release we are using.  If we simply
+#  check out the code as "cvs co Program" the
+#  $Name:  $ macro will be blank so we should default
+#  to what the ID tag for this file contains.
+#
+my $CVSNameTag = '$Name:  $';
+my $CVSIdTag   = '$Id: Linup,v 1.12 2017/04/05 00:03:32 rhubley Exp $';
+my $Version    = $CVSNameTag;
+$Version = $CVSIdTag if ( $Version eq "" );
+
+#
+# Magic numbers/constants here
+#  ie. my $PI = 3.14159;
+#
+my $DEBUG = 0;
+
+#
+# Option processing
+#  e.g.
+#   -t: Single letter binary option
+#   -t=s: String parameters
+#   -t=i: Number paramters
+#
+my @getopt_args = (
+                    '-version',          # print out the version and exit
+                    '-i',
+                    '-stockholm',
+                    '-showScore',
+                    '-msf',
+                    '-matrix=s',
+                    '-cgParam=s',
+                    '-taParam=s',
+                    '-cgTransParam=s',
+);
+
+my %options = ();
+Getopt::Long::config( "noignorecase", "bundling_override" );
+unless ( GetOptions( \%options, @getopt_args ) )
+{
+  usage();
+}
+
+sub usage
+{
+  print "$0 - $Version\n";
+  exec "pod2text $0";
+  exit;
+}
+
+if ( $options{'version'} )
+{
+  print "$Version\n";
+  exit;
+}
+
+my $inputFile = $ARGV[ 0 ];
+if ( !-s $inputFile )
+{
+  print "\nCannot locate file!: $inputFile\n\n";
+  usage();
+}
+
+my $inclRef = 0;
+$inclRef = 1 if ( $options{'i'} );
+
+my $matrixFile;
+my $cgParam;
+my $taParam;
+my $cgTransParam;
+if ( $options{'matrix'} )
+{
+  $matrixFile = $options{'matrix'};
+  if ( !exists $options{'cgParam'} )
+  {
+    print "\nMissing cgParam parameter.  Must be specified\n"
+        . "if the matrix parameter is used.\n";
+    usage();
+  }
+  $cgParam = $options{'cgParam'};
+  if ( !exists $options{'taParam'} )
+  {
+    print "\nMissing taParam parameter.  Must be specified\n"
+        . "if the matrix parameter is used.\n";
+    usage();
+  }
+  $taParam = $options{'taParam'};
+  if ( !exists $options{'cgTransParam'} )
+  {
+    print "\nMissing cgTransParam parameter.  Must be specified\n"
+        . "if the matrix parameter is used.\n";
+    usage();
+  }
+  $cgTransParam = $options{'cgTransParam'};
+}
+
+##
+## Determine file type
+##
+open IN, "<$inputFile" or die "Could not open $inputFile for reading!\n";
+my $maxLines = 10000;
+my $fileType = "Unknown";
+while ( <IN> )
+{
+  next if (    /^(\S+)\s+(\W+)$/
+            || /^(\W+).*Score:/ );
+  last if ( $maxLines-- < 0 );
+  if ( /^#\s+STOCKHOLM/ )
+  {
+    $fileType = "stockholm";
+    last;
+  }
+  if ( /^\s*\d+\s+[\d\.]+\s+[\d\.]+\s+[\d\.]+\s+\S+\s+\d+\s+\d+\s+\(\d+\)/ )
+  {
+    $fileType = "crossmatch";
+    last;
+  }
+}
+close IN;
+
+if ( $fileType eq "Unknown" )
+{
+  die "Could not determine filetype for $inputFile.  Verify that\n"
+      . "the file is either a cross_match or stockholm file.\n";
+}
+
+my $mAlign;
+if ( $fileType eq "crossmatch" )
+{
+  my $resultCollection =
+      CrossmatchSearchEngine::parseOutput( searchOutput => $inputFile );
+
+  # TODO: Deprecate this and move it to SearchResultCollection.pm
+  # Auto detect which input ( query/subject ) is the static sequence for
+  # which all other sequences are aligned.
+  my $queryID;
+  my $subjID;
+  my $staticQuery   = 1;
+  my $staticSubject = 1;
+  for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ )
+  {
+    my $result = $resultCollection->get( $i );
+    my $qID    = $result->getQueryName();
+    my $sID    = $result->getSubjName();
+    $staticQuery   = 0 if ( defined $queryID && $queryID ne $qID );
+    $staticSubject = 0 if ( defined $subjID  && $subjID  ne $sID );
+    die "Strange...this appears not to be a multiple alignment!"
+        if ( $staticQuery == 0 && $staticSubject == 0 );
+    $queryID = $qID;
+    $subjID  = $sID;
+  }
+  die "Could not determine reference sequence.  This doesn't look like\n"
+      . "a multiple alignment to one reference sequence!\n"
+      if ( $staticQuery && $staticSubject );
+
+  my $refInput = MultAln::Subject;
+  $refInput = MultAln::Query if ( $staticQuery );
+
+  $mAlign = MultAln->new(
+                          referenceSeq              => "",
+                          searchCollection          => $resultCollection,
+                          searchCollectionReference => $refInput
+  );
+} else
+{
+  open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
+  my $seedAlign = SeedAlignment->new();
+  $seedAlign->read_stockholm( $IN );
+  close $IN;
+  $mAlign = MultAln->new( seedAlignment => $seedAlign );
+}
+
+my $cons;
+if ( $matrixFile eq "" )
+{
+  $cons = $mAlign->consensus( inclRef => $inclRef );
+} else
+{
+
+  # TODO: Finish implementing
+  # open up matrix file and create object
+}
+
+my ( $null, $totDiv, $avgDiv ) = $mAlign->kimuraDivergence( $cons );
+if ( $options{'stockholm'} )
+{
+  $mAlign->toSTK( includeReference => 1 );
+} elsif ( $options{'msf'} )
+{
+  $mAlign->toMSF( includeReference => 1 );
+} else
+{
+  $mAlign->printAlignments(
+                            blockSize => 100,
+                            showCons  => 1,
+                            inclRef   => $inclRef,
+                            showScore => $options{'showScore'}
+  );
+  print "Avg Kimura Div: $avgDiv\n";
+  $cons =~ s/\-//g;
+  print "\n\n>" . $mAlign->getReferenceName() . "\n$cons\n\n";
+}
+print stderr "Avg Kimura Div: $avgDiv\n";
+
+$mAlign->serializeOUT( "out.malign" );
+
+1;
