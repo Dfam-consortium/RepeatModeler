@@ -6,6 +6,15 @@ RepeatModeler 1.0.9
     we print out the random number generator seed at the start of 
     a run.  This number can be used with the "-srand ####" in future
     runs to exactly reproduce the samples taken from a given database.
+
+  - The final output files are now placed in the same directory as
+    the input database.  
+
+  - An additional output file is now generated containing the seed 
+    alignment for each discovered family.  This alignment is the source
+    of the final consnesus and is stored in a Dfam compatible Stockholm
+    file.  The new output files are named <database_name>-families.fa and
+    <database_name>-families.stk.
     
   - Support for Dfam_consensus has been built into this release. Two
     utilities dfamConsensusTool.pl and renameIds.pl can be found in the
