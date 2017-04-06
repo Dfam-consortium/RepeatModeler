@@ -4,7 +4,7 @@ RepeatModeler 1.0.9
   - RepeatModeler employs a genome sampling approach that is based
     on a random number generator. In this release of RepeatModeler
     we print out the random number generator seed at the start of 
-    a run.  This number can be used with the "-srand ####" in future
+    a run.  This number can be used with the "-srand ####" flag in future
     runs to exactly reproduce the samples taken from a given database.
 
   - The final output files are now placed in the same directory as
