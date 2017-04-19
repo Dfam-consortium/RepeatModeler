@@ -1831,25 +1831,27 @@ sub buildRSConsensi
     # as we do consensi.
     #
     my %seedAlnById   = ();
-    my $stockholmFile = SeedAlignmentCollection->new();
-    my $IN;
-    open $IN, "<$workDir/families.stk"
-        or die "Could not open $workDir/families.stk for reading!\n";
-    $stockholmFile->read_stockholm( $IN );
-    close $IN;
-
-    for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ )
-    {
-      my $seedAlign = $stockholmFile->get( $i );
-      my $id        = $seedAlign->getId();
-      if ( $id =~ /family-(\d+)/ )
+    if ( -s "$workDir/families.stk" ) {
+      my $stockholmFile = SeedAlignmentCollection->new();
+      my $IN;
+      open $IN, "<$workDir/families.stk"
+          or die "Could not open $workDir/families.stk for reading!\n";
+      $stockholmFile->read_stockholm( $IN );
+      close $IN;
+  
+      for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ )
       {
-        $seedAlign->setId( "rnd-$round" . "_family-$1" );
-        $seedAlnById{$1} = $seedAlign;
-      } else
-      {
-        print
-"Warning: could not decode ID from $workDir/families.stk file: id = $id\n";
+        my $seedAlign = $stockholmFile->get( $i );
+        my $id        = $seedAlign->getId();
+        if ( $id =~ /family-(\d+)/ )
+        {
+          $seedAlign->setId( "rnd-$round" . "_family-$1" );
+          $seedAlnById{$1} = $seedAlign;
+        } else
+        {
+          print
+  "Warning: could not decode ID from $workDir/families.stk file: id = $id\n";
+        }
       }
     }
 
@@ -2196,25 +2198,28 @@ sub buildReconConsensi
   # as we do consensi.
   #
   my %seedAlnById   = ();
-  my $stockholmFile = SeedAlignmentCollection->new();
-  my $IN;
-  open $IN, "<$workDir/families.stk"
-      or die "Could not open $workDir/families.stk for reading!\n";
-  $stockholmFile->read_stockholm( $IN );
-  close $IN;
-
-  for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ )
+  if ( -s "$workDir/families.stk" )
   {
-    my $seedAlign = $stockholmFile->get( $i );
-    my $id        = $seedAlign->getId();
-    if ( $id =~ /family-(\d+)/ )
+    my $stockholmFile = SeedAlignmentCollection->new();
+    my $IN;
+    open $IN, "<$workDir/families.stk"
+        or die "Could not open $workDir/families.stk for reading!\n";
+    $stockholmFile->read_stockholm( $IN );
+    close $IN;
+  
+    for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ )
     {
-      $seedAlign->setId( "rnd-$round" . "_family-$1" );
-      $seedAlnById{$1} = $seedAlign;
-    } else
-    {
-      print
-"Warning: could not decode ID from $workDir/families.stk file: id = $id\n";
+      my $seedAlign = $stockholmFile->get( $i );
+      my $id        = $seedAlign->getId();
+      if ( $id =~ /family-(\d+)/ )
+      {
+        $seedAlign->setId( "rnd-$round" . "_family-$1" );
+        $seedAlnById{$1} = $seedAlign;
+      } else
+      {
+        print
+  "Warning: could not decode ID from $workDir/families.stk file: id = $id\n";
+      }
     }
   }
 
