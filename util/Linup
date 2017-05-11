@@ -39,8 +39,10 @@ Linup -
 
 =head1 SYNOPSIS
 
-  Linup [-version] [-i] [ -matrix <matrix_file>  -cgParam # 
-                          -taParam #  -cgTransParam # ]
+  Linup [-version] [-i] [ -matrix <matrix_file>  
+                          [-trimLeft #] [-trimRight #]
+                          [-normalizeCoord]
+                          [-cgParam #] [-taParam # ] [-cgTransParam #] ]
                    [ -stockholm || -msf ]
         <crossmatch file> | <stockholm file>
 
@@ -143,6 +145,9 @@ my @getopt_args = (
                     '-stockholm',
                     '-showScore',
                     '-msf',
+                    '-trimLeft=s',
+                    '-trimRight=s',
+                    '-normalizeCoord',
                     '-matrix=s',
                     '-cgParam=s',
                     '-taParam=s',
@@ -285,6 +290,20 @@ if ( $fileType eq "crossmatch" )
   $mAlign = MultAln->new( seedAlignment => $seedAlign );
 }
 
+my $trimLeft = 0;
+$trimLeft = $options{'trimLeft'} if ( defined $options{'trimLeft'} );
+my $trimRight = 0;
+$trimRight = $options{'trimRight'} if ( defined $options{'trimRight'} );
+
+if ( $trimLeft || $trimRight )
+{
+  print STDERR "Trimming alignment: left = $trimLeft, right = $trimRight\n";
+  $mAlign->trimAlignments( left => $trimLeft, right => $trimRight );
+}
+if ( defined $options{'normalizeCoord'} ) {
+    $mAlign->normalizeSeqRefs();
+}
+
 my $cons;
 if ( $matrixFile eq "" )
 {
@@ -299,7 +318,7 @@ if ( $matrixFile eq "" )
 my ( $null, $totDiv, $avgDiv ) = $mAlign->kimuraDivergence( $cons );
 if ( $options{'stockholm'} )
 {
-  $mAlign->toSTK( includeReference => 1 );
+  $mAlign->toSTK();
 } elsif ( $options{'msf'} )
 {
   $mAlign->toMSF( includeReference => 1 );
@@ -314,6 +333,8 @@ if ( $options{'stockholm'} )
   print "Avg Kimura Div: $avgDiv\n";
   $cons =~ s/\-//g;
   print "\n\n>" . $mAlign->getReferenceName() . "\n$cons\n\n";
+
+
 }
 print stderr "Avg Kimura Div: $avgDiv\n";
 

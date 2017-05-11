@@ -344,8 +344,15 @@ sub getGappedReferenceLength
 
   if ( !defined $this->{'length'} )
   {
-    $this->{'length'} = length( $this->getReferenceSeq() );
+    $this->resetGappedReferenceLength;
   }
+  return $this->{'length'};
+}
+
+sub resetGappedReferenceLength
+{
+  my $this = shift;
+  $this->{'length'} = length( $this->getReferenceSeq() );
   return $this->{'length'};
 }
 
@@ -1005,30 +1012,6 @@ sub list
   my $object = shift;
   return $object->{'alignCol'};
 }
-
-##
-## TODO: DEPRECATE
-##
-#sub consensusSeq
-#{
-#  my $object = shift;
-#  @_ ? $object->{'alignCol'}[ 0 ]{seq} = shift: $object->{'alignCol'}[ 0 ]{seq};
-#}
-
-##
-## TODO: DEPRECATE
-##
-#
-# A unique identifier for this sequence within it's
-# crossmatch file.
-#
-#sub srcAlignID
-#{
-#  my $object = shift;
-#  @_
-#      ? $object->{srcAlignID}[ 0 ]{seq} = shift
-#      : $object->{'alignCol'}[ 0 ]{srcAlignID};
-#}
 
 ##---------------------------------------------------------------------##
 
@@ -2280,6 +2263,149 @@ sub getLowScoringAlignmentColumns
   }
 
   return ( \@columns, $valArray );
+}
+
+##---------------------------------------------------------------------##
+
+=head2 trimAlignments()
+
+  Use: trimAlignments( left => $bpLeft,
+                       right => $bpRight );
+
+  Trim the entire multiple alignment on the left and/or 
+  right side by a specific number of consensus bp.  If
+  the left side of the multiple alignment looks like:
+     
+        Cons:  T-AA--CTG...
+        Seq1:  TAAA--CAG...
+        Seq2:  T-CA--CTG...
+        Seq3:  T-AAC-CTG...
+        Seq4:  T-AA-TCTG...
+         
+  Then trimAlignments( left => 2 ) would trim:
+
+        Cons:  A--CTG...
+        Seq1:  A--CAG...
+        Seq2:  A--CTG...
+        Seq3:  AC-CTG...
+        Seq4:  A-TCTG...
+ 
+  NOTE: This currently does not include the reference in this operation.
+
+=cut
+
+##---------------------------------------------------------------------##
+sub trimAlignments
+{
+  my $this       = shift;
+  my %parameters = @_;
+
+  croak $CLASS. "::trimAlignments(): Missing 'left' or 'right' parameter!\n"
+      if ( !defined $parameters{'left'} && !defined $parameters{'right'} );
+
+  my $consensus = $this->consensus( inclRef => 0 );
+
+  my $leftCols = 0;
+  my $rightCols = 0;
+
+  my $maLen = $this->getGappedReferenceLength();
+ 
+  if ( defined $parameters{'left'} )
+  {
+    while ( $leftCols <= $maLen ) 
+    {
+      my $str = substr($consensus,0,$leftCols);
+      $str =~ s/-//g;
+      last if ( length($str) == $parameters{'left'} + 1 );
+      $leftCols++;
+    }
+    $leftCols--;
+  }
+  if ( defined $parameters{'right'} )
+  {
+    while ( $rightCols <= $maLen )
+    {
+      my $str = substr($consensus,$maLen-$rightCols,$rightCols);
+      $str =~ s/-//g;
+      last if ( length($str) == $parameters{'right'} + 1 );
+      $rightCols++;
+    }
+    $rightCols--;
+  }
+
+  for ( my $i = 0; $i < $this->getNumAlignedSeqs(); $i++ )
+  {
+    my $relStart = $this->getAlignedStart($i);
+    my $relEnd = $this->getAlignedEnd($i);
+    my $seq = $this->getAlignedSeq($i);  
+
+    # Do the suffix first
+    if ( $relEnd >= ( $maLen - $rightCols ) ) {
+      my $pos = $relEnd - ( $maLen - $rightCols ) + 1;
+      my $trimSeq = substr($seq,length($seq)-$pos,$pos);
+      substr($seq,length($seq)-$pos,$pos) = "";
+      #$this->setAlignedEnd( $i, $relEnd - length($trimSeq) );
+      $this->setAlignedEnd( $i, $relEnd - length($trimSeq) - $leftCols );
+      $trimSeq =~ s/-//g;
+      $this->setAlignedSeqEnd( $i, $this->getAlignedSeqEnd($i) - length($trimSeq) );
+    }else {
+      $this->setAlignedEnd( $i, $relEnd - $leftCols );
+    }
+
+    if ( $relStart < $leftCols ) {
+      my $pos = $leftCols - $relStart;
+      my $trimSeq = substr($seq,0,$pos);
+      substr($seq,0,$pos) = "";
+      #$this->setAlignedStart( $i, $relStart + length($trimSeq) );
+      $this->setAlignedStart($i, 0);
+      $trimSeq =~ s/-//g;
+      $this->setAlignedSeqStart( $i, $this->getAlignedSeqStart($i) + length($trimSeq) );
+    }else {
+      $this->setAlignedStart( $i, $relStart - $leftCols );
+    }
+
+    $this->setAlignedSeq($i,$seq);
+  }
+  $this->setReferenceSeq( substr($this->getReferenceSeq(), $leftCols, length($this->getReferenceSeq()) - ($leftCols + $rightCols)) );
+  $this->resetGappedReferenceLength();
+}
+
+sub normalizeSeqRefs
+{
+  my $this       = shift;
+  my %parameters = @_;
+
+  for ( my $i = 0; $i < $this->getNumAlignedSeqs(); $i++ )
+  {
+    my $id = $this->getAlignedName($i);
+    # ie. chrUn_KK085329v1_11857_12355_R
+    if ( $id =~ /^(\S+)_(\d+)_(\d+)(_R)?/ ) {
+      my $namePrefix = $1;
+      my $start = $2;
+      my $end = $3;
+      my $curOrient = $this->getAlignedOrientation($i);
+      my $curStart = $this->getAlignedSeqStart($i);
+      my $curEnd = $this->getAlignedSeqEnd($i);
+      if ( $4 ne "" ) {
+        $this->setAlignedSeqEnd( $i, $end - $curStart + 1 );
+        $this->setAlignedSeqStart( $i, $end - $curEnd + 1 );
+        # Original sequence is reverse
+        if ( $curOrient eq "+" )
+        {
+          # Alignment is forward
+          $this->getAlignedOrientation("-");
+        }else  {
+          # Alignment is reverse
+          # two wrongs make a right
+          $this->getAlignedOrientation("+");
+        }
+      }else {
+        $this->setAlignedSeqStart( $i, $start + $curStart - 1 );
+        $this->setAlignedSeqEnd( $i, $start + $curEnd - 1 );
+      }
+      $this->setAlignedName($i, $namePrefix);
+    }
+  }
 }
 
 ##---------------------------------------------------------------------##
