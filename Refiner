@@ -688,7 +688,8 @@ sub buildConsensus
     {
       print $CLASS
           . "::buildConsensus(): $pathToFastaFile ( $consName ) "
-          . "didn't have any hsps!!!!!\n";
+          . "didn't have any hsps.\n";
+      exit;
     }
   }    # if Run stat from first pass
 

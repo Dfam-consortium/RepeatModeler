@@ -2108,23 +2108,27 @@ sub buildReconConsensi
            . "-noTmp -giToID $genomeDB.translation $workDir/family-$familyID.fa"
       );
 
-      open INREF, "<$workDir/family-$familyID.fa.refiner_cons"
-          or die $CLASS
-          . ": Could not open refined model $workDir/family-$familyID."
-          . "fa.refiner_cons!\n";
-      while ( <INREF> )
+      if ( -s "$workDir/family-$familyID.fa.refiner_cons" )
       {
-        if ( /Final Multiple Alignment Size = (\d+)/ )
+        open INREF, "<$workDir/family-$familyID.fa.refiner_cons"
+            or die $CLASS
+            . ": Could not open refined model $workDir/family-$familyID."
+            . "fa.refiner_cons!\n";
+        while ( <INREF> )
         {
-          $maSize = $1;
+          if ( /Final Multiple Alignment Size = (\d+)/ )
+          {
+            $maSize = $1;
         } else
-        {
-          $cons .= $_;
+          {
+            $cons .= $_;
+          }
         }
+        close INREF;
+      }else {
+        print "  WARNING: Refiner did not return a consensus.\n";
       }
-      close INREF;
       print "Refinement: " . elapsedTime( 2 ) . "\n";
-
     } else
     {
 
