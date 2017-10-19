@@ -353,7 +353,7 @@ do
     }
     unless ( -s "$nsegLocation/nseg" )
     {
-      print "$nsegLocation does not appear to contain the trf program.\n";
+      print "$nsegLocation does not appear to contain the nseg program.\n";
       $goodParam = 0;
     }
     if ( $goodParam == 0 )
