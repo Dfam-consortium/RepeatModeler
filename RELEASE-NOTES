@@ -1,3 +1,15 @@
+RepeatModeler 1.0.11
+====================
+  - Bugfix release. Avoid bailing if Refiner could not produce a consensus 
+    from the family sequence set.
+
+RepeatModeler 1.0.10
+====================
+  - Bugfix release. Fixes a bug that will cause RepeatModeler to exit 
+    if no new repeats are detected after round-2. This may happen if the
+    sample size is small enough or contains a repeat-poor set of sequences
+    and may not reflect the chance that repeats will be found in later rounds.
+    Typically new repeats are found in all rounds of RepeatModeler.
 
 RepeatModeler 1.0.9
 ===================
