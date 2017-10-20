@@ -1948,7 +1948,7 @@ sub buildReconConsensi
         #   1      2     1    gi|1009       51      114
         if ( $fields[ 4 ] < 0 || $fields[ 5 ] < 0 )
         {
-          warn "WARNING: RECON returned a negative offest:\n    $_\n"
+          warn "WARNING: RECON returned a negative offset:\n    $_\n"
               . "In file: $workDir/summary/eles.  Ignoring line and"
               . " moving on.\n";
           next;
