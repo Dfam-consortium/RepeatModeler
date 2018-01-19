@@ -44,7 +44,7 @@ Linup -
                           [-normalizeCoord]
                           [-cgParam #] [-taParam # ] [-cgTransParam #] ]
                    [ -stockholm || -msf ]
-        <crossmatch file> | <stockholm file>
+        <crossmatch file> | <stockholm file> | <msa fasta>
 
 
 =head1 DESCRIPTION
@@ -145,6 +145,7 @@ my @getopt_args = (
                     '-stockholm',
                     '-showScore',
                     '-msf',
+                    '-fasta',
                     '-trimLeft=s',
                     '-trimRight=s',
                     '-normalizeCoord',
@@ -220,9 +221,10 @@ if ( $options{'matrix'} )
 open IN, "<$inputFile" or die "Could not open $inputFile for reading!\n";
 my $maxLines = 10000;
 my $fileType = "Unknown";
+my $foundFastaHdr = 0;
 while ( <IN> )
 {
-  next if (    /^(\S+)\s+(\W+)$/
+  next if (    /^\s*$/ 
             || /^(\W+).*Score:/ );
   last if ( $maxLines-- < 0 );
   if ( /^#\s+STOCKHOLM/ )
@@ -235,13 +237,20 @@ while ( <IN> )
     $fileType = "crossmatch";
     last;
   }
+  $foundFastaHdr = 1 if ( /^>\S+.*/ );
+  if ( $foundFastaHdr && /^\s*[ACGTUMRWSYKVHDBNacgtumrwsykvhdbn\-\.]+\s*$/ && /[\-\.]/ )
+  {
+    $fileType = "msa-fasta";
+    last;
+  }
+    
 }
 close IN;
 
 if ( $fileType eq "Unknown" )
 {
   die "Could not determine filetype for $inputFile.  Verify that\n"
-      . "the file is either a cross_match or stockholm file.\n";
+      . "the file is either a cross_match, stockholm or an msa-fasta file.\n";
 }
 
 my $mAlign;
@@ -281,13 +290,45 @@ if ( $fileType eq "crossmatch" )
                           searchCollection          => $resultCollection,
                           searchCollectionReference => $refInput
   );
-} else
+} elsif ( $fileType eq "stockholm" )
 {
   open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
   my $seedAlign = SeedAlignment->new();
   $seedAlign->read_stockholm( $IN );
   close $IN;
   $mAlign = MultAln->new( seedAlignment => $seedAlign );
+}elsif ( $fileType eq "msa-fasta" )
+{ 
+  my @seqs;
+  my $seq;
+  my $id;
+  open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
+  # Simple FASTA reader
+  while (<$IN>) {
+    if ( /^>(\S+)/ ) 
+    {
+      my $tmpID = $1;
+      if ( $seq )
+      {
+        $seq = uc($seq);
+        push @seqs, [ $id, $seq ];
+      }
+      $seq = "";
+      $id = $tmpID;
+      next;
+    }
+    s/[\s\n\r]+//g;
+    $seq .= $_;
+  }
+  if ( $seq )
+  {
+    $seq = uc($seq);
+    push @seqs, [ $id, $seq ];
+  }
+  close $IN;
+  $mAlign = MultAln->new( sequences => \@seqs );
+}else {
+  die "Support for $fileType is not complete yet ";
 }
 
 my $trimLeft = 0;
@@ -322,6 +363,9 @@ if ( $options{'stockholm'} )
 } elsif ( $options{'msf'} )
 {
   $mAlign->toMSF( includeReference => 1 );
+} elsif ( $options{'fasta'} )
+{
+  $mAlign->toFASTA();
 } else
 {
   $mAlign->printAlignments(

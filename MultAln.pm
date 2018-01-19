@@ -112,6 +112,11 @@ Usage:
   or
    my $mAlign = MultAln->new( seedAlignment => $mySeedAlignmentRef );
 
+  or 
+   my $mAlign = MultAln->new( sequences => [ [ id0, seq0 ], [ id1, seq1 ],
+                               ... ] );
+   
+
 =head1 DESCRIPTION
 
 A class to hold alignments to a reference sequence. This object
@@ -209,6 +214,9 @@ sub new
   } elsif ( defined $nameValuePairs{'seedAlignment'} )
   {
     $this->_alignFromSeedAlignment( %nameValuePairs );
+  }elsif ( defined $nameValuePairs{'sequences'} )
+  {
+    $this->_importAlignedSeqs( %nameValuePairs );
   }
 
   return $this;
@@ -1260,8 +1268,16 @@ sub kimuraDivergence
     }
     $sumAlignedLength += $alignedBases;
     $hits++;
-    my $p = $transI / $alignedBases;
-    my $q = $transV / $alignedBases;
+    my $p;
+    my $q;
+    if ( $alignedBases == 0 )
+    {
+      $p = 0;
+      $q = 0;
+    }else {
+      $p = $transI / $alignedBases;
+      $q = $transV / $alignedBases;
+    }
     if ( ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 ) <= 0 )
     {
       $object->setAlignedDiv( $n, 1 );
@@ -1584,6 +1600,100 @@ sub alignFromCrossMatchFile
     );
   }
 }
+
+
+##---------------------------------------------------------------------##
+## Use: _importAlignedSeqs( $this,
+##                          sequences => [ [ id0, seq0 ], [ id1, seq1 ],
+##                                          ... ] );
+##
+## This is a private method for generating a multiple alignment from
+## a simple structure containing pre-aligned sequences using the standard
+## "-" or "." alignment spacing symbols.
+##
+##---------------------------------------------------------------------##
+sub _importAlignedSeqs
+{
+  my $object     = shift;
+  my %parameters = @_;
+
+  # Parameter validation
+  croak $CLASS
+      . "::importAlignedSeqs() sequences "
+      . "parameter is missing or is of the wrong type: "
+      . ref( $parameters{'sequences'} ) . "\n"
+      if ( ref( $parameters{'sequences'} ) ne "ARRAY" );
+  my $sequences = $parameters{'sequences'};
+
+  for ( my $l = 0; $l <= $#{$sequences}; $l++ )
+  {
+    my $sequence = $sequences->[$l]->[1];
+    my $tmpSeq = $sequence;
+    $tmpSeq =~ s/[\.\-\s]//g;
+    my $orient = "+";
+
+    my $assemblyName = "Unknown";
+    my $sequenceName = $sequences->[$l]->[0];
+    my $alignedBaseLen= length($tmpSeq);
+    my $startPos = 1;
+    my $endPos = 0;
+    if ( $sequenceName =~ /(\S+)\:(\d+)-(\d+)/ )
+# Hack...deletme
+#         || $sequenceName =~ /(\S+)\_[\-]?(\d+)-(\d+)/ )
+    {
+      $sequenceName = $1;
+      $startPos = $2;
+      $endPos = $3;
+    }else {
+      $startPos = 1;
+      $endPos = $alignedBaseLen
+    }
+
+    my $refStart = 0;
+    if ( $sequence =~ /^(\.+)/ )
+    {
+      $refStart = length( $1 );
+      $sequence = substr( $sequence, $refStart );
+    }
+
+    if ( $sequence =~ /([^\.])(\.+)$/ )
+    {
+      $sequence = substr( $sequence, 0, length( $sequence ) - length( $2 ) );
+    }
+    my $refEnd = length( $sequence ) + $refStart - 1;
+
+    # Convert "." in SeedAlignment to "-" for MultAln
+    $sequence =~ s/\./\-/g;
+
+    # The SeedAlignment object stores sequences with padding.  I.e
+    # all sequences are the same length.  This makes it easy to
+    # translate to a MultAln object because all sequences start at 0
+    # and end at length($seq);
+    $object->setAlignedStart( $l, $refStart );
+    $object->setAlignedEnd( $l, $refEnd );
+    $object->setAlignedSeq( $l, $sequence );
+
+    my $ID = "";
+    $ID .= "$assemblyName:" if ( $assemblyName );
+    $ID .= "$sequenceName:";
+    if ( $orient eq "+" )
+    {
+      $ID .= "$startPos-$endPos";
+    } else
+    {
+      $ID .= "$endPos-$startPos";
+    }
+    $object->setAlignedName( $l, $ID );
+    $object->setAlignedSeqStart( $l, $startPos );
+    $object->setAlignedSeqEnd( $l, $endPos );
+
+    # Is this necessary?
+    $object->setAlignedOrientation( $l, "+" );
+  }
+
+  $object->setReferenceSeq( $object->consensus() );
+}
+
 
 ##---------------------------------------------------------------------##
 ## Use: _alignFromSeedAlignment( $this,
@@ -2145,22 +2255,26 @@ sub getLowScoringAlignmentColumns
     ## Reasonable defaults
     ## TODO: Encode these default matrices somewhere centrally -- perhaps in matrix.pm
     # Comparison Matrix
-    #  A   R   G   C   Y   T   K   M   S   W   N
+    #       A   R   G   C   Y   T   K   M   S   W   N  V  H  D  B
     my @alphaArray = (
-      qw(   9   1  -6 -15 -16 -17 -12  -2 -10  -4  -1 ),
-      qw(   1   1   1 -15 -15 -16  -6  -6  -6  -7  -1 ),
-      qw(  -6   1  10 -15 -15 -15  -2  -10 -2  -10 -1 ),
-      qw( -15 -15 -15  10   2  -6  -9  -2  -2  -9  -1 ),
-      qw( -16 -15 -15   1   1   1  -6  -7  -7  -7  -1 ),
-      qw( -17 -16 -15  -6   1   9  -2 -12 -11  -4  -1 ),
-      qw( -12  -6  -2 -11  -6  -2  -2 -11  -7  -7  -1 ),
-      qw(  -2  -6 -10  -2  -7 -12 -11  -2  -7  -7  -1 ),
-      qw(  -10 -6  -2  -2  -7 -11  -7  -7  -2  -10 -1 ),
-      qw(  -4  -7 -10 -11  -7  -4  -7  -7 -10  -4  -1 ),
-      qw(  -1  -1  -1  -1  -1  -1  -1  -1  -1  -1  -1 )
+      qw(   9   1  -6 -15 -16 -17 -12  -2 -10  -4  -1 -2 -2 -2 -2 ),
+      qw(   1   1   1 -15 -15 -16  -6  -6  -6  -7  -1 -2 -2 -2 -2 ),
+      qw(  -6   1  10 -15 -15 -15  -2  -10 -2  -10 -1 -2 -2 -2 -2 ),
+      qw( -15 -15 -15  10   2  -6  -9  -2  -2  -9  -1 -2 -2 -2 -2 ),
+      qw( -16 -15 -15   1   1   1  -6  -7  -7  -7  -1 -2 -2 -2 -2 ),
+      qw( -17 -16 -15  -6   1   9  -2 -12 -11  -4  -1 -2 -2 -2 -2 ),
+      qw( -12  -6  -2 -11  -6  -2  -2 -11  -7  -7  -1 -2 -2 -2 -2 ),
+      qw(  -2  -6 -10  -2  -7 -12 -11  -2  -7  -7  -1 -2 -2 -2 -2 ),
+      qw(  -10 -6  -2  -2  -7 -11  -7  -7  -2  -10 -1 -2 -2 -2 -2 ),
+      qw(  -4  -7 -10 -11  -7  -4  -7  -7 -10  -4  -1 -2 -2 -2 -2 ),
+      qw(  -1  -1  -1  -1  -1  -1  -1  -1  -1  -1  -1 -2 -2 -2 -2 ),
+      qw(  -2  -2  -2  -2  -2  -2  -2  -2  -2  -2  -2 -2 -2 -2 -2 ),
+      qw(  -2  -2  -2  -2  -2  -2  -2  -2  -2  -2  -2 -2 -2 -2 -2 ),
+      qw(  -2  -2  -2  -2  -2  -2  -2  -2  -2  -2  -2 -2 -2 -2 -2 ),
+      qw(  -2  -2  -2  -2  -2  -2  -2  -2  -2  -2  -2 -2 -2 -2 -2 )
     );
 
-    my $alphabet_r = [ qw( A   R   G   C   Y   T   K   M   S   W   N ) ];
+    my $alphabet_r = [ qw( A R G C Y T K M S W N V H D B ) ];
     $matrix_r = {};
     for ( my $i = 0 ; $i < scalar( @{$alphabet_r} ) ; $i++ )
     {
@@ -2363,7 +2477,6 @@ sub trimAlignments
     }else {
       $this->setAlignedStart( $i, $relStart - $leftCols );
     }
-
     $this->setAlignedSeq($i,$seq);
   }
   $this->setReferenceSeq( substr($this->getReferenceSeq(), $leftCols, length($this->getReferenceSeq()) - ($leftCols + $rightCols)) );
@@ -3624,6 +3737,49 @@ sub toSTK
 
 ##---------------------------------------------------------------------##
 
+=head2 toFASTA()
+
+  Use: $obj->toFASTA( filename => "filename",
+                    includeReference => 1 );
+
+  Export the multiple alignment data to a msa FASTA format.
+
+=cut
+
+##---------------------------------------------------------------------##
+sub toFASTA
+{
+  my $object     = shift;
+  my %parameters = @_;
+
+  my $OUT;
+  if ( $parameters{'filename'} )
+  {
+    open $OUT, ">$parameters{'filename'}";
+  } else
+  {
+    $OUT = *STDOUT;
+  }
+
+  if ( defined $parameters{'includeReference'} )
+  {
+    #print $OUT ">"
+    #    . $object->getReferenceName() . "\n";
+    #print $OUT "" . $object->getReferenceSeq() . "\n";
+  }
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ )
+  {
+    my $start = $object->getAlignedStart( $i );
+    my $end   = $object->getAlignedEnd( $i );
+    print $OUT ">"
+        . $object->getAlignedName( $i ) . "\n";
+    print $OUT "" . substr($object->getAlignedSeq( $i ),$start, ($end-$start+1)) . "\n";
+  }
+  close $OUT;
+}
+
+##---------------------------------------------------------------------##
+
 =head2 toMSF()
 
   Use: $obj->toMSF( filename => "filename",
@@ -3823,8 +3979,13 @@ sub printAlignments
   }
 
   my $maxIDLen = length( $object->getReferenceName() );
+  my $maxCoordLen = 0;
   foreach my $i ( @sortedIndexes )
-  {
+  { 
+    my $start = $object->getAlignedSeqStart( $i );
+    my $end   = $object->getAlignedSeqEnd( $i );
+    $maxCoordLen = length($start) if ( length($start) > $maxCoordLen );
+    $maxCoordLen = length($end) if ( length($end) > $maxCoordLen );
     my $tLen = length( $object->getAlignedName( $i ) );
     $maxIDLen = $tLen if ( $tLen > $maxIDLen );
   }
@@ -3884,7 +4045,7 @@ sub printAlignments
       my $end        = $consBaseStartPos + $numLetters - 1;
       my $outStr     = $name
           . " " x ( $maxIDLen - length( $name ) ) . " "
-          . " " x ( 6 - length( $consBaseStartPos ) )
+          . " " x ( $maxCoordLen - length( $consBaseStartPos ) )
           . $consBaseStartPos . " "
           . $seq
           . " " x ( $blockSize - length( $seq ) ) . "    "
@@ -3901,7 +4062,7 @@ sub printAlignments
     my $end        = $refBaseStartPos + $numLetters - 1;
     my $outStr     = $name
         . " " x ( $maxIDLen - length( $name ) ) . " "
-        . " " x ( 6 - length( $refBaseStartPos ) )
+        . " " x ( $maxCoordLen - length( $refBaseStartPos ) )
         . $refBaseStartPos . " "
         . $seq
         . " " x ( $blockSize - length( $seq ) ) . "    "
@@ -3948,7 +4109,7 @@ sub printAlignments
 
       my $outStr = $name
           . " " x ( $maxIDLen - length( $name ) ) . " "
-          . " " x ( 6 - length( $start ) )
+          . " " x ( $maxCoordLen - length( $start ) )
           . $start . " "
           . $seq
           . " " x ( $blockSize - length( $seq ) ) . "    "
@@ -4402,23 +4563,27 @@ sub buildConsensusFromArray
                            #  that could have arisen from CpG site.
 
   # For mammals where there is a strong A/T bias
-  #         A   R   G   C   Y   T   K   M   S   W   N   X   Z
+  #      A   R   G   C   Y   T   K   M   S   W   N   X   Z   V   H   D   B
   my @alphaArray = (
-    qw(  9   0  -8 -15 -16 -17 -13  -3 -11  -4  -2  -7  -3 ),
-    qw(  2   1   1 -15 -15 -16  -7  -6  -6  -7  -2  -7  -3 ),
-    qw( -4   3  10 -14 -14 -15  -2  -9  -2  -9  -2  -7  -3 ),
-    qw(-15 -14 -14  10   3  -4  -9  -2  -2  -9  -2  -7  -3 ),
-    qw(-16 -15 -15   1   1   2  -6  -7  -6  -7  -2  -7  -3 ),
-    qw(-17 -16 -15  -8   0   9  -3 -13 -11  -4  -2  -7  -3 ),
-    qw(-11  -6  -2 -11  -7  -3  -2 -11  -6  -7  -2  -7  -3 ),
-    qw( -3  -7 -11  -2  -6 -11 -11  -2  -6  -7  -2  -7  -3 ),
-    qw( -9  -5  -2  -2  -5  -9  -5  -5  -2  -9  -2  -7  -3 ),
-    qw( -4  -8 -11 -11  -8  -4  -8  -8 -11  -4  -2  -7  -3 ),
-    qw( -2  -2  -2  -2  -2  -2  -2  -2  -2  -2  -1  -7  -3 ),
-    qw( -7  -7  -7  -7  -7  -7  -7  -7  -7  -7  -7  -7  -3 ),
-    qw( -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3 )
+    qw(  9   0  -8 -15 -16 -17 -13  -3 -11  -4  -2  -7  -3  -3  -3  -3  -3 ),
+    qw(  2   1   1 -15 -15 -16  -7  -6  -6  -7  -2  -7  -3  -3  -3  -3  -3 ),
+    qw( -4   3  10 -14 -14 -15  -2  -9  -2  -9  -2  -7  -3  -3  -3  -3  -3 ),
+    qw(-15 -14 -14  10   3  -4  -9  -2  -2  -9  -2  -7  -3  -3  -3  -3  -3 ),
+    qw(-16 -15 -15   1   1   2  -6  -7  -6  -7  -2  -7  -3  -3  -3  -3  -3 ),
+    qw(-17 -16 -15  -8   0   9  -3 -13 -11  -4  -2  -7  -3  -3  -3  -3  -3 ),
+    qw(-11  -6  -2 -11  -7  -3  -2 -11  -6  -7  -2  -7  -3  -3  -3  -3  -3 ),
+    qw( -3  -7 -11  -2  -6 -11 -11  -2  -6  -7  -2  -7  -3  -3  -3  -3  -3 ),
+    qw( -9  -5  -2  -2  -5  -9  -5  -5  -2  -9  -2  -7  -3  -3  -3  -3  -3 ),
+    qw( -4  -8 -11 -11  -8  -4  -8  -8 -11  -4  -2  -7  -3  -3  -3  -3  -3 ),
+    qw( -2  -2  -2  -2  -2  -2  -2  -2  -2  -2  -1  -7  -3  -3  -3  -3  -3 ),
+    qw( -7  -7  -7  -7  -7  -7  -7  -7  -7  -7  -7  -7  -3  -3  -3  -3  -3 ),
+    qw( -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3 ),
+    qw( -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3 ),
+    qw( -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3 ),
+    qw( -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3 ),
+    qw( -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3  -3 )
   );
-  my $alphabet_r = [ qw( A   R   G   C   Y   T   K   M   S   W   N   X   Z ) ];
+  my $alphabet_r = [ qw( A R G C Y T K M S W N X Z V H D B ) ];
   my $matrix_r   = {};
   for ( my $i = 0 ; $i < scalar( @{$alphabet_r} ) ; $i++ )
   {

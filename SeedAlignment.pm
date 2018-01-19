@@ -262,6 +262,39 @@ sub setDescription
 
 ##-------------------------------------------------------------------------##
 
+=head2 get_setAuthor()
+
+  Use: my $value    = getAuthor();
+  Use: my $oldValue = setAuthor( $value );
+
+  Get/Set the author.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub getAuthor
+{
+  my $obj = shift;
+
+  my $value = $obj->{'author'};
+
+  return $value;
+}
+
+sub setAuthor
+{
+  my $obj      = shift;
+  my $value    = shift;
+  my $oldValue = undef;
+
+  $oldValue = $obj->{'author'};
+  $obj->{'author'} = $value;
+
+  return $oldValue;
+}
+
+##-------------------------------------------------------------------------##
+
 =head2 get_setAlignmentMethod()
 
   Use: my $value    = getAlignmentMethod();
@@ -358,6 +391,40 @@ sub setSeqCount
 
   return $oldValue;
 }
+
+##-------------------------------------------------------------------------##
+
+=head2 get_setGfLines()
+
+  Use: my $arrayRef = getGfLines();
+  Use: my $oldRef = setGfLines( \@array );
+
+  Get/Set the Auxiliary (ie. unparsed) GF lines.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub getGfLines
+{
+  my $obj = shift;
+
+  my $value = $obj->{'GF_lines'};
+
+  return $value;
+}
+
+sub setGfLines
+{
+  my $obj      = shift;
+  my $value    = shift;
+  my $oldValue = undef;
+
+  $oldValue = $obj->{'GF_lines'};
+  $obj->{'GF_lines'} = $value;
+
+  return $oldValue;
+}
+
 
 ##-------------------------------------------------------------------------##
 
@@ -910,12 +977,13 @@ sub clearClades
   
   Optional fields:
   ----------------
-     RN   Reference Number:           Reference Number.
-     RM   Reference PubMed:           Pubmed reference number.
-     RT   Reference Title:            Reference Title. 
-     RA   Reference Author:           Reference Author
-     RL   Reference Location:         Journal location. 
-     DR   Database Reference:         Reference to external database. 
+     RN     Reference Number:           Reference Number.
+     RM     Reference PubMed:           Pubmed reference number.
+     RT     Reference Title:            Reference Title. 
+     RA     Reference Author:           Reference Author
+     RL     Reference Location:         Journal location. 
+     DR     Database Reference:         Reference to external database. 
+     CC HC  Handbuilt Consensus:        An alternative consnesus for the SEED alignment.
 
   #=GC
   
@@ -972,6 +1040,18 @@ sub read_stockholm
       # Only keep the first word in the field.
       $this->setId( $1 );
       next;
+    }
+    
+    # Save the author line
+    if ( /^\#=GF\s+AU\s+(\S.*)$/ )
+    {
+      if ( $this->getAuthor() ) 
+      {
+        $this->setAuthor( $this->getAuthor() . $1 . "\n" );
+      } else
+      {
+        $this->setAuthor( $1 . "\n" );
+      }
     }
 
     # Save the description lines
@@ -1039,7 +1119,7 @@ sub read_stockholm
     }
 
     # Save unused GF lines for later parsing
-    # TODO: Unhandled DR and AU lines.
+    # TODO: Unhandled DR lines.
     if ( /^\#=GF/ )
     {
       push( @{ $this->{'GF_lines'} }, $_ );

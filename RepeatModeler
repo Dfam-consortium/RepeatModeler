@@ -107,6 +107,7 @@ use File::Path;
 use File::Basename;
 use Cwd qw(abs_path getcwd cwd);
 use Data::Dumper;
+use Time::HiRes qw( gettimeofday tv_interval);
 
 # RepeatModeler Libraries
 use RepModelConfig;
@@ -302,10 +303,12 @@ print "Database = $genomeDB ";
 my %dbSeqs;    # Hash containing the names of all the DB seq IDs and their size
 my @dbSeqIDArray = ();
 my $dbSize       = 0;
+my @contigSizes = ();
 while ( $dbIndex =~ />?(\S+)\s+(\d+)\s*$/mg )
 {
   print "." if ( ( $#dbSeqIDArray % 10000 ) == 0 );
   $dbSeqs{$1} = $2;
+  push @contigSizes, $2;
   push @dbSeqIDArray, $1;
   $dbSize += $2;
 }
@@ -315,6 +318,64 @@ die "Database $genomeDB does not contain any sequences!\n"
     if ( keys( %dbSeqs ) == 0 );
 print "  - Sequences = " . ( $#dbSeqIDArray + 1 ) . "\n";
 print "  - Bases = $dbSize\n";
+
+
+if ( @contigSizes > 100 ) {
+  @contigSizes = sort { $a <=> $b }@contigSizes;
+
+  my $tabSize = 0;
+  my $halfAssembly = $dbSize / 2;
+  my $N50 = 0;
+  for ( my $i = 0; $i < $#contigSizes; $i++ )
+  {
+    last if ( $tabSize + $contigSizes[$i] > $halfAssembly );
+    $tabSize += $contigSizes[$i];
+    $N50 = $contigSizes[$i];
+  }
+  print "  - N50 = $N50\n";
+
+  print "  - Contig Histogram:\n";
+  print "  Size(bp)                                                        Count\n";
+  print "  -----------------------------------------------------------------------\n";
+  my @bins = ();
+  my $numBins = 15;
+  my $minVal = $contigSizes[0];
+  my $maxHistBarCnt = 0;
+  my $binSize = ($contigSizes[$#contigSizes]-$minVal) / $numBins;
+  $binSize = $minVal if ( $binSize == 0 );
+  foreach my $val ( @contigSizes ) {
+    my $bin = int(($val-$minVal) / $binSize);
+    $bins[$bin]++;
+    $maxHistBarCnt = $bins[$bin] if ( $bins[$bin] > $maxHistBarCnt );
+  }
+  
+  my $labelWidth = (length($binSize * $numBins)*2)+1;
+  my $histoWidth = 50;
+  my $markTic = $maxHistBarCnt/$histoWidth;
+
+  for ( my $i = $numBins-1; $i >= 0; $i-- )
+  {
+    my $rangeStart = int($minVal + ( $i * $binSize ));
+    my $rangeStr = "$rangeStart-" . int($rangeStart + $binSize );
+    if ( $i == $numBins-1 )
+    {
+      $rangeStr = "$rangeStart-$contigSizes[$#contigSizes]";
+    }
+    print "  $rangeStr" . " "x($labelWidth-length($rangeStr)) . " |";
+    print "*"x(int($bins[$i]/$markTic)) . " "x($histoWidth-int($bins[$i]/$markTic)) . " [ $bins[$i] ]\n";
+  }
+  print "\n";
+  undef @bins;
+  if ( $N50 < 10000 )
+  {
+    print "  WARN: The N50 for this assembly is low ( <10,000 ).  The de novo methods\n";
+    print "        employed by RepeatModeler are intended for use with long contiguous\n";
+    print "        sequences and may not perform well with an over-abundance of short\n";
+    print "        contigs in the database.\n";
+  }
+}
+undef @contigSizes;
+
 
 die "Database $genomeDB is not large enough ( minimum $fragmentSize bp ) to "
     . "process with RepeatModeler.\n"
@@ -482,6 +543,48 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} )
   }
   print "Using output directory = $tmpDir\n";
 }
+
+# 
+# Evaluate storage performance  : This program is heavily filesystem
+# dependent.  If the working directory is stored on a network filesystem
+# the program will run slowly.  The numbers choosen represent arbitrary
+# cutoffs based on current hardware ( Jan/2018 )..
+#
+my $throughput = benchmarkStorage( "$tmpDir/bench.dat" );
+my $performance = "Undetermined";
+if ( $throughput < 300 )
+{ 
+  $performance = "poor";
+}elsif ( $throughput >= 300 && $throughput < 700 ) {
+  $performance = "fair";
+}elsif ( $throughput >= 700 && $throughput < 1000 ) {
+  $performance = "good"; 
+}elsif ( $throughput >= 1000 ) {
+  $performance = "excellent";
+}
+print "Storage Throughput = $performance ( " . sprintf("%0.2f", $throughput ) . " MB/s )\n";
+if ( $performance eq "poor" ) {
+  print "  - NOTE: Poor storage througput will have a large impact on RepeatModeler\n"
+       ."          performance.  The low throughput observed above may be due to\n"
+       ."          transient usage patterns on the system and may not reflect the\n"
+       ."          actual system performance. Whenever possible run RepeatModeler\n"
+       ."          in a directory stored on a fast local disk and not over a\n"
+       ."          network filesytem.\n";
+}
+
+#
+# Basic info
+#
+print "\nReady to start the sampling process.\n";
+print "   The runtime of RepeatModeler heavily depends on the quality of the assembly\n";
+print "   and the repetitive content of the sequences.  It is not imperative\n";
+print "   that RepeatModeler completes all rounds in order to obtain useful\n";
+print "   results.  At the completion of each round the files ( consensi.fa, and\n";
+print "   families.stk ) found in:\n";
+print "      $tmpDir/ \n";
+print "   will contain all results produced in prior rounds. These files may be \n";
+print "   manually copied and run through RepeatClassifier should the program\n";
+print "   be terminated early.\n";
 
 #
 # Main loop
@@ -1324,6 +1427,39 @@ exit;
 #############################################################################
 #                          S U B R O U T I N E S                            #
 #############################################################################
+
+sub benchmarkStorage {
+  my $file = shift;
+
+  my $numBlocks = 1000;
+  my $blockSize = 64*1024;
+
+  my $data;
+  my @alpha = ( 'a'..'z', 'A'..'Z', '0'..'9','-','_' );
+  for ( my $i = 0; $i < $blockSize; $i++ )
+  {
+    $data .= $alpha[rand(@alpha)];
+  }
+
+  my $elapsed;
+  my $numBlocksWritten = 0;
+  my $start = [gettimeofday];
+
+  # Perform the experiment
+  open OUT, ">$file" or die "Could not open $file for writing!\n";
+  for ( my $i = 0;  $i < $numBlocks; $i++ )
+  {
+    print OUT "$data";
+  }
+  close OUT;
+  unlink $file;
+
+  $elapsed = tv_interval ( $start );
+  my $bytesPerSec = (( $numBlocks * $blockSize ) / $elapsed );
+
+  return ( $bytesPerSec / 1000000 );
+}
+
 
 sub runRECON
 {
@@ -2275,9 +2411,18 @@ sub buildReconConsensi
 }
 
 #
-# TODO: Randomly pick among all sequence sizes when filling blocks.  That way
-# we don't bias towards short sequences when their numbers overwhelm the large
-# contigs.
+# Build a datastructure containing details for each possible batch to sample
+# from.  
+#
+#    @sampleSourceList = ( { 'seqID' => "", 'start' => #, 'end' => # }, ... );
+#
+# TODO: Employ a stratified sampling strategy to diversify the contig sizes
+#       we sample from.  We don't want to pick mostly small contigs if they 
+#       are overrepresented in the DB.
+#
+#       Maybe:
+#          Divide the contig size range into 4 equal bins.  Place samples into
+#          into 4 sampleSourceList bins based on the size of the source contig.
 #
 sub initializeSampleSourceList
 {

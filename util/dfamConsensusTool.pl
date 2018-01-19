@@ -654,6 +654,7 @@ if ( $options{'upload'} || $options{'validate'} )
 # TODO: Lookup PMIDs?
 # TODO: Verify DB Aliases
 # TODO: Can we do a better job of validating the assembly/seqid/coordinates?
+# TODO: Check for blank sequences
 
   if ( $overallFailure )
   {
@@ -707,9 +708,6 @@ if ( $options{'upload'} )
     my $seedAlign = $stockholmFile->get( $i );
     print "Working on " . $seedAlign->getId() . "\n";
 
-    # Generate the consensus
-    #   - TODO: Allow the users to use the RF line to specify their own???
-    print "  - building consensus...\n";
     my @sequences = ();
     for ( my $j = 0 ; $j < $seedAlign->alignmentCount() ; $j++ )
     {
@@ -734,18 +732,50 @@ if ( $options{'upload'} )
       push @sequences, $sequence;
     }
 
-    # Get the spaced (i.e with gaps) consensus
-    my $consensus =
-        MultAln::buildConsensusFromArray( sequences => \@sequences );
-    $consensus =~ s/-//g;
+    #
+    # Generate the consensus
+    #   - TODO: Allow the users to use the RF line to specify their own???
+    my $consensus;
+    my $gfLinesRef = $seedAlign->getGfLines();
+    if ( ref($gfLinesRef) eq "ARRAY" )
+    {
+      foreach my $record ( @{$seedAlign->getGfLines()} )
+      {
+         if ( $record =~ /^#=GF\s+CC\s+HC\s+(\S+)/ ) 
+         {
+           $consensus = $1;
+         } 
+      }
+    }
+
+    if ( $consensus ) {
+      print "  - using handbuilt consensus: " . length($consensus) . " bp\n";
+    }else {
+      print "  - building consensus...\n";
+      # Get the spaced (i.e with gaps) consensus
+      $consensus =
+          MultAln::buildConsensusFromArray( sequences => \@sequences );
+      $consensus =~ s/-//g;
+    }
 
     # Generate the minimal stockholm format to send along
     my $minStockholm = "# STOCKHOLM 1.0\n";
-    $minStockholm .= "#=GC RF   " . $seedAlign->getRfLine() . "\n";
+
+    # Seed alignment must contain an RF line to indicate where
+    # the model columns are ( for HMM generation )
+    if ( $seedAlign->getRfLine() )
+    {
+      $minStockholm .= "#=GC RF   " . $seedAlign->getRfLine() . "\n";
+    }else {
+      my $tmpCons = MultAln::buildConsensusFromArray( sequences => \@sequences );
+      $tmpCons =~ s/[^-]/x/g;
+      $minStockholm .= "#=GC RF   " . $tmpCons . "\n";
+    }
     for ( my $j = 0 ; $j < $seedAlign->alignmentCount() ; $j++ )
     {
       my ( $assemblyName, $sequenceName, $start, $end, $orient, $sequence ) =
           $seedAlign->getAlignment( $j );
+      # TODO: Check that there aren't any blank sequences! -- not accepted by DB
       my $id;
       $id .= "$assemblyName:" if ( $assemblyName );
       $id .= "$sequenceName:" if ( $sequenceName );
@@ -767,6 +797,12 @@ if ( $options{'upload'} )
                    'dfam_consensus' => "1",
                    'seed_alignment' => $minStockholm
     };
+
+    # Author
+    if ( $seedAlign->getAuthor() )
+    {
+      $record->{'author'} = $seedAlign->getAuthor();
+    }
 
     # clades
     if ( $seedAlign->cladeCount() )
@@ -817,11 +853,10 @@ if ( $options{'upload'} )
     $req->content( $recJson );
     my $res     = $ua->request( $req );
     my $message = "";
-    if ( $res->decoded_content && !$res->is_error )
+    if ( $res->decoded_content )
     {
       my $data = from_json( $res->decoded_content );
 
-      #print "" . $res->decoded_content . "\n";
       if ( !defined $data || !defined $data->{'token'} )
       {
         $message = "[$server:$port - " . localtime() . "] Unknown failure";
@@ -835,6 +870,9 @@ if ( $options{'upload'} )
           }
         }
       }
+    }elsif ( $res->is_error )
+    {
+      $message = "[$server:$port - " . localtime() . "] Unknown failure";
     }
     if ( $message ne "" )
     {
@@ -849,8 +887,6 @@ if ( $options{'upload'} )
   close OUT;
   if ( $numErrs )
   {
-
-    # TODO:
     if ( $numErrs == $stockholmFile->size() )
     {
       unlink( $failedFile )
@@ -868,6 +904,9 @@ if ( $options{'upload'} )
           . "along with the error message for each.  Once these errors have been\n"
           . "corrected this file can be used to upload the failed families.\n\n";
     }
+  }else {
+    unlink( $failedFile )
+        if ( -e $failedFile && ! -s $failedFile );
   }
 } elsif ( $options{'status'} )
 {
