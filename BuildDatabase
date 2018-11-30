@@ -277,22 +277,23 @@ foreach my $file ( @ARGV ) {
 my $IDX;
 my $index = 1;
 open $IDX, ">$options{'name'}.translation"
-    || die $CLASS . ": Cannot open file $options{'name'}.translation\n";
+    or die $CLASS . ": Cannot open file $options{'name'}.translation\n";
 
 my $results = "";
 my $dbSeqs  = 0;
 my $dbSize  = 0;
 print "Building database $options{'name'}:\n";
-for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
-  my $file = $fileList[ $i ];
-  print "  Adding $file to database\n";
 
-  #
-  # Sanitize sequence names
-  #
-  open IN, "<$file" || die $CLASS . ": Cannot open file $file\n";
-  open SEQ, ">tmpSeqData.fa"
-      || die $CLASS . ": Cannot open file tmpSeqData.fa\n";
+
+# Sanitizing the names of all input databases and placing
+# in one big tempfile
+open SEQ, ">tmpSeqData.fa" or die $CLASS . ": Cannot open file tmpSeqData.fa for writing!\n";
+my $file;
+for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
+  $file = $fileList[ $i ];
+
+  print "  Reading $file...\n";
+  open IN, "<$file" or die $CLASS . ": Cannot open file $file\n";
   while ( <IN> ) {
     if ( /^\>\s*(\S+)\s+(.*)/ ) {
       print SEQ ">gi|$index\n";
@@ -304,46 +305,38 @@ for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
     }
   }
   close IN;
-  close SEQ;
-  $file = "tmpSeqData.fa";
+}
+close SEQ;
+$file = "tmpSeqData.fa";
 
-  if ( $engine eq "ncbi" )
+if ( $engine eq "ncbi" )
+{
+    print "Running: $RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1n" if ( $DEBUG );
+    $results =
+        `$RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1`;
+    if ( ! -s "$options{'name'}.nsq" )
+    {
+      print "Something went wrong parsing input file! $RepModelConfig::NCBIBLASTDB_PRGM returned: $results\n";  
+      print "The command used was: $RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file\n";
+      die;
+    }
+}else 
+{
+  $results =
+      `$RepModelConfig::XDFORMAT_PRGM -n -o $options{'name'} $file 2>&1`;
+  while ( $results =~ /sequences\s*\(letters\)\s*(?:written|appended):\s*([\d,]+)\s+\(([\d,]+)\).*$/mg
+      )
   {
-    if ( $i == 0 ) 
-    {
-      print "Running: $RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1n" if ( $DEBUG );
-      $results =
-          `$RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1`;
-    }
-    else {
-      $results =
-          `$RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in "$options{'name'} $file" 2>&1`;
-    }
-  }else 
-  {
-    if ( $i == 0 ) 
-    {
-      $results =
-          `$RepModelConfig::XDFORMAT_PRGM -n -o $options{'name'} $file 2>&1`;
-    }
-    else {
-      $results =
-          `$RepModelConfig::XDFORMAT_PRGM -n -a $options{'name'} $file 2>&1`;
-    }
-    # TODO: Check for errors from xdformat
-    while ( $results =~ /sequences\s*\(letters\)\s*(?:written|appended):\s*([\d,]+)\s+\(([\d,]+)\).*$/mg
-        )
-    {
-      my $size = $2;
-      my $seqs = $1;
-      $size =~ s/,//g;
-      $dbSize += $size;
-      $seqs =~ s/,//g;
-      $dbSeqs += $seqs;
-      last;
-    }
+    my $size = $2;
+    my $seqs = $1;
+    $size =~ s/,//g;
+    $dbSize += $size;
+    $seqs =~ s/,//g;
+    $dbSeqs += $seqs;
+    last;
   }
 }
+
 
 if ( $engine eq "abblast" )
 {
