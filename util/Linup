@@ -39,12 +39,13 @@ Linup -
 
 =head1 SYNOPSIS
 
-  Linup [-version] [-i] [ -matrix <matrix_file>  
-                          [-trimLeft #] [-trimRight #]
-                          [-normalizeCoord]
+  Linup [-version] [-i] [-matrix <matrix_file>
                           [-cgParam #] [-taParam # ] [-cgTransParam #] ]
-                   [ -stockholm || -msf ]
-        <crossmatch file> | <stockholm file> | <msa fasta>
+                        [-trimLeft #] [-trimRight #] [-name familyname]
+                        [-normalizeCoord]
+                        [-stockholm | -msf | -consensus | -alignedcons | -fasta]
+                        [-showScore]
+        <crossmatch file> | <stockholm file> | <msa fasta> | <malign file>
 
 
 =head1 DESCRIPTION
@@ -69,13 +70,34 @@ Write out multiple alignment in Stockholm format.
 
 Write out the multiple aligment in MSF format.
 
+=item -fasta
+
+Write out the sequences in FASTA format.  NOTE: This
+removes the gap characters and only exports the raw
+sequences.
+
+=item -consensus
+
+Calculate the consensus and output in FASTA format excluding
+the gap characters.
+
+=item -alignedcons
+
+Calculate the consensus and output in FASTA format including the
+gap characters.
+
+
+=item -showScore
+
+Include score in the default Linup output format.
+
 =back
 
 =head1 SEE ALSO
 
 =head1 COPYRIGHT
 
-Copyright 2012-2013 Robert Hubley, Institute for Systems Biology
+Copyright 2012-2019 Robert Hubley, Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -146,6 +168,9 @@ my @getopt_args = (
                     '-showScore',
                     '-msf',
                     '-fasta',
+                    '-alignedcons',  
+                    '-consensus',
+                    '-name=s',
                     '-trimLeft=s',
                     '-trimRight=s',
                     '-normalizeCoord',
@@ -243,6 +268,11 @@ while ( <IN> )
     $fileType = "msa-fasta";
     last;
   }
+  if ( /^\s+\'alignCol\'\s+=>/ )
+  {
+    $fileType = "malign";
+    last;
+  }
     
 }
 close IN;
@@ -311,6 +341,14 @@ if ( $fileType eq "crossmatch" )
       if ( $seq )
       {
         $seq = uc($seq);
+        #### TEST
+        if ( $seq =~ /^(\-+)/ ){
+          substr($seq,0,length($1)) = " "x(length($1));
+        }
+        if ( $seq =~ /(\-+)$/ ) {
+          substr($seq,length($seq)-length($1)-1) = " "x(length($1));
+        }
+        ####
         push @seqs, [ $id, $seq ];
       }
       $seq = "";
@@ -322,11 +360,23 @@ if ( $fileType eq "crossmatch" )
   }
   if ( $seq )
   {
+        #### TEST
+        if ( $seq =~ /^(\-+)/ ){
+          substr($seq,0,length($1)) = " "x(length($1));
+        }
+        if ( $seq =~ /(\-+)$/ ) {
+          substr($seq,length($seq)-length($1)-1) = " "x(length($1));
+        }
+        ####
+ 
     $seq = uc($seq);
     push @seqs, [ $id, $seq ];
   }
   close $IN;
   $mAlign = MultAln->new( sequences => \@seqs );
+}elsif ( $fileType eq "malign" ){
+  $mAlign = MultAln->new();
+  $mAlign = $mAlign->serializeIN( $inputFile );
 }else {
   die "Support for $fileType is not complete yet ";
 }
@@ -359,14 +409,29 @@ if ( $matrixFile eq "" )
 my ( $null, $totDiv, $avgDiv ) = $mAlign->kimuraDivergence( $cons );
 if ( $options{'stockholm'} )
 {
+  if ( $options{'name'} ) { 
+    $mAlign->setReferenceName( $options{'name'} );
+  }
   $mAlign->toSTK();
 } elsif ( $options{'msf'} )
 {
   $mAlign->toMSF( includeReference => 1 );
 } elsif ( $options{'fasta'} )
 {
-  $mAlign->toFASTA();
-} else
+  # NOTE: This is broken...currently output a non MSA fasta
+  #$mAlign->toFASTA();
+  $mAlign->toFASTA( seqOnly => 1 );
+# -alignedcons is a deprecated name for the option -consensus
+} elsif ( $options{'consensus'} || $options{'alignedcons'} ) {
+  if ( $options{'consensus'} ) {
+    $cons =~ s/-//g;
+  }
+  if ( $options{'name'} ) {
+    print ">" . $options{'name'} . "\n$cons\n\n";
+  }else {
+    print ">" . $mAlign->getReferenceName() . "\n$cons\n\n";
+  }
+}else
 {
   $mAlign->printAlignments(
                             blockSize => 100,
@@ -376,8 +441,11 @@ if ( $options{'stockholm'} )
   );
   print "Avg Kimura Div: $avgDiv\n";
   $cons =~ s/\-//g;
-  print "\n\n>" . $mAlign->getReferenceName() . "\n$cons\n\n";
-
+  if ( $options{'name'} ) {
+    print "\n\n>" . $options{'name'} . "\n$cons\n\n";
+  }else {
+    print "\n\n>" . $mAlign->getReferenceName() . "\n$cons\n\n";
+  }
 
 }
 print stderr "Avg Kimura Div: $avgDiv\n";

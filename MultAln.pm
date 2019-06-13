@@ -1238,13 +1238,11 @@ sub kimuraDivergence
     my $j            = 0;
     my $i            = 0;
 
-    #foreach $i ( $object->start( $n ) .. $object->end( $n ) )
     foreach $i (
                 $object->getAlignedStart( $n ) .. $object->getAlignedEnd( $n ) )
     {
       my $a = substr( $consensus, $i, 1 );
 
-      #my $b = substr( $object->seq( $n ), $j, 1 );
       my $b = substr( $object->getAlignedSeq( $n ), $j, 1 );
 
       $j++;
@@ -1717,19 +1715,28 @@ sub _alignFromSeedAlignment
       if ( ref( $parameters{'seedAlignment'} ) ne "SeedAlignment" );
   my $seedAlignment = $parameters{'seedAlignment'};
 
+  # A seed alignment may or may not have a reference line.  A reference
+  # line indicates which positions within the multiple alignment are
+  # determined to be "alignment positions" ( aka match positions ) and
+  # which are insertions.  This may be pre-determined if all the sequences
+  # were aligned to the same reference sequence.  Or it may be that a 
+  # consensus/HMM builder determined which positions show enough signal
+  # to be called "alignment positions".  If we do not have this information
+  # we need to develop it ourselves so we may set the alignStart/End 
+  # correctly.
   for ( my $l = 0 ; $l < $seedAlignment->alignmentCount() ; $l++ )
   {
-    my ( $assemblyName, $sequenceName, $start, $end, $orient, $sequence ) =
+    my ( $assemblyName, $sequenceName, $start, $end, $orient, $sequence ) = 
         $seedAlignment->getAlignment( $l );
 
     my $refStart = 0;
-    if ( $sequence =~ /^(\.+)/ )
+    if ( $sequence =~ /^([\.\-]+)/ )
     {
       $refStart = length( $1 );
       $sequence = substr( $sequence, $refStart );
     }
 
-    if ( $sequence =~ /([^\.])(\.+)$/ )
+    if ( $sequence =~ /([^\.\-])([\.\-]+)$/ )
     {
       $sequence = substr( $sequence, 0, length( $sequence ) - length( $2 ) );
     }
@@ -1763,8 +1770,8 @@ sub _alignFromSeedAlignment
     # Is this necessary?
     $object->setAlignedOrientation( $l, "+" );
   }
-
-  $object->setReferenceSeq( $object->consensus() );
+  my $consensus = $object->consensus();
+  $object->setReferenceSeq( $consensus );
 }
 
 ##---------------------------------------------------------------------##
@@ -1781,6 +1788,10 @@ sub _alignFromSeedAlignment
 ## This is a private method for generating a multiple alignment from
 ## a search result collection containing a search of one sequence
 ## against many others.
+## 
+## TODO: Stress test flanking sequence generation.  I have seen one
+##       strange instance where the right flank was missing 8bp 
+##       at the start.
 ##
 ##---------------------------------------------------------------------##
 sub _alignFromSearchResultCollection
@@ -3761,19 +3772,41 @@ sub toFASTA
     $OUT = *STDOUT;
   }
 
-  if ( defined $parameters{'includeReference'} )
+  my $malignLen = 0;
+  if ( defined $parameters{'includeReference'} && $object->getReferenceSeq() )
   {
-    #print $OUT ">"
-    #    . $object->getReferenceName() . "\n";
-    #print $OUT "" . $object->getReferenceSeq() . "\n";
+    my $refSeq = $object->getReferenceSeq();
+    if ( $parameters{'seqOnly'} )
+    {
+      $refSeq =~ s/-//g;
+    }
+    print $OUT ">"
+        . $object->getReferenceName() . " - reference sequence\n";
+    print $OUT "$refSeq\n";
+    $malignLen = length($refSeq);
   }
+
+  # Sanity check malignLen and handle noref case
   for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ )
   {
-    my $start = $object->getAlignedStart( $i );
-    my $end   = $object->getAlignedEnd( $i );
+    my $seq = $object->getAlignedSeq( $i );
+    $malignLen = length($seq) if ( length($seq) > $malignLen );
+  }
+
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ )
+  {
+    my $seq = $object->getAlignedSeq( $i );
+    if ( $parameters{'seqOnly'} )
+    {
+      $seq =~ s/-//g;
+    }else {
+      my $start = $object->getAlignedStart( $i );
+      my $end   = $object->getAlignedEnd( $i );
+      $seq = "-"x($start) . $seq . "-"x($malignLen - $end);
+    }
     print $OUT ">"
         . $object->getAlignedName( $i ) . "\n";
-    print $OUT "" . substr($object->getAlignedSeq( $i ),$start, ($end-$start+1)) . "\n";
+    print $OUT "$seq\n";
   }
   close $OUT;
 }
@@ -4585,10 +4618,11 @@ sub buildConsensusFromArray
   );
   my $alphabet_r = [ qw( A R G C Y T K M S W N X Z V H D B ) ];
   my $matrix_r   = {};
-  for ( my $i = 0 ; $i < scalar( @{$alphabet_r} ) ; $i++ )
+  for ( my $i = 0 ; $i < scalar( @{$alphabet_r} ) ; $i++ ) # rows
   {
-    for ( my $j = 0 ; $j < scalar( @{$alphabet_r} ) ; $j++ )
+    for ( my $j = 0 ; $j < scalar( @{$alphabet_r} ) ; $j++ ) # cols
     {
+      #  matrix_r->{ row . col }
       $matrix_r->{ $alphabet_r->[ $i ] . $alphabet_r->[ $j ] } =
           $alphaArray[ ( $i * scalar( @{$alphabet_r} ) ) + $j ];
     }
@@ -4662,7 +4696,7 @@ sub buildConsensusFromArray
         #print "    -- tabulating $b\n" if ( $i == 235 );
         croak $CLASS
             . "::buildConsensusFromArray: Matrix alphabet doesn't include\n"
-            . "the letters: $a, $b\n"
+            . "three-way IUB codes: $a -> $b\n"
             if ( !defined $matrix_r->{ $a . $b } );
         $score += $profile[ $i ]{$b} * $matrix_r->{ $a . $b };
       }
@@ -4685,6 +4719,7 @@ sub buildConsensusFromArray
       $n = "N";
     }
     $consensus .= $n;
+#print "col $i ( $n ): " . Dumper($profile[$i]) . "\n";
     push @cScore, $maxScore;
   }
 
@@ -4715,7 +4750,8 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 )
       next if ( $j >= length( $_ ) );
       my $hitDNLeft = substr( $_, $j, 1 );
       next if ( $hitDNLeft eq " " );
-      my $hitDNRight = substr( $_, $k, 1 )
+      my $hitDNRight = " ";
+      $hitDNRight = substr( $_, $k, 1 )
           if ( $k < length( $_ ) );
       next if ( $hitDNRight eq " " );
       my $hitDN = $hitDNLeft . $hitDNRight;

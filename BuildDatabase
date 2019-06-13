@@ -311,7 +311,7 @@ $file = "tmpSeqData.fa";
 
 if ( $engine eq "ncbi" )
 {
-    print "Running: $RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1n" if ( $DEBUG );
+    print "Running: $RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1\n" if ( $DEBUG );
     $results =
         `$RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1`;
     if ( ! -s "$options{'name'}.nsq" )

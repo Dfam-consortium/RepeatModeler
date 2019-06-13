@@ -672,6 +672,8 @@ sub getAlignment
   croak "$subroutine: index $index is out of bounds."
       if ( $index < 0 || $index > $#{ $this->{'alignments'} } );
 
+  # TODO: Warning this needs work. If assemblyName is missing this returns
+  #       everything shifted up by one!
   return (
            $this->{'alignments'}->[ $index ]->{'assemblyName'},
            $this->{'alignments'}->[ $index ]->{'sequenceName'},
@@ -1174,8 +1176,8 @@ sub read_stockholm
       } elsif ( $origName =~ /^(\S+)\:(\d+)-(\d+)$/ )
       {
         $sequenceName = $1;
-        $start        = $3;
-        $end          = $2;
+        $start        = $2;
+        $end          = $3;
         if ( $end < $start )
         {
           $end    = $2;

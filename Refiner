@@ -392,7 +392,10 @@ sub buildConsensus
                               flankingSequenceDatabase  => $db,
                               maxFlankingSequenceLen    => -1
       );
-      $cons = $malign->consensus( "$matrixDir/linupmatrix" );
+      # 20190605: We do want to include the reference in round-1 because it's
+      # a real input sequence.  Also, matrix was unused here.
+      #$cons = $malign->consensus( "$matrixDir/linupmatrix" );
+      $cons = $malign->consensus( inclRef => 1 );
 
       my (
            $leftMostSequence,  $leftMostSequenceID,
@@ -402,6 +405,7 @@ sub buildConsensus
 
       writeHTMLMultAlign(
                           multAln         => $malign,
+                          inclRef         => 1,
                           destination     => $MOUT,
                           leftFlankingID  => $leftMostSequenceID,
                           rightFlankingID => $rightMostSequenceID
@@ -759,6 +763,11 @@ sub writeHTMLMultAlign
 
   my $mAlign = $parameters{'multAln'};
 
+  my $inclRef = 0;
+  if ( defined $parameters{'inclRef'} ){
+    $inclRef = 1;
+  }
+
   my $OUT = *STDOUT;
   if ( defined $parameters{'destination'} )
   {
@@ -961,9 +970,15 @@ END
   my $lineStart = 0;
   my $name      = "consensus";
   my $namePad   = 30 - length( $name );
-  my $seq       =
-      $mAlign->consensus(
-                    "$RepModelConfig::REPEATMODELER_MATRICES_DIR/linupmatrix" );
+  my $seq;
+  # 20190605: Allow user to specify inclusion of the reference in consensus calling
+  #    $mAlign->consensus(
+  #                  "$RepModelConfig::REPEATMODELER_MATRICES_DIR/linupmatrix" );
+  if ( $inclRef ) {
+    $seq = $mAlign->consensus( inclRef => 1 );
+  }else {
+    $seq = $mAlign->consensus();
+  }
   print $OUT "<b><i>$name</i></b>"
       . ' ' x $namePad . ": "
       . ' ' x ( $maxLeftLen )

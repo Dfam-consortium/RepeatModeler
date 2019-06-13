@@ -41,10 +41,9 @@ Detailed help
 
 =item -database
 
-The prefix name of a XDF formatted sequence database containing the
-genomic sequence to use when building repeat models.  The database
-may be created with the WUBlast "xdformat" utility or with
-the RepeatModeler wrapper script "BuildXDFDatabase".
+The name of the sequence database to run an analysis on.
+This is the name that was provided to the BuildDatabase script
+using the "-name" option.
 
 =item -engine <abblast|wublast|ncbi>
 
@@ -84,7 +83,7 @@ RepeatMasker, WUBlast
 
 =head1 COPYRIGHT
 
- Copyright 2005-2017 Institute for Systems Biology
+ Copyright 2005-2019 Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -155,7 +154,7 @@ my $cmdLine = $0 . join( ' ', @ARGV );
 #   -t=i: Number paramters
 #
 my @opts =
-    qw( help dir=s database=s engine=s recoverDir=s pa=s srand=s rsSampleSize=s onlyRS );
+    qw( help dir=s database=s engine=s recoverDir=s pa=s srand=s rsSampleSize=s onlyRS skipRS );
 
 #
 # Get the supplied command line options, and set flags
@@ -394,6 +393,7 @@ my $dbSourceList = &initializeSampleSourceList(
 
 my @dbUsedBlocks = ();
 my $round        = 1;
+$round = 2 if ( $options{'skipRS'} );
 my $totSampledBP = 0;
 my $families;
 my $numModels;
@@ -744,11 +744,13 @@ while ( $totSampledBP < $dbSize
   # TRF sample
   print " -- Running TRFMask on the sequence...\n";
 
-  system( "$RepModelConfig::REPEATMODELER_DIR/TRFMask $sampleFastaFile" );
-  if ( -s "$sampleFastaFile.masked" )
+  # copy sample file for mask processing
+  system("cp $sampleFastaFile $roundTmpDir/tmpSample.fa");
+
+  system( "$RepModelConfig::REPEATMODELER_DIR/TRFMask $roundTmpDir/tmpSample.fa" );
+  if ( -s "$roundTmpDir/tmpSample.fa.masked" )
   {
-    system( "rm $sampleFastaFile" );
-    system( "mv $sampleFastaFile.masked $sampleFastaFile" );
+    system( "mv $roundTmpDir/tmpSample.fa.masked $roundTmpDir/tmpSample.fa" );
   }
 
   # Mask repeats from previous round*s*
@@ -774,7 +776,7 @@ while ( $totSampledBP < $dbSize
 "$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix" );
       RepeatUtil::wublastMaskDatabase(
                                  xdformatPath => $RepModelConfig::XDFORMAT_PRGM,
-                                 fastaFile    => $sampleFastaFile,
+                                 fastaFile    => "$roundTmpDir/tmpSample.fa",
                                  consensi     => $consensiFile,
                                  searchEngine => $searchEngineN
       );
@@ -788,16 +790,15 @@ while ( $totSampledBP < $dbSize
                                 dbCMDPath  => $RepModelConfig::NCBIDBCMD_PRGM,
                                 aliasPath  => $RepModelConfig::NCBIDBALIAS_PRGM,
                                 workingDir => $roundTmpDir,
-                                fastaFile  => $sampleFastaFile,
+                                fastaFile  => "$roundTmpDir/tmpSample.fa",
                                 consensi   => $consensiFile,
                                 searchEngine => $searchEngineN
       );
     }
 
-    if ( -s "$sampleFastaFile.masked" )
+    if ( -s "$roundTmpDir/tmpSample.fa.masked" )
     {
-      system( "mv $sampleFastaFile $sampleFastaFile.orig" );
-      system( "mv $sampleFastaFile.masked $sampleFastaFile" );
+      system( "mv $roundTmpDir/tmpSample.fa.masked $roundTmpDir/tmpSample.fa" );
     }
 
     ## TODO: Use the *.out file of the second to last round to
@@ -807,8 +808,12 @@ while ( $totSampledBP < $dbSize
 
   }
 
+  # Now "tmpSample.fa" has been fully masked.  Save it to the more
+  # sensible name $sampleFastaFile with a ".masked" extension.
+  system( "mv $roundTmpDir/tmpSample.fa $sampleFastaFile.masked" );
+
   # Tabulate non-Ambiguous bases
-  my $sampleDB = FastaDB->new( fileName => $sampleFastaFile,
+  my $sampleDB = FastaDB->new( fileName => "$sampleFastaFile.masked",
                                openMode => SeqDBI::ReadOnly );
   my $postMaskNonAmbigBases = 0;
   foreach my $seqID ( $sampleDB->getIDs() )
@@ -845,14 +850,14 @@ while ( $totSampledBP < $dbSize
   {
 
     # XDFORMAT the database
-    system(   "$RepModelConfig::XDFORMAT_PRGM -n -I $sampleFastaFile >> "
+    system(   "$RepModelConfig::XDFORMAT_PRGM -n -I $sampleFastaFile.masked >> "
             . "$roundTmpDir/xdformat.log 2>&1" );
   } else
   {
 
     # MAKEBLASTDB the database
-    system(   "$RepModelConfig::NCBIBLASTDB_PRGM -out $sampleFastaFile "
-            . "-parse_seqids -dbtype nucl -in $sampleFastaFile >> "
+    system(   "$RepModelConfig::NCBIBLASTDB_PRGM -out $sampleFastaFile.masked "
+            . "-parse_seqids -dbtype nucl -in $sampleFastaFile.masked >> "
             . "$roundTmpDir/makeblastdb.log 2>&1" );
   }
 
@@ -865,11 +870,11 @@ while ( $totSampledBP < $dbSize
   my $sampleIndex;
   if ( $engine eq "abblast" )
   {
-    $sampleIndex = `$RepModelConfig::XDFORMAT_PRGM -m2 -n -r $sampleFastaFile`;
+    $sampleIndex = `$RepModelConfig::XDFORMAT_PRGM -m2 -n -r $sampleFastaFile.masked`;
   } else
   {
     $sampleIndex =
-`$RepModelConfig::NCBIDBCMD_PRGM -db $sampleFastaFile -entry all -outfmt "gi|%g %l"`;
+`$RepModelConfig::NCBIDBCMD_PRGM -db $sampleFastaFile.masked -entry all -outfmt "gi|%g %l"`;
   }
 
   # Both search engines produce indexes in reverse order ie:
@@ -908,6 +913,12 @@ while ( $totSampledBP < $dbSize
   }
   $searchEngineN->setTempDir( "$roundTmpDir" );
   $searchEngineN->setMinScore( 250 );
+  # EXPERIMENTAL:
+  #$searchEngineN->setMinScore( 280 );
+  #$searchEngineN->setMinScore( 300 );
+  #$searchEngineN->setBandwidth(50);
+  #$familyCutoff = 5;
+  # END EXPERIMENTAL
   $searchEngineN->setGapInit( -25 );
   $searchEngineN->setInsGapExt( -5 );
   $searchEngineN->setDelGapExt( -5 );
@@ -1154,13 +1165,13 @@ while ( $totSampledBP < $dbSize
           {
             if ( $engine eq "abblast" )
             {
-              system(   "$RepModelConfig::XDGET_PRGM -n $sampleFastaFile "
+              system(   "$RepModelConfig::XDGET_PRGM -n $sampleFastaFile.masked "
                       . "\"gi|$sampleID\""
                       . " >> $roundTmpDir/batch-$batchNum.fa "
                       . "2>>$roundTmpDir/xdget.log" );
             } else
             {
-              system(   "$RepModelConfig::NCBIDBCMD_PRGM -db $sampleFastaFile "
+              system(   "$RepModelConfig::NCBIDBCMD_PRGM -db $sampleFastaFile.masked "
                       . "-entry \"gi|$sampleID\" "
                       . ">> $roundTmpDir/batch-$batchNum.fa "
                       . "2>>$roundTmpDir/blastdbcmd.log" );
@@ -1182,7 +1193,7 @@ while ( $totSampledBP < $dbSize
           #}
 
           $searchEngineN->setQuery( "$roundTmpDir/batch-$batchNum.fa" );
-          $searchEngineN->setSubject( $sampleFastaFile );
+          $searchEngineN->setSubject( "$sampleFastaFile.masked" );
 
           if ( $engine eq "ncbi" )
           {
@@ -1406,17 +1417,9 @@ if ( $numModels > 0 )
 "  $genomeDB-families.fa  - Consensus sequences for each family identified.\n";
   print
 "  $genomeDB-families.stk - Seed alignments for each family identified.\n\n";
-  print "This version of RepeatModeler can upload families directly to the\n";
-  print
-"open repeat database - Dfam_consensus.  Please consider uploading your final\n";
-  print
-"curated library using the RepeatModeler \"util/dfamConsensusTool.pl\" script\n";
-  print
-"( details at http://www.repeatmasker.org/RepeatModeler/dfamConsensusTool ) or\n";
-  print
-"posting your raw (uncurated) RepeatModeler results to the TE Raw Dataset\n";
-  print
-"Repository ( http://www.repeatmasker.org/Dfam_consensus/#/public/repository ).\n\n\n";
+  print "The RepeatModeler stockholm file is formatted so that it can\n";
+  print "easily be submitted to the Dfam database.  Please consider helping\n";
+  print "expand this open database by providing families to help\@dfam.org.\n\n\n";
 } else
 {
   print "No families identified.  Perhaps the database is too small\n";
@@ -1878,6 +1881,10 @@ sub buildRSConsensi
 
         if ( $cons ne "" )
         {
+          # Clean up consensi starting/ending with Ns
+          #   - These are sections of the multiple alignment
+          #     where there is no support for a consensus.
+          $cons =~ s/^[Nn]*([^Nn].*[^Nn])[Nn]*$/$1/;
 
           # Save the consensus
           $families{$key}->{'consensus'}         = $cons;
@@ -2279,6 +2286,10 @@ sub buildReconConsensi
 
     if ( $cons ne "" )
     {
+      # Clean up consensi starting/ending with Ns
+      #   - These are sections of the multiple alignment
+      #     where there is no support for a consensus.
+      $cons =~ s/^[Nn]*([^Nn].*[^Nn])[Nn]*$/$1/;
 
       # Save the consensus
       $families{$familyID}->{'consensus'}         = $cons;
@@ -2519,6 +2530,14 @@ sub sampleFromDB
   my $round          = $parameters{'round'};
   my $prohibitX      = $parameters{'prohibitX'};
 
+  # Generate a hash for quick lookup
+  my %blockBlackList = ();
+  if ( $dbUsedBlocks ) {
+    foreach my $block ( @{$dbUsedBlocks} ) {
+      $blockBlackList{$block} = 1;
+    }
+  }
+
   open FASTA, ">$fastaFile";
 
   my $sampleSeqSize   = 0;
@@ -2535,6 +2554,9 @@ sub sampleFromDB
     my $end   = $block->{'end'};
 
     my $seqSize = $end - $start + 1;
+
+    # Don't reuse blocks
+    next if ( exists $blockBlackList{$block} );
 
     # Collect the sequence
     my $seq;
