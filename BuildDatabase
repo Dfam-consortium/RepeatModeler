@@ -316,7 +316,7 @@ if ( $engine eq "ncbi" )
         `$RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1`;
     if ( ! -s "$options{'name'}.nsq" )
     {
-      print "Something went wrong parsing input file! $RepModelConfig::NCBIBLASTDB_PRGM returned: $results\n";  
+      print "The makeblastdb program did not generate the\nfile $options{'name'}.nsq.  Please check your input file(s) for potential formating errors.\n$RepModelConfig::NCBIBLASTDB_PRGM returned: $results\n";  
       print "The command used was: $RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file\n";
       die;
     }

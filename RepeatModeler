@@ -52,10 +52,10 @@ ncbi (rmblast version).
 
 =item -pa #
 
-Specify the number of shared-memory processors available to this program. 
-RepeatModeler will use the processors to run BLAST searches in parallel.
-i.e on a machine with 10 cores one might use 1 core for the script and 
-9 cores for the BLAST searches by running with "-pa 9".
+Specify the number of parallel search jobs to run.  RMBlast jobs will
+use 4 cores each and WUBlast/ABBlast jobs will use a single core each.
+i.e. on a machine with 12 cores and running with RMBlast you would use 
+-pa 3 to fully utilize the machine.
 
 =item -recoverDir <Previous Output Directory>
 
@@ -138,45 +138,58 @@ $|     = 1;                                         # Turn autoflush on
 my $version = "#VERSION#";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
-if ( $ARGV[ 0 ] && $ARGV[ 0 ] eq '-v' )
-{
-  print "RepeatModeler version $version\n";
-  exit;
-}
-
 my $cmdLine = $0 . join( ' ', @ARGV );
+
 
 #
 # Option processing
 #  e.g.
 #   -t: Single letter binary option
 #   -t=s: String parameters
-#   -t=i: Number paramters
+#   -t=i: Number parameters
 #
-my @opts =
-    qw( help dir=s database=s engine=s recoverDir=s pa=s srand=s rsSampleSize=s onlyRS skipRS );
+my @getopt_args = (
+                    '-version',     # print out the version and exit
+                    '-help',
+                    '-dir=s',
+                    '-database=s',
+                    '-engine=s',
+                    '-recoverDir=s',
+                    '-pa=i',
+                    '-srand=i',
+                    '-rsSampleSize=s',
+                    '-onlyRS',
+                    '-skipRS',
+                    '-onlyIns',
+);
+#my @opts =
+#    qw( help dir=s database=s engine=s recoverDir=s pa=s srand=s rsSampleSize=s onlyRS skipRS );
 
 #
 # Get the supplied command line options, and set flags
 #
 my %options = ();
-unless ( &GetOptions( \%options, @opts ) )
-{
+Getopt::Long::config( "noignorecase", "bundling_override" );
+unless ( GetOptions( \%options, @getopt_args ) ) {
+  usage();
+}
+
+sub usage {
+  print "$0 - $version\n";
   exec "pod2text $0";
   exit( 1 );
+}
+
+if ( $options{'version'} ) {
+  print "RepeatModeler version $version\n";
+  exit;
 }
 
 # Print the internal POD documentation if something is missing
 if ( !defined $options{'database'} || $options{'help'} )
 {
   print "No database indicated\n\n";
-
-  # This is a nifty trick so we don't have to have
-  # a duplicate "USAGE()" subroutine.  Instead we
-  # just recycle our POD docs.  See PERL POD for more
-  # details.
-  exec "pod2text $0";
-  die;
+  usage();
 }
 
 # Seed the random number generator if requested
@@ -250,6 +263,20 @@ my $recommendedFamilySize = 15;
 #   TODO: Perhaps this should only be invoked if
 #         the genome is extremely small.
 my $minFamilySize = 4;
+
+
+##
+## TODO: DEV ONLY
+##
+if ( $options{'onlyIns'} ) {
+  $genomeSampleSizeMax        = 300000000; 
+  $genomeSampleSizeStart = 200000;
+  $genomeSampleSizeMultiplier = 4;
+  $recommendedFamilySize = 50;
+}
+## 
+## TODO: END DEV ONLY
+##
 
 #
 # Gather details from the database
@@ -622,9 +649,10 @@ while ( $totSampledBP < $dbSize
   }
 
   my $familyCutoff = $recommendedFamilySize;
-  if ( ( $totSampledBP >= $dbSize || $sampleSize >= $genomeSampleSizeMax )
-       && $numModels == 0 )
+  if ( ( $totSampledBP >= $dbSize || $sampleSize >= $genomeSampleSizeMax || $seqRemaining <= $sampleSize )
+       && ( $options{'onlyIns'} || $numModels == 0 ) )
   {
+    print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
     $familyCutoff = $minFamilySize;
   }
 
@@ -656,6 +684,18 @@ while ( $totSampledBP < $dbSize
     @dbUsedBlocks = ();
   } else
   {
+    if ( $options{'onlyIns'} ){
+    &sampleFromDB(
+                   sampleSizeMax  => $sampleSize,
+                   dbUsedBlocks   => \@dbUsedBlocks,
+                   dbSourceBlocks => $dbSourceList,
+                   dbType         => $engine,
+                   dbFile         => $genomeDB,
+                   round          => $round,
+                   withReplacement => 1,
+                   fastaFile      => $sampleFastaFile
+    );
+    }else {
     &sampleFromDB(
                    sampleSizeMax  => $sampleSize,
                    dbUsedBlocks   => \@dbUsedBlocks,
@@ -665,6 +705,8 @@ while ( $totSampledBP < $dbSize
                    round          => $round,
                    fastaFile      => $sampleFastaFile
     );
+
+    }
   }
 
   # Tabulate non-Ambiguous bases
@@ -806,6 +848,48 @@ while ( $totSampledBP < $dbSize
     ##       RECON processing routine to gather the last round's
     ##       contig coverage.
 
+    if ( $options{'onlyIns'} ){
+      # Remove sequences containing only/mostly Ns
+      system( "mv $roundTmpDir/tmpSample.fa $roundTmpDir/tmpSample.fa.masked" );  
+      open IN,"<$roundTmpDir/tmpSample.fa.masked" or die;
+      open OUT,">$roundTmpDir/tmpSample.fa" or die;
+      my $id;
+      my $seq;
+      my $desc;
+      my $seqsCut = 0;
+      while ( <IN> ) {
+        if ( /^>(\S+)\s+(.*)/ ) {
+          my $tmpID = $1;
+          my $tmpDE = $2;
+          if ( $seq ) {
+            my @nonNBlocks = sort { length($b) <=> length($a) } split(/[nNxX]+/, $seq);
+            if ( length($nonNBlocks[0]) > 30 ) {
+              print OUT ">$id $desc\n$seq\n";
+            }else {
+              $seqsCut++;
+            }
+          }
+          $id = $tmpID;
+          $desc = $tmpDE;
+          $seq = "";
+          next;
+        }
+        s/[\n\r\s]+//g;
+        $seq .= $_;
+      }
+      if ( $seq ) {
+        my @nonNBlocks = sort { length($b) <=> length($a) } split(/[nNxX]+/, $seq);
+        if ( length($nonNBlocks[0]) > 30 ) {
+          print OUT ">$id $desc\n$seq\n";
+        }else {
+          $seqsCut++;
+        }
+      }
+      close OUT;
+      if ( $seqsCut > 0 ) {
+        print "       Removed $seqsCut sequences from sample containing mostly Ns ( <30bp non-N blocks )...\n";
+      }
+    }
   }
 
   # Now "tmpSample.fa" has been fully masked.  Save it to the more
@@ -2529,10 +2613,11 @@ sub sampleFromDB
   my $fastaFile      = $parameters{'fastaFile'};
   my $round          = $parameters{'round'};
   my $prohibitX      = $parameters{'prohibitX'};
+  my $withReplacement = $parameters{'withReplacement'};
 
   # Generate a hash for quick lookup
   my %blockBlackList = ();
-  if ( $dbUsedBlocks ) {
+  if ( $dbUsedBlocks && ! $withReplacement ) {
     foreach my $block ( @{$dbUsedBlocks} ) {
       $blockBlackList{$block} = 1;
     }
