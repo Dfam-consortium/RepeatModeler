@@ -74,7 +74,7 @@ use File::Basename;
 
 # RepeatMasker Libraries
 use RepModelConfig;
-use lib $RepModelConfig::REPEATMASKER_DIR;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use WUBlastSearchEngine;
 use SeqDBI;
 use SearchResultCollection;

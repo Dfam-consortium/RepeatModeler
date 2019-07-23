@@ -1,5 +1,8 @@
+```
 ## WARNING: There is a bioconda and a docker package floating around proporting to have a functional RepeatModeler package.  Neither work correctly.  For the time being we recommend installing this program as described below.
 
+The GitHub master branch contains the files in the current release of RepeatModeler.
+```
 
 RepeatModeler 
 =============

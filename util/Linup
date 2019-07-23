@@ -263,7 +263,7 @@ while ( <IN> )
     last;
   }
   $foundFastaHdr = 1 if ( /^>\S+.*/ );
-  if ( $foundFastaHdr && /^\s*[ACGTUMRWSYKVHDBNacgtumrwsykvhdbn\-\.]+\s*$/ && /[\-\.]/ )
+  if ( $foundFastaHdr && /^\s*[ACGTUMRWSYKVHDBNacgtumrwsykvhdbn\-\.]+\s*$/ )
   {
     $fileType = "msa-fasta";
     last;
@@ -334,21 +334,32 @@ if ( $fileType eq "crossmatch" )
   my $id;
   open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
   # Simple FASTA reader
+  my %idHash = ();
   while (<$IN>) {
     if ( /^>(\S+)/ ) 
     {
       my $tmpID = $1;
+      if ( defined $idHash{$tmpID} ) {
+        my $ver = 1;
+        while ( defined $idHash{$tmpID . "_$ver"} ) 
+        {
+          $ver++;
+        }
+        warn "WARN File contains a duplicate identifier \"$tmpID\".  A suffix of \"_$ver\"\n" .
+             "     will be appended to this occurence.\n";
+        $tmpID = $tmpID . "_$ver";
+      }
+      $idHash{$tmpID}++;
       if ( $seq )
       {
         $seq = uc($seq);
-        #### TEST
+        # Convert prefix/suffix "-"s to spacers
         if ( $seq =~ /^(\-+)/ ){
           substr($seq,0,length($1)) = " "x(length($1));
         }
         if ( $seq =~ /(\-+)$/ ) {
           substr($seq,length($seq)-length($1)-1) = " "x(length($1));
         }
-        ####
         push @seqs, [ $id, $seq ];
       }
       $seq = "";
@@ -360,14 +371,13 @@ if ( $fileType eq "crossmatch" )
   }
   if ( $seq )
   {
-        #### TEST
-        if ( $seq =~ /^(\-+)/ ){
-          substr($seq,0,length($1)) = " "x(length($1));
-        }
-        if ( $seq =~ /(\-+)$/ ) {
-          substr($seq,length($seq)-length($1)-1) = " "x(length($1));
-        }
-        ####
+    # Convert prefix/suffix "-"s to spacers
+    if ( $seq =~ /^(\-+)/ ){
+      substr($seq,0,length($1)) = " "x(length($1));
+    }
+    if ( $seq =~ /(\-+)$/ ) {
+      substr($seq,length($seq)-length($1)-1) = " "x(length($1));
+    }
  
     $seq = uc($seq);
     push @seqs, [ $id, $seq ];

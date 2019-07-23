@@ -45,10 +45,11 @@ The name of the sequence database to run an analysis on.
 This is the name that was provided to the BuildDatabase script
 using the "-name" option.
 
-=item -engine <abblast|wublast|ncbi>
+=item -engine <rmblast|abblast>
 
 The name of the search engine we are using.  I.e abblast/wublast or
-ncbi (rmblast version).
+ncbi (rmblast version). Note "ncbi" and "wublast" are acceptable 
+(but deprecated) synonyms for "rmblast" and "abblast" respectively.
 
 =item -pa #
 
@@ -72,6 +73,8 @@ only useful if you need to reproduce the sample choice between runs.  This
 should be an integer number.
 
 =back
+
+=head1 CONFIGURATION OVERRIDES
 
 =head1 SEE ALSO
 
@@ -106,11 +109,12 @@ use File::Path;
 use File::Basename;
 use Cwd qw(abs_path getcwd cwd);
 use Data::Dumper;
+use Pod::Text;
 use Time::HiRes qw( gettimeofday tv_interval);
 
 # RepeatModeler Libraries
 use RepModelConfig;
-use lib $RepModelConfig::REPEATMASKER_DIR;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use RepeatUtil;
 use SeedAlignment;
 use SeedAlignmentCollection;
@@ -129,12 +133,11 @@ use FastaDB;
 #
 my $CLASS = "RepeatModeler";
 my $DEBUG = 0;
-$DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
-$|     = 1;                                         # Turn autoflush on
+$|     = 1;      # Turn autoflush on
 
 #
 # Version
-#  -- NOTE: This is filled in by configure
+#  -- This is filled in by configure
 my $version = "#VERSION#";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
@@ -162,8 +165,8 @@ my @getopt_args = (
                     '-skipRS',
                     '-onlyIns',
 );
-#my @opts =
-#    qw( help dir=s database=s engine=s recoverDir=s pa=s srand=s rsSampleSize=s onlyRS skipRS );
+# Add configuration parameters as additional command-line options
+push @getopt_args, RepModelConfig::getCommandLineOptions();
 
 #
 # Get the supplied command line options, and set flags
@@ -174,11 +177,42 @@ unless ( GetOptions( \%options, @getopt_args ) ) {
   usage();
 }
 
+#
+# Provide the POD text from this file and 
+# from the config file by merging them 
+# together.  The heading "CONFIGURATION
+# OVERRIDES" provides the insertion point
+# for the configuration POD.
+#
 sub usage {
+  my $p = Pod::Text->new();
+  $p->output_fh(*STDOUT);
+  my $pod_str;
+  open IN,"<$0" or die "Could not open self ($0) for generating documentation!";
+  while (<IN>){
+    if ( /^=head1\s+CONFIGURATION OVERRIDES\s*$/ )
+    {
+      my $c_pod = RepModelConfig::getPOD();
+      if ( $c_pod ) {
+        $pod_str .= $_ . $c_pod;
+      }
+    }else {
+      $pod_str .= $_;
+    }
+  }
+  close IN;
   print "$0 - $version\n";
-  exec "pod2text $0";
-  exit( 1 );
+  $p->parse_string_document($pod_str);
+  exit(1);
 }
+
+#
+# Resolve configuration settings using the following precedence: 
+# command line first, then environment, followed by config
+# file.
+#
+RepModelConfig::resolveConfiguration(\%options);
+my $config = $RepModelConfig::configuration;
 
 if ( $options{'version'} ) {
   print "RepeatModeler version $version\n";
@@ -201,31 +235,33 @@ srand( $seed );
 # Setup the search engines
 #
 my $searchEngineN;
-my $engine = $RepModelConfig::DEFAULT_SEARCH_ENGINE;
+my $engine = "rmblast";
 $engine = $options{'engine'} if ( $options{'engine'} );
 if ( $engine )
 {
   if ( $engine =~ /wublast|abblast/i )
   {
     $engine        = "abblast";
+    my $prgm = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
     $searchEngineN =
         WUBlastSearchEngine->new(
-                               pathToEngine => $RepModelConfig::WUBLASTN_PRGM );
+                               pathToEngine => $prgm );
     if ( not defined $searchEngineN )
     {
-      die "Cannot execute $RepModelConfig::WUBLASTN_PRGM please make "
+      die "Cannot execute $prgm please make "
           . "sure you have setup RepeatModeler to use AB/WUBlast "
           . "by running the configure script.\n";
     }
-  } elsif ( $engine =~ /ncbi/i )
+  } elsif ( $engine =~ /rmblast|ncbi/i )
   {
-    $engine        = "ncbi";
+    $engine        = "rmblast";
+    my $prgm = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
     $searchEngineN =
         NCBIBlastSearchEngine->new(
-                               pathToEngine => $RepModelConfig::RMBLASTN_PRGM );
+                               pathToEngine => $prgm );
     if ( not defined $searchEngineN )
     {
-      die "Cannot execute $RepModelConfig::RMBLASTN_PRGM please make "
+      die "Cannot execute $prgm please make "
           . "sure you have setup RepeatModeler to use NCBI (RMBlast) by "
           . "running the configure script.\n";
     }
@@ -293,27 +329,18 @@ if ( $engine eq "abblast" )
   {
     die "Missing $genomeDB.xn[idst] files!\n";
   }
-  $dbIndex = `$RepModelConfig::XDFORMAT_PRGM -m2 -n -r $genomeDB`;
+  my $prgm = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
+  $dbIndex = `$prgm -m2 -n -r $genomeDB`;
 } else
 {
   $genomeDB =~ s/(.+)\.n[nihs][rndiq]/$1/;
-
-  #if (    !-s "$genomeDB.nhr"
-  #     && !-s "$genomeDB.nin"
-  #     && !-s "$genomeDB.nnd"
-  #     && !-s "$genomeDB.nni"
-  #     && !-s "$genomeDB.nsq" )
-  #{
-  #  die "Missing $genomeDB.nhr, .nin, .nnd, .nni, .nsq files!\n";
-  #}
+  my $NCBIDBCMD_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
   if ( $searchEngineN->getVersion() =~ /2.2.23+/ )
   {
-    $dbIndex =
-`$RepModelConfig::NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%t %l"`;
+    $dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%t %l"`;
   } else
   {
-    $dbIndex =
-`$RepModelConfig::NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
+    $dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
   }
 }
 
@@ -735,9 +762,9 @@ while ( $totSampledBP < $dbSize
     print " -- Running RepeatScout on the sequences...\n";
     &runRepeatScout(
                      workDir    => $roundTmpDir,
-                     rscoutPath => $RepModelConfig::RSCOUT_DIR,
-                     trfPrgm    => $RepModelConfig::TRF_PRGM,
-                     nsegPrgm   => $RepModelConfig::NSEG_PRGM,
+                     rscoutPath => $config->{'RSCOUT_DIR'}->{'value'},
+                     trfPrgm    => $config->{'TRF_PRGM'}->{'value'}, 
+                     nsegPrgm   => $config->{'NSEG_PRGM'}->{'value'}, 
                      fastaFile  => $sampleFastaFile,
                      seqSize    => $actualGenomeSampleSize
     );
@@ -750,14 +777,16 @@ while ( $totSampledBP < $dbSize
       {
 
         # XDFORMAT the database
-        system(   "$RepModelConfig::XDFORMAT_PRGM -n -I "
+        my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
+        system(   "$XDFORMAT_PRGM -n -I "
                 . "$sampleFastaFile >> "
                 . "$roundTmpDir/xdformat.log 2>&1" );
       } else
       {
 
         # MAKEBLASTDB the database
-        system(   "$RepModelConfig::NCBIBLASTDB_PRGM -out $sampleFastaFile "
+        my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
+        system(   "$NCBIBLASTDB_PRGM -out $sampleFastaFile "
                 . "-parse_seqids -dbtype nucl -in $sampleFastaFile >> "
                 . "$roundTmpDir/makeblastdb.log 2>&1" );
       }
@@ -789,7 +818,7 @@ while ( $totSampledBP < $dbSize
   # copy sample file for mask processing
   system("cp $sampleFastaFile $roundTmpDir/tmpSample.fa");
 
-  system( "$RepModelConfig::REPEATMODELER_DIR/TRFMask $roundTmpDir/tmpSample.fa" );
+  system( "$FindBin::RealBin/TRFMask $roundTmpDir/tmpSample.fa" );
   if ( -s "$roundTmpDir/tmpSample.fa.masked" )
   {
     system( "mv $roundTmpDir/tmpSample.fa.masked $roundTmpDir/tmpSample.fa" );
@@ -814,10 +843,10 @@ while ( $totSampledBP < $dbSize
 
     if ( $engine eq "abblast" )
     {
-      $searchEngineN->setMatrix(
-"$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix" );
+      $searchEngineN->setMatrix( "$FindBin::RealBin/Matrices/wublast/nt/comparison.matrix" );
+      my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
       RepeatUtil::wublastMaskDatabase(
-                                 xdformatPath => $RepModelConfig::XDFORMAT_PRGM,
+                                 xdformatPath => $XDFORMAT_PRGM,
                                  fastaFile    => "$roundTmpDir/tmpSample.fa",
                                  consensi     => $consensiFile,
                                  searchEngine => $searchEngineN
@@ -825,12 +854,12 @@ while ( $totSampledBP < $dbSize
     } else
     {
       $searchEngineN->setMatrix(
-         "$RepModelConfig::REPEATMODELER_MATRICES_DIR/ncbi/nt/comparison.matrix"
+         "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix"
       );
       RepeatUtil::ncbiMaskDatabase(
-                                makeDBPath => $RepModelConfig::NCBIBLASTDB_PRGM,
-                                dbCMDPath  => $RepModelConfig::NCBIDBCMD_PRGM,
-                                aliasPath  => $RepModelConfig::NCBIDBALIAS_PRGM,
+                                makeDBPath => $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb",
+                                dbCMDPath  => $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd",
+                                aliasPath  => $config->{'RMBLAST_DIR'}->{'value'} . "/blastdb_aliastool",
                                 workingDir => $roundTmpDir,
                                 fastaFile  => "$roundTmpDir/tmpSample.fa",
                                 consensi   => $consensiFile,
@@ -934,13 +963,15 @@ while ( $totSampledBP < $dbSize
   {
 
     # XDFORMAT the database
-    system(   "$RepModelConfig::XDFORMAT_PRGM -n -I $sampleFastaFile.masked >> "
+    my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
+    system(   "$XDFORMAT_PRGM -n -I $sampleFastaFile.masked >> "
             . "$roundTmpDir/xdformat.log 2>&1" );
   } else
   {
 
     # MAKEBLASTDB the database
-    system(   "$RepModelConfig::NCBIBLASTDB_PRGM -out $sampleFastaFile.masked "
+    my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
+    system(   "$NCBIBLASTDB_PRGM -out $sampleFastaFile.masked "
             . "-parse_seqids -dbtype nucl -in $sampleFastaFile.masked >> "
             . "$roundTmpDir/makeblastdb.log 2>&1" );
   }
@@ -954,11 +985,13 @@ while ( $totSampledBP < $dbSize
   my $sampleIndex;
   if ( $engine eq "abblast" )
   {
-    $sampleIndex = `$RepModelConfig::XDFORMAT_PRGM -m2 -n -r $sampleFastaFile.masked`;
+    my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
+    $sampleIndex = `$XDFORMAT_PRGM -m2 -n -r $sampleFastaFile.masked`;
   } else
   {
+    my $NCBIDBCMD_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
     $sampleIndex =
-`$RepModelConfig::NCBIDBCMD_PRGM -db $sampleFastaFile.masked -entry all -outfmt "gi|%g %l"`;
+`$NCBIDBCMD_PRGM -db $sampleFastaFile.masked -entry all -outfmt "gi|%g %l"`;
   }
 
   # Both search engines produce indexes in reverse order ie:
@@ -985,13 +1018,13 @@ while ( $totSampledBP < $dbSize
   if ( $engine eq "abblast" )
   {
     $searchEngineN->setMatrix(
-                          "$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/"
+                          "$FindBin::RealBin/Matrices/wublast/"
                               . "nt/comparison.matrix" );
     $searchEngineN->setGenerateAlignments( 1 );
   } else
   {
     $searchEngineN->setMatrix(
-                             "$RepModelConfig::REPEATMODELER_MATRICES_DIR/ncbi/"
+                             "$FindBin::RealBin/ncbi/"
                                  . "nt/comparison.matrix" );
     $searchEngineN->setGenerateAlignments( 0 );
   }
@@ -1249,13 +1282,15 @@ while ( $totSampledBP < $dbSize
           {
             if ( $engine eq "abblast" )
             {
-              system(   "$RepModelConfig::XDGET_PRGM -n $sampleFastaFile.masked "
+              my $XDGET_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdget";
+              system(   "$XDGET_PRGM -n $sampleFastaFile.masked "
                       . "\"gi|$sampleID\""
                       . " >> $roundTmpDir/batch-$batchNum.fa "
                       . "2>>$roundTmpDir/xdget.log" );
             } else
             {
-              system(   "$RepModelConfig::NCBIDBCMD_PRGM -db $sampleFastaFile.masked "
+              my $NCBIDBCMD_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
+              system(   "$NCBIDBCMD_PRGM -db $sampleFastaFile.masked "
                       . "-entry \"gi|$sampleID\" "
                       . ">> $roundTmpDir/batch-$batchNum.fa "
                       . "2>>$roundTmpDir/blastdbcmd.log" );
@@ -1290,7 +1325,8 @@ while ( $totSampledBP < $dbSize
                 . "for writing!\n";
             print GI join( "\n", @giList ) . "\n";
             close GI;
-            system(   "$RepModelConfig::NCBIDBALIAS_PRGM -gi_file_in "
+            my $NCBIDBALIAS_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdb_aliastool";
+            system(   "$NCBIDBALIAS_PRGM -gi_file_in "
                     . "$roundTmpDir/batch-$batchNum-gilist.txt "
                     . "-gi_file_out $roundTmpDir/batch-$batchNum-gilist "
                     . "> /dev/null 2>&1" );
@@ -1411,7 +1447,7 @@ while ( $totSampledBP < $dbSize
     unless ( -f "$roundTmpDir/summary/eles" )
     {
       runRECON( workDir   => $roundTmpDir,
-                reconPath => $RepModelConfig::RECON_DIR );
+                reconPath => $config->{'RECON_DIR'}->{'value'} );
     }
 
     #
@@ -1481,7 +1517,7 @@ elapsedTime( 1 );
 if ( $numModels > 0 )
 {
   print "Classifying Repeats...\n";
-  system(   "$RepModelConfig::REPEATMODELER_DIR/RepeatClassifier "
+  system(   "$FindBin::RealBin/RepeatClassifier "
           . "-consensi $tmpDir/consensi.fa -stockholm $tmpDir/families.stk" );
   print "Classification Time: " . elapsedTime( 1 ) . "\n";
 }
@@ -1783,11 +1819,12 @@ sub buildRSConsensi
   my $searchEngineN;
   if ( $engine eq "abblast" )
   {
+    my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
     $searchEngineN =
         WUBlastSearchEngine->new(
-                               pathToEngine => $RepModelConfig::WUBLASTN_PRGM );
+                               pathToEngine => $WUBLASTN_PRGM );
     $searchEngineN->setMatrix(
-      "$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix"
+      "$FindBin::RealBin/Matrices/wublast/nt/comparison.matrix"
     );
 
     # TODO CONSIDER THIS!
@@ -1795,11 +1832,12 @@ sub buildRSConsensi
     #$searchEngineN->setMaskLevelSequence( SearchResult::SubjectStrand );
   } else
   {
+    my $RMBLASTN_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
     $searchEngineN =
         NCBIBlastSearchEngine->new(
-                               pathToEngine => $RepModelConfig::RMBLASTN_PRGM );
+                               pathToEngine => $RMBLASTN_PRGM );
     $searchEngineN->setMatrix(
-      "$RepModelConfig::REPEATMODELER_MATRICES_DIR/ncbi/nt/comparison.matrix" );
+      "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
   }
 
   $searchEngineN->setTempDir( "$workDir" );
@@ -1941,8 +1979,7 @@ sub buildRSConsensi
             . ( $#{ $families{$key}->{'elements'} } + 1 )
             . ", Using $numElements ):\n";
 
-        # TODO: Make this local!
-        system( "$RepModelConfig::REPEATMODELER_DIR/Refiner -engine $engine "
+        system( "$FindBin::RealBin/Refiner -engine $engine "
            . "-noTmp -giToID $genomeDB.translation $workDir/family-$familyID.fa"
         );
 
@@ -2330,8 +2367,7 @@ sub buildReconConsensi
     {
       print "Refining family-$familyID model...\n";
 
-      # TODO: Make this local!
-      system("$RepModelConfig::REPEATMODELER_DIR/Refiner -engine $engine "
+      system("$FindBin::RealBin/Refiner -engine $engine "
            . "-noTmp -giToID $genomeDB.translation $workDir/family-$familyID.fa"
       );
 
@@ -2647,7 +2683,8 @@ sub sampleFromDB
     my $seq;
     if ( $dbType eq "abblast" )
     {
-      $seq = `$RepModelConfig::XDGET_PRGM -n -a$start -b$end $dbFile "$seqID"`;
+      my $XDGET_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdget";
+      $seq = `$XDGET_PRGM -n -a$start -b$end $dbFile "$seqID"`;
       die $CLASS
           . "::sampleFromDB() Could not obtain sequence $seqID from"
           . " the database!\n"
@@ -2657,12 +2694,13 @@ sub sampleFromDB
       if ( $seqID =~ /gi\|(\d+)/ )
       {
         my $ncbiID = $1;
-        if ( `$RepModelConfig::NCBIDBCMD_PRGM -version` =~ /2.2.23+/ )
+        my $NCBIDBCMD_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
+        if ( `$NCBIDBCMD_PRGM -version` =~ /2.2.23+/ )
         {
           my $openCoordEnd   = $end;
           my $openCoordStart = $start - 1;
           $seq =
-`$RepModelConfig::NCBIDBCMD_PRGM -db $dbFile -entry $ncbiID -range $openCoordStart-$openCoordEnd`;
+`$NCBIDBCMD_PRGM -db $dbFile -entry $ncbiID -range $openCoordStart-$openCoordEnd`;
           die $CLASS
               . "::sampleFromDB() Could not obtain sequence ( entry = $ncbiID, "
               . "start = $openCoordStart end = $openCoordEnd ) from"
@@ -2672,7 +2710,7 @@ sub sampleFromDB
         } else
         {
           $seq =
-`$RepModelConfig::NCBIDBCMD_PRGM -db $dbFile -entry $ncbiID -range $start-$end`;
+`$NCBIDBCMD_PRGM -db $dbFile -entry $ncbiID -range $start-$end`;
           die $CLASS
               . "::sampleFromDB() Could not obtain sequence ( entry = $ncbiID, "
               . "start = $start end = $end ) from"
