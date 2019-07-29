@@ -94,6 +94,12 @@ require Exporter;
 
 my $CLASS = "RepeatUtil";
 my $DEBUG = 0;
+$DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
+my $config = $RepModelConfig::configuration;
+my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
+my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
+
+
 
 ##---------------------------------------------------------------------##
 
@@ -629,12 +635,12 @@ sub gatherInstances
 
   my $searchEngineN =
       WUBlastSearchEngine->new(
-                               pathToEngine => $RepModelConfig::WUBLASTN_PRGM );
+                               pathToEngine => $WUBLASTN_PRGM );
   $searchEngineN->setMatrix(
-      "$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix"
+      "$FindBin::RealBin/Matrices/wublast/nt/comparison.matrix"
   );
   print
-"Setting matrix to : $RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix\n";
+"Setting matrix to : $FindBin::RealBin/Matrices/wublast/nt/comparison.matrix\n";
   $searchEngineN->setMinScore( 250 );
   $searchEngineN->setMaskLevel( 80 );
   $searchEngineN->setGenerateAlignments( 0 );
@@ -655,7 +661,7 @@ sub gatherInstances
     print "Writing $tempDir/inst-db-$i.fa\n";
     $fdbBatcher->writeBatchFile( $i, "$tempDir/inst-db.fa" );
 
-    system(   "$RepModelConfig::XDFORMAT_PRGM -n -I "
+    system(   "$XDFORMAT_PRGM -n -I "
             . "$tmpCons >> "
             . "$tempDir/xdformat.log 2>&1" );
 

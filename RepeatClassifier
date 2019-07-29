@@ -153,6 +153,8 @@ Detailed help
 
 =back
 
+=head1 CONFIGURATION OVERRIDES
+
 =head1 SEE ALSO
 
 =over 4
@@ -185,7 +187,7 @@ use Getopt::Long;
 
 # RepeatModeler Libraries
 use RepModelConfig;
-use lib $RepModelConfig::REPEATMASKER_DIR;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use RepeatUtil;
 
 # RepeatMasker Libraries
@@ -220,36 +222,74 @@ $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 #   -t=i: Number paramters
 #
 my @opts = qw( help consensi=s engine=s stockholm=s );
+# Add configuration parameters as additional command-line options
+push @opts, RepModelConfig::getCommandLineOptions();
+
 
 #
 # Get the supplied command line options, and set flags
 #
 my %options = ();
 unless ( &GetOptions( \%options, @opts ) ) {
-  exec "pod2text $0";
-  exit( 1 );
+  usage();
+}
+
+#
+# Provide the POD text from this file and 
+# from the config file by merging them 
+# together.  The heading "CONFIGURATION
+# OVERRIDES" provides the insertion point
+# for the configuration POD.
+#
+sub usage {
+  my $p = Pod::Text->new();
+  $p->output_fh(*STDOUT);
+  my $pod_str;
+  open IN,"<$0" or die "Could not open self ($0) for generating documentation!";
+  while (<IN>){
+    if ( /^=head1\s+CONFIGURATION OVERRIDES\s*$/ )
+    {
+      my $c_pod = RepModelConfig::getPOD();
+      if ( $c_pod ) {
+        $pod_str .= $_ . $c_pod;
+      }
+    }else {
+      $pod_str .= $_;
+    }
+  }
+  close IN;
+  print "$0 - $version\n";
+  $p->parse_string_document($pod_str);
+  exit(1);
 }
 
 # Print the internal POD documentation if something is missing
 if ( !defined $options{'consensi'} || ! -s $options{'consensi'} || $options{'help'} ) {
   print "No database indicated or it is an empty file.\n\n";
-
-  # This is a nifty trick so we don't have to have
-  # a duplicate "USAGE()" subroutine.  Instead we
-  # just recycle our POD docs.  See PERL POD for more
-  # details.
-  exec "pod2text $0";
-  die;
+  usage();
 }
-
 die $CLASS . ": Cannot run classification on an empty consensus file!\n"
     if ( -z $options{'consensi'} );
+
+#
+# Resolve configuration settings using the following precedence: 
+# command line first, then environment, followed by config
+# file.
+#
+RepModelConfig::resolveConfiguration(\%options);
+my $config = $RepModelConfig::configuration;
+my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
+my $RMBLASTN_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/rmblastn";
+my $NCBIBLASTX_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/blastx";
+my $WUBLAST_DIR = $config->{'ABBLAST_DIR'}->{'value'};
+my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
+my $WUBLASTX_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastx";
 
 #
 # Setup the search engine
 #
 my $searchEngineN;
-my $engine = $RepModelConfig::DEFAULT_SEARCH_ENGINE;
+my $engine = "rmblast";
 $engine = $options{'engine'} if ( $options{'engine'} );
 if ( $engine )
 {
@@ -257,21 +297,21 @@ if ( $engine )
   {
     $engine = "abblast";
     $searchEngineN = WUBlastSearchEngine->new(
-                        pathToEngine => $RepModelConfig::WUBLASTN_PRGM );
+                        pathToEngine => $WUBLASTN_PRGM );
     if ( not defined $searchEngineN )
     {
-       die   "Cannot execute $RepModelConfig::WUBLASTN_PRGM please make "
+       die   "Cannot execute $WUBLASTN_PRGM please make "
            . "sure you have setup RepeatModeler to use AB/WUBlast "
            . "by running the configure script.\n";
     }
-  }elsif ( $engine =~ /ncbi/i )
+  }elsif ( $engine =~ /rmblast|ncbi/i )
   {
-    $engine = "ncbi";
+    $engine = "rmblast";
     $searchEngineN = NCBIBlastSearchEngine->new(
-                        pathToEngine => $RepModelConfig::RMBLASTN_PRGM );
+                        pathToEngine => $RMBLASTN_PRGM );
     if ( not defined $searchEngineN )
     {
-       die   "Cannot execute $RepModelConfig::RMBLASTN_PRGM please make "
+       die   "Cannot execute $RMBLASTN_PRGM please make "
            . "sure you have setup RepeatModeler to use NCBI (RMBlast) by "
            . "running the configure script.\n";
     }
@@ -311,7 +351,7 @@ $cmdSuffix = "" if ( $DEBUG );
 #
 print "  - Looking for Simple and Low Complexity sequences..\n";
 system( "cp $options{'consensi'} tmpConsensi.fa" );
-my $cmd = "$RepModelConfig::REPEATMODELER_DIR/TRFMask tmpConsensi.fa "
+my $cmd = "$FindBin::RealBin/TRFMask tmpConsensi.fa "
          ."$cmdSuffix";
 print "Running: $cmd\n" if ( $DEBUG );
 system( $cmd );
@@ -321,7 +361,7 @@ if ( ! -s "tmpConsensi.fa.masked" )
 }
 system("mv tmpConsensi.fa.masked tmpConsensi.fa");
 
-$cmd = "$RepModelConfig::REPEATMASKER_DIR/RepeatMasker -qq -noint "
+$cmd = "$REPEATMASKER_DIR/RepeatMasker -qq -noint "
        ."-no_is tmpConsensi.fa $cmdSuffix";
 print "Running: $cmd\n" if ( $DEBUG );
 system( $cmd );
@@ -382,7 +422,7 @@ foreach my $seqID ( $maskedDB->getIDs() )
 # transposable element. It needs to be right after it, otherwise it
 # may fall on the next line in the blastx output's hit description.
 #
-# RepModelConfig::WUBLASTX_PRGM parameters default with -W 2
+# WUBLASTX_PRGM parameters default with -W 2
 # Originally I had: -filter xnu -wordmask seg
 # but the masking of simple repeats and low_complexity at the DNA
 # level seems better (more real matches reported)
@@ -401,31 +441,31 @@ my $masklevel = 80;
 my $blastCmd;
 if ( $engine eq "abblast" )
 {
-  if ( ! -s "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatPeps.lib.xps" ) 
+  if ( ! -s "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib.xps" ) 
   {
-    die "Missing $RepModelConfig::REPEATMASKER_DIR/Libraries/"
+    die "Missing $REPEATMASKER_DIR/Libraries/"
        ."RepeatPeps.lib.xps!\n"
        ."Please rerun the configure program in the RepeatModeler directory\n"
        ."before running this script.\n";
   }
   # Setup the matrix directory so that wublast can find Blossom62
-  $ENV{BLASTMAT}   = "$RepModelConfig::WUBLAST_DIR/matrix";
+  $ENV{BLASTMAT}   = "$WUBLAST_DIR/matrix";
   $ENV{WUBLASTMAT} = $ENV{BLASTMAT};
-  $blastCmd = "$RepModelConfig::WUBLASTX_PRGM " .
-               "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatPeps.lib " .
+  $blastCmd = "$WUBLASTX_PRGM " .
+               "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib " .
                "$options{'consensi'}.masked -W 2 > tmpBlastXResults.out 2>&1";
   print "      + Running abblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
-}elsif ( $engine eq "ncbi"  )
+}elsif ( $engine eq "rmblast"  )
 {
-  if ( ! -s "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatPeps.lib.psq" )
+  if ( ! -s "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib.psq" )
   {
-    die "Missing $RepModelConfig::REPEATMASKER_DIR/Libraries/"
+    die "Missing $REPEATMASKER_DIR/Libraries/"
        ."RepeatPeps.lib.psq!\n"
        ."Please rerun the configure program in the RepeatModeler directory\n"
        ."before running this script.\n";
   }
-  $blastCmd = "$RepModelConfig::NCBIBLASTX_PRGM " .
-       "-db $RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatPeps.lib " .
+  $blastCmd = "$NCBIBLASTX_PRGM " .
+       "-db $REPEATMASKER_DIR/Libraries/RepeatPeps.lib " .
        "-query $options{'consensi'}.masked -word_size 2 > tmpBlastXResults.out 2>&1";
   print "      + Running rmblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
 }
@@ -487,29 +527,29 @@ $searchEngineN->setQuery( $options{'consensi'} );
 if ( $engine eq "abblast" )
 {
   $searchEngineN->setMatrix(
-   "$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix" );
-  if ( ! -s "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatMasker.lib.xns" )
+   "$FindBin::RealBin/Matrices/wublast/nt/comparison.matrix" );
+  if ( ! -s "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib.xns" )
   {
-    die "Missing $RepModelConfig::REPEATMASKER_DIR/Libraries/"
+    die "Missing $REPEATMASKER_DIR/Libraries/"
      ."RepeatMasker.lib.xns!\nPlease rerun the configure program "
      ."in the RepeatModeler directory\nbefore running this script.\n";
   }
   $searchEngineN->setAdditionalParameters( " -gapW=32" );
 }else {
   $searchEngineN->setMatrix(
-        "$RepModelConfig::REPEATMODELER_MATRICES_DIR/ncbi/nt/comparison.matrix"
+        "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix"
       );
 
-  if ( ! -s "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatMasker.lib.nsq" )
+  if ( ! -s "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib.nsq" )
   {
-    die "Missing $RepModelConfig::REPEATMASKER_DIR/Libraries/"
+    die "Missing $REPEATMASKER_DIR/Libraries/"
      ."RepeatMasker.lib.nsq!\nPlease rerun the configure program "
      ."in the RepeatModeler directory\nbefore running this script.\n";
   }
 }
 
 $searchEngineN->setSubject( 
-    "$RepModelConfig::REPEATMASKER_DIR/Libraries/RepeatMasker.lib" );
+    "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib" );
 
 print "    + Running blastn vs RepeatMasker.lib...\n" if ( $DEBUG );
 my ( $status, $searchResultCol ) = $searchEngineN->search();

@@ -172,7 +172,7 @@ use Carp;
 
 # RepeatModeler Libraries
 use RepModelConfig;
-use lib $RepModelConfig::REPEATMASKER_DIR;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use SearchResultCollection;
 
 use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION);

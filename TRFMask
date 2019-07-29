@@ -81,7 +81,7 @@ use Getopt::Long;
 
 # RepeatModeler Libraries
 use RepModelConfig;
-use lib $RepModelConfig::REPEATMASKER_DIR;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use TRF;
 use TRFSearchResult;
 
@@ -95,6 +95,8 @@ use SearchEngineI;
 my $CLASS = "TRFMask";
 my $DEBUG = 0;
 $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
+my $config = $RepModelConfig::configuration;
+my $TRF_PRGM = $config->{'TRF_PRGM'}->{'value'};
 
 #
 # Option processing
@@ -144,11 +146,11 @@ my $seqDB = FastaDB->new( fileName => $fastaFile,
 # TODO....determine if we should use /tmp or not?
 if ( $DEBUG )
 {
-  my $ver = `$RepModelConfig::TRF_PRGM 2>&1`;
+  my $ver = `$TRF_PRGM 2>&1`;
   ( $ver ) = ( $ver =~ /Tandem Repeats Finder, Version (\S+)/ );
-  print "Running: $RepModelConfig::TRF_PRGM  ( version = $ver )\n";
+  print "Running: $TRF_PRGM  ( version = $ver )\n";
 }
-my $trf = TRF->new( pathToEngine => $RepModelConfig::TRF_PRGM,
+my $trf = TRF->new( pathToEngine => $TRF_PRGM,
                     workDir      => $wrkDir );
 
 open OUT, ">$maskedFile";

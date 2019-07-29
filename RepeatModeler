@@ -133,6 +133,7 @@ use FastaDB;
 #
 my $CLASS = "RepeatModeler";
 my $DEBUG = 0;
+$DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 $|     = 1;      # Turn autoflush on
 
 #
@@ -220,6 +221,8 @@ my $RMBLASTN_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/rmblastn";
 my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
 my $XDGET_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdget";
 my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
+my $RECON_DIR = $config->{'RECON_DIR'}->{'value'};
+# TODO: validate parameters?
 
 if ( $options{'version'} ) {
   print "RepeatModeler version $version\n";
@@ -857,9 +860,9 @@ while ( $totSampledBP < $dbSize
          "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix"
       );
       RepeatUtil::ncbiMaskDatabase(
-                                makeDBPath => $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb",
-                                dbCMDPath  => $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd",
-                                aliasPath  => $config->{'RMBLAST_DIR'}->{'value'} . "/blastdb_aliastool",
+                                makeDBPath => $NCBIBLASTDB_PRGM,
+                                dbCMDPath  => $NCBIDBCMD_PRGM,
+                                aliasPath  => $NCBIDBALIAS_PRGM,
                                 workingDir => $roundTmpDir,
                                 fastaFile  => "$roundTmpDir/tmpSample.fa",
                                 consensi   => $consensiFile,
@@ -1020,7 +1023,7 @@ while ( $totSampledBP < $dbSize
   } else
   {
     $searchEngineN->setMatrix(
-                             "$FindBin::RealBin/ncbi/"
+                             "$FindBin::RealBin/Matrices/ncbi/"
                                  . "nt/comparison.matrix" );
     $searchEngineN->setGenerateAlignments( 0 );
   }
@@ -1308,7 +1311,7 @@ while ( $totSampledBP < $dbSize
           $searchEngineN->setQuery( "$roundTmpDir/batch-$batchNum.fa" );
           $searchEngineN->setSubject( "$sampleFastaFile.masked" );
 
-          if ( $engine eq "ncbi" )
+          if ( $engine eq "rmblast" )
           {
 
             # Create a gilist
@@ -1440,7 +1443,7 @@ while ( $totSampledBP < $dbSize
     unless ( -f "$roundTmpDir/summary/eles" )
     {
       runRECON( workDir   => $roundTmpDir,
-                reconPath => $config->{'RECON_DIR'}->{'value'} );
+                reconPath => $RECON_DIR );
     }
 
     #
