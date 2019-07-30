@@ -1,4 +1,4 @@
-#!/u1/local/bin/perl
+#!/usr/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) renameIDs
@@ -132,7 +132,7 @@ use SeedAlignment;
 #
 # Version
 #  -- NOTE: This is filled in by configure
-my $Version = "#VERSION#";
+my $Version = "open-1.0.11";
 $Version = "DEV" if ( $Version =~ /\#VERSION\#/ );
 
 #

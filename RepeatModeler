@@ -1,4 +1,4 @@
-#!/u1/local/bin/perl
+#!/usr/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) RepeatModeler
@@ -80,7 +80,7 @@ should be an integer number.
 
 =over 4
 
-RepeatMasker, WUBlast
+RepeatMasker, RMBlast
 
 =back
 
@@ -90,8 +90,12 @@ RepeatMasker, WUBlast
 
 =head1 AUTHOR
 
- Robert Hubley <rhubley@systemsbiology.org>
- Arian Smit <asmit@systemsbiology.org>
+ RepeatModeler:
+   Robert Hubley <rhubley@systemsbiology.org>
+   Arian Smit <asmit@systemsbiology.org>
+
+ LTR Pipeline Extensions:
+   Jullien Michelle Flynn <jmf422@cornell.edu>
 
 =cut
 
@@ -139,7 +143,7 @@ $|     = 1;      # Turn autoflush on
 #
 # Version
 #  -- This is filled in by configure
-my $version = "#VERSION#";
+my $version = "open-1.0.11";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
 my $cmdLine = $0 . join( ' ', @ARGV );
@@ -282,7 +286,7 @@ if ( $engine )
 }
 
 ##
-## MAGIC NUMBERS
+## Sampling/Iteration Parameters
 ##
 my $rsSampleSize               = 40000000;     # The size of the sequence given
                                                #   to RepeatScout. ( round #1 )
@@ -307,7 +311,6 @@ my $recommendedFamilySize = 15;
 #   TODO: Perhaps this should only be invoked if
 #         the genome is extremely small.
 my $minFamilySize = 4;
-
 
 ##
 ## TODO: DEV ONLY
@@ -682,8 +685,9 @@ while ( $totSampledBP < $dbSize
   }
 
   my $familyCutoff = $recommendedFamilySize;
-  if ( ( $totSampledBP >= $dbSize || $sampleSize >= $genomeSampleSizeMax || $seqRemaining <= $sampleSize )
-       && ( $options{'onlyIns'} || $numModels == 0 ) )
+#  if ( ( $totSampledBP >= $dbSize || $sampleSize >= $genomeSampleSizeMax || $seqRemaining <= $sampleSize )
+#       && ( $options{'onlyIns'} || $numModels == 0 ) )
+  if ( $round > 1 && ( $totSampledBP >= $dbSize || $sampleSize >= $genomeSampleSizeMax || $seqRemaining <= $sampleSize ))
   {
     print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
     $familyCutoff = $minFamilySize;

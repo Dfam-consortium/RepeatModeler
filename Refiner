@@ -1,4 +1,4 @@
-#!/u1/local/bin/perl
+#!/usr/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) Refiner
@@ -102,13 +102,13 @@ use FastaDB;
 #
 my $CLASS = "Refiner";
 my $DEBUG = 0;
-#$DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
+$DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 $|     = 1;                                         # Turn autoflush on
 
 #
 # Version
 #  -- NOTE: This is filled in by configure
-my $version = "#VERSION#";
+my $version = "open-1.0.11";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
 if ( $ARGV[ 0 ] && $ARGV[ 0 ] eq '-v' )

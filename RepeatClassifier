@@ -1,4 +1,4 @@
-#!/u1/local/bin/perl
+#!/usr/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) RepeatClassifier
@@ -18,113 +18,6 @@
 #* of this license, visit http://www.opensource.org/licenses/osl-2.1.php or
 #* see the license.txt file contained in this distribution.
 #*
-###############################################################################
-#  ChangeLog:
-#
-#    $Log: RepeatClassifier,v $
-#    Revision 1.29  2017/04/04 23:57:12  rhubley
-#     - Nearing a release
-#
-#    Revision 1.28  2017/03/31 17:25:39  rhubley
-#      - Lots-o-improvements.  Starting preparation for release.
-#
-#    Revision 1.27  2014/05/08 19:38:00  rhubley
-#      - Added -pa option and parallelized the blast all-vs-other searches
-#
-#    Revision 1.26  2013/10/28 23:01:07  rhubley
-#      - Updates
-#
-#    Revision 1.25  2012/08/22 18:46:24  rhubley
-#     -- a refresh checkin and adding a new utility
-#
-#    Revision 1.24  2010/06/11 23:45:30  rhubley
-#     -- Getting ready for a release
-#
-#    Revision 1.23  2010/06/10 18:15:44  rhubley
-#     - Fixed a bug that Arian found with RepeatScout models refined by the
-#       RMBLAST engine.  The problem had to do with a rev/compl operation
-#       in BuildRSConsensi
-#
-#     - Readying RepeatModeler for release with RMBLAST
-#
-#    Revision 1.22  2010/06/04 22:55:18  rhubley
-#      - Some bug fixes.
-#      - Changes to support rmblast package
-#
-#    Revision 1.21  2009/03/26 17:32:01  rhubley
-#      - Fixed stupid Debian/Ubuntu choice of using DASH as /bin/sh.
-#
-#    Revision 1.20  2008/05/01 22:09:59  rhubley
-#      - Merged the libraries and placed in RepeatMasker distribution
-#
-#    Revision 1.19  2008/04/28 17:02:26  rhubley
-#      - Fixed temp directory problems repoted by Hans-Rudolf Hotz at Sanger
-#
-#    Revision 1.18  2008/04/16 18:29:33  rhubley
-#      - Refinements of the RS instance collection mechanism
-#      - Refinements of the masking mechanism. May switch to using
-#        RM for this step.
-#      - Found a few more hard coded directory dependencies
-#
-#    Revision 1.17  2008/03/27 19:55:08  rhubley
-#      - Refining the output messages
-#      - RepeatPeps distributed with this release
-#      - Configure now builds wublast libraries during installation
-#
-#    Revision 1.16  2008/03/25 22:48:29  rhubley
-#     - Removed all debuging output and cleaned up RepeatModeler's
-#       parameter settings.
-#
-#    Revision 1.15  2008/03/25 21:29:47  rhubley
-#      - Recent updates include
-#         - Fixes to RepeatClassifier
-#         - Addition of RepeatScout
-#
-#    Revision 1.14  2008/01/24 22:11:34  rhubley
-#      - Starting fresh 1/1/24
-#
-#    Revision 1.13  2006/07/07 22:11:05  rhubley
-#     - general update to MultAln.pm
-#
-#    Revision 1.12  2005/04/12 17:55:32  rhubley
-#     - Misc changes.  Moved allpeps library out to RepeatMasker
-#
-#    Revision 1.11  2005/03/17 22:04:02  rhubley
-#      Silenced the XDFORMAT program
-#
-#    Revision 1.10  2005/03/16 22:55:37  rhubley
-#     - Clean up
-#
-#    Revision 1.9  2005/03/16 19:53:14  rhubley
-#     - Last minute changes
-#
-#    Revision 1.8  2005/03/16 01:38:35  rhubley
-#     - Fixed a few bugs in RepeatClassifier
-#
-#    Revision 1.7  2005/03/12 00:44:06  rhubley
-#      - Misc
-#
-#    Revision 1.6  2005/03/11 23:42:37  rhubley
-#      - Tidying et al
-#
-#    Revision 1.5  2005/03/11 20:49:09  rhubley
-#     - New master configuration file
-#
-#    Revision 1.4  2005/03/11 00:29:53  rhubley
-#      - Ran perltidy and added some more info output
-#
-#    Revision 1.3  2005/03/10 23:26:58  rhubley
-#      - Working my way to the first release
-#
-#    Revision 1.2  2005/03/08 19:35:30  rhubley
-#      - Incorporated name sanitizing into buildXDFDatabase.pl
-#      - RepeatModeler can now change it's family minimum size
-#      - Added buildXDFDatabase to Makefile
-#
-#    Revision 1.1  2005/03/07 22:32:53  rhubley
-#      - Initial checkn's of some modules
-#      - See lab notebook
-#
 ###############################################################################
 #
 # To Do:
@@ -165,7 +58,7 @@ RepeatModeler
 
 =head1 COPYRIGHT
 
-Copyright 2005-2010 Institute for Systems Biology
+Copyright 2005-2019 Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -183,6 +76,7 @@ use Data::Dumper;
 use Cwd;
 use Carp;
 use File::Basename;
+use Pod::Text;
 use Getopt::Long;
 
 # RepeatModeler Libraries
@@ -211,7 +105,7 @@ $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 #
 # Version
 #  -- NOTE: This is filled in by configure
-my $version = "#VERSION#";
+my $version = "open-1.0.11";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
 #
