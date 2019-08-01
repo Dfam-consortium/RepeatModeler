@@ -75,6 +75,7 @@ use Pod::Text;
 use File::Path;
 use File::Basename;
 use Cwd;
+use Time::HiRes qw( gettimeofday tv_interval);
 use RepModelConfig;
 
 #
@@ -185,23 +186,87 @@ my $threads = 1;
 if ( $options{'pa'} ) {
  $threads = $options{'pa'};
 }
+my $inputFile = $ARGV[0];
 
 ## Temp directory
 my $tempDir = "testtmp";
+system("rm -rf $tempDir");
+system("mkdir $tempDir");
 
-#system("rm -rf $tempDir");
-#system("mkdir $tempDir");
 
-#my $numAnnots = &runLtrDetector( $LTR_DETECTOR_DIR, "dmel-7180.fa", "$tempDir/LtrDetector-results.txt", $threads, $tempDir);
-#if ( $numAnnots == 0 ) {
-#  print "No results returned from LTR structural finder ( LtrDetector )...\n";
-#  exit;
-#}
-#&runLtrRetriever( $LTR_RETRIEVER_DIR, "dmel-7180.fa", "$tempDir/LtrDetector-results.txt", "$tempDir/LtrRetriever-redundant-results.fa", $threads );
+my %TimeBefore = ();
+elapsedTime( "runtime" );    # Setup the timers
+my $numAnnots = &runLtrDetector( $LTR_DETECTOR_DIR, $inputFile, "$tempDir/LtrDetector-results.txt", $threads, $tempDir);
+if ( $numAnnots == 0 ) {
+  print "No results returned from LTR structural finder ( LtrDetector )...\n";
+  exit;
+}
+&runLtrRetriever( $LTR_RETRIEVER_DIR, $inputFile, "$tempDir/LtrDetector-results.txt", "$tempDir/LtrRetriever-redundant-results.fa", $threads );
 &runMafft( $MAFFT_DIR, "$tempDir/LtrRetriever-redundant-results.fa", "$tempDir/mafft-alignment.fa", $threads );
 &runNinja( $NINJA_DIR, "$tempDir/mafft-alignment.fa", "$tempDir/clusters.dat", $threads );
+# TODO:
+#   Here Jullien screened out families which have similarity to DNA Transposons or LINE elements by searching
+#   with RepeatMasker.  Since this is a de-novo approach we do not expect there to be a library available.
+#   One could search against all known LINE/DNA elements but that will need further thought.
+#
+# Make a fasta file for family ( cluster ).
+open IN,"<$tempDir/clusters.dat" or die "LTRPipeline : Could not open $tempDir/clusters.dat!";
+my %clusters;
+while ( <IN> ) {
+  # 0	utg7180_2262700..2263120_LTR#LTR/Gypsy
+  if ( /^(\d+)\s+(\S+)\s*$/ ) {
+    push @{ $clusters{$1} }, $2;
+  }
+}
+close IN;
+open IN,"<$tempDir/LtrRetriever-redundant-results.fa" or die "LTRPipeline : Could not open $tempDir/LtrRetriever-redundant-results.fa!";
+my %seeds = ();
+my $seq = "";
+my $id = "";
+while (<IN>)
+{
+  if ( /^>(\S+)/ ) {
+    my $tmpID = $1;
+    if ( $seq ) {
+      $seeds{$id} = $seq;
+    }
+    $seq = "";
+    $id = $tmpID;
+    next;
+  }
+  s/[\n\r\s]+//g;
+  $seq .= $_;
+}
+if ( $seq ) {
+  $seeds{$id} = $seq;
+}
+close IN;
+
+foreach my $cluster ( sort keys %clusters ){
+  my $idx = $cluster + 1;
+  open OUT, ">$tempDir/ltr_family-$idx.fa" or die "LTRPipeline : Could not create $tempDir/ltr_family-$idx.fa!";
+  foreach my $seedID ( @{$clusters{$cluster}} )
+  {
+    print OUT ">$seedID\n$seeds{$seedID}\n";
+  }
+  close OUT;
+  system("$FindBin::RealBin/Refiner -name ltr_family-$idx $tempDir/ltr_family-$idx.fa");
+  if ( -s "$tempDir/ltr_family-$idx.fa.refiner_cons" ) 
+  {
+    system("cat $tempDir/ltr_family-$idx.fa.refiner_cons >> $tempDir/combined_cons.fa");
+  }
+}
+
+print "Program Time: " . elapsedTime( "runtime" ) . "\n";
+
+## NOTE This produces many low-copy families.  Don't refine unless there is more than 3 copies.  Otherwise just 
+#       call the consensus.
 
 exit;
+
+
+
+
 
 sub runNinja {
   my $binDir = shift;
@@ -264,7 +329,7 @@ sub runMafft {
 
   my $cmd = "$binDir/bin/mafft --quiet";
   if ( defined $threads && $threads > 1 ) {
-    $cmd .= " -thread $threads";
+    $cmd .= " --thread $threads";
   }
   $cmd .= " $seqFile > $tmpDir/mafft-alignment.fa";
   print "LTRPipeline::runMafft : Running analysis $cmd\n" if ( $DEBUG );
@@ -575,4 +640,34 @@ sub createTempDir
 
 
 
+
+##-------------------------------------------------------------------------##
+## Use: my $string = elapsedTime( $index );
+##
+##   Returns
+##
+##      Great little utility for measuring the elapsed
+##      time between one or more sections of perl code.
+##
+##-------------------------------------------------------------------------##
+sub elapsedTime
+{
+  my ( $TimeHistIdx ) = @_;
+  if ( defined $TimeBefore{$TimeHistIdx} )
+  {
+    my $DiffTime = time - $TimeBefore{$TimeHistIdx};
+    $TimeBefore{$TimeHistIdx} = time;
+    my $Min = int( $DiffTime / 60 );
+    $DiffTime -= $Min * 60;
+    my $Hours = int( $Min / 60 );
+    $Min -= $Hours * 60;
+    my $Sec = $DiffTime;
+    my $timeStr = sprintf( "%02d:%02d:%02d", $Hours, $Min, $Sec );
+    return "$timeStr (hh:mm:ss) Elapsed Time";
+  } else
+  {
+    $TimeBefore{$TimeHistIdx} = time;
+    return 0;
+  }
+}
 

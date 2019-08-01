@@ -124,7 +124,13 @@ if ( $ARGV[ 0 ] && $ARGV[ 0 ] eq '-v' )
 #   -t=s: String parameters
 #   -t=i: Number paramters
 #
-my @opts = qw( help noTmp debug engine=s giToID=s );
+my @opts = (
+             '-help',
+             '-noTmp',
+             '-debug',
+             '-engine=s',
+             '-giToID=s',
+             '-name=s' );
 # Add configuration parameters as additional command-line options
 push @opts, RepModelConfig::getCommandLineOptions();
 
@@ -173,8 +179,8 @@ sub usage {
 #
 RepModelConfig::resolveConfiguration(\%options);
 my $config = $RepModelConfig::configuration;
-my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/makeblastdb";
-my $RMBLASTN_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/rmblastn";
+my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
+my $RMBLASTN_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
 my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
 my $WUBLASTP_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastp";
@@ -301,21 +307,55 @@ foreach my $file ( @ARGV )
   }
   print "Tmpdir = $tmpDir\n" if ( $DEBUG );
 
-  my ( $cons, $maSize, $avgKDiv ) = &buildConsensus(
-                                    "$FindBin::RealBin/Matrices",
-                                    $XDFORMAT_PRGM,
-                                    $srchEngAllVsAll,
-                                    $srchEngOneVsAll,
-                                    $file,
-                                    $tmpDir
-  );
+  #
+  # Handle one sequence case
+  #
+  open IN,"<$file" or die "Could not open $file for reading!";
+  my $firstSeq;
+  my $firstID;
+  my $count = 0;
+  while ( <IN> ) {
+    if ( /^>(\S+)/ ) 
+    {
+      $count++;
+      last if ( $count > 1 );
+      $firstID = $1;
+      next;
+    }
+    s/[\n\r\s]+//g;
+    $firstSeq .= $_;
+  }
+  close IN;
+
+  my $id = "family";
+  $id = $options{'name'} if ( $options{'name'} );
+
+  my $cons;
+  my $maSize;
+  my $avgKDiv;
+  if ( $count > 1 ) {
+    ( $cons, $maSize, $avgKDiv ) = &buildConsensus(
+                                      "$FindBin::RealBin/Matrices",
+                                      $XDFORMAT_PRGM,
+                                      $srchEngAllVsAll,
+                                      $srchEngOneVsAll,
+                                      $file,
+                                      $tmpDir
+                                                    );
+  }else {
+    my $malign = MultAln->new( sequences => [ [ $firstID, $firstSeq] ] );
+    $cons = $malign->consensus();
+    $maSize = 1;
+    $avgKDiv = 0;
+    $malign->toSTK( filename => "$file.refiner.stk", id => $id );
+  }
 
   $cons =~ s/-//g;
   open OUTC, ">$file.refiner_cons";
 
   # Save the consensus to the consensi file.
-  print OUTC ">family ( Final Multiple Alignment Size = " . $maSize
-      . " , Avg Kimura = $avgKDiv )\n";
+  print OUTC ">$id ( Final Multiple Alignment Size = " . $maSize
+       . " , Avg Kimura = $avgKDiv )\n";
   print OUTC "$cons\n";
   close OUTC;
 }
