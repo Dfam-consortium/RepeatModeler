@@ -84,7 +84,7 @@ structural LTR repeatfinding program.',
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 0,
-                                  'value' => '/usr/local/LtrDetector'
+                                  'value' => '/home/rhubley/src/LtrDetector/bin'
                                 },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
@@ -96,7 +96,7 @@ structural LTR analysis package.',
                                                           ],
                                    'param_type' => 'directory',
                                    'required' => 0,
-                                   'value' => '/usr/local/LTR_retriever'
+                                   'value' => '/home/rhubley/src/LTR_retriever-2.6'
                                  },
           'MAFFT_DIR' => {
                            'command_line_override' => 'mafft_dir',
@@ -120,7 +120,7 @@ phylogenetic analysis package.',
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/ninja'
+                           'value' => '/home/rhubley/src/NINJA/NINJA'
                          },
           'NSEG_PRGM' => {
                            'command_line_override' => 'nseg_prgm',

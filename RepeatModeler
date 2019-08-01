@@ -143,7 +143,7 @@ $|     = 1;      # Turn autoflush on
 #
 # Version
 #  -- This is filled in by configure
-my $version = "open-1.0.11";
+my $version = "#VERSION#";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
 my $cmdLine = $0 . join( ' ', @ARGV );
