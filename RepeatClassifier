@@ -173,8 +173,8 @@ die $CLASS . ": Cannot run classification on an empty consensus file!\n"
 RepModelConfig::resolveConfiguration(\%options);
 my $config = $RepModelConfig::configuration;
 my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
-my $RMBLASTN_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/rmblastn";
-my $NCBIBLASTX_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/blastx";
+my $RMBLASTN_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
+my $NCBIBLASTX_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastx";
 my $WUBLAST_DIR = $config->{'ABBLAST_DIR'}->{'value'};
 my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
 my $WUBLASTX_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastx";

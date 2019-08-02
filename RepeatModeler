@@ -136,7 +136,7 @@ use FastaDB;
 # Global Class Variables/Constants
 #
 my $CLASS = "RepeatModeler";
-my $DEBUG = 0;
+my $DEBUG = 1;
 $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 $|     = 1;      # Turn autoflush on
 
@@ -218,10 +218,10 @@ sub usage {
 #
 RepModelConfig::resolveConfiguration(\%options);
 my $config = $RepModelConfig::configuration;
-my $NCBIDBCMD_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/blastdbcmd";
-my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/makeblastdb";
-my $NCBIDBALIAS_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/blastdb_aliastool";
-my $RMBLASTN_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/rmblastn";
+my $NCBIDBCMD_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
+my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
+my $NCBIDBALIAS_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdb_aliastool";
+my $RMBLASTN_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
 my $XDGET_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdget";
 my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
@@ -1367,22 +1367,33 @@ while ( $totSampledBP < $dbSize
                                   $resultRef->getScore(),
                                   ( 100 - $resultRef->getPctDiverge() ) );
 
-              if ( $resultRef->getOrientation ne "C" )
+              my $qryStart = $resultRef->getQueryStart();
+              my $qryEnd = $resultRef->getQueryEnd();
+              if ( $resultRef->getOrientation eq "C" )
               {
-                $mspLine .= sprintf( "%06d %06d ",
-                                     $resultRef->getQueryStart(),
-                                     $resultRef->getQueryEnd() );
-              } else
-              {
-                $mspLine .= sprintf( "%06d %06d ",
-                                     $resultRef->getQueryEnd(),
-                                     $resultRef->getQueryStart() );
-              }
+                $qryStart = $resultRef->getQueryEnd();
+                $qryEnd = $resultRef->getQueryStart();
+             
+              } 
+              $mspLine .= sprintf( "%06d %06d ",
+                                   $qryStart,
+                                   $qryEnd );
               $mspLine .= sprintf( "%s %06d %06d %s \n",
                                    "gi|$qryId",
                                    $resultRef->getSubjStart(),
                                    $resultRef->getSubjEnd(), "gi|$sbjId" );
-              print OUT $mspLine;
+#TEST This was for a bad rmblast 2.9.0
+#if ( $qryStart > $sampleSeqs{"gi|$qryId"} || $qryEnd > $sampleSeqs{"gi|$qryId"} ||
+#     $resultRef->getSubjStart() > $sampleSeqs{"gi|$sbjId"} || 
+#     $resultRef->getSubjEnd() > $sampleSeqs{"gi|$sbjId"} )
+#{
+#  warn "WARNING: MSP coordinates outside range for $mspLine querySize = " . 
+#        $sampleSeqs{"gi|$qryId"} . ", subjectSize = " . $sampleSeqs{"gi|$sbjId"} . 
+#        ", round = $round, batchNum = $batchNum\nOmitting annotation and continuing.";
+#}else {
+#              print OUT $mspLine;
+#}
+#END TEST
             }
           }
           close OUT;
@@ -1996,6 +2007,9 @@ sub buildRSConsensi
           }
         }
         close INREF;
+        if ( $maSize < $familySizeCutoff ) {
+          print "After refinement the family size doesn't reach the cutoff.\n";
+        }
         print "Refinement: " . elapsedTime( 2 ) . "\n";
 
         if ( $cons ne "" )
@@ -2386,6 +2400,9 @@ sub buildReconConsensi
           }
         }
         close INREF;
+        if ( $maSize < $familySizeCutoff ) {
+          print "After refinement the family size doesn't reach the cutoff.\n";
+        }
       }else {
         print "  WARNING: Refiner did not return a consensus.\n";
       }
