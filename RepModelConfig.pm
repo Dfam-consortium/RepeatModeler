@@ -120,7 +120,7 @@ phylogenetic analysis package.',
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/home/rhubley/src/NINJA/NINJA'
+                           'value' => '/home/rhubley/projects/NINJA/NINJA'
                          },
           'NSEG_PRGM' => {
                            'command_line_override' => 'nseg_prgm',

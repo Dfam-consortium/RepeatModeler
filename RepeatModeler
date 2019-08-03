@@ -2560,7 +2560,18 @@ sub buildReconConsensi
 # Build a datastructure containing details for each possible batch to sample
 # from.  
 #
-#    @sampleSourceList = ( { 'seqID' => "", 'start' => #, 'end' => # }, ... );
+# The basic structure is:
+#
+#   @sampleSourceList = ( [ { 'seqID' => "", 'start' => #, 'end' => # }, ... ],
+#                         [ { 'seqID' => "", 'start' => #, 'end' => # }, ... ],
+#                         ...
+#                       );
+#                            
+#   Where each sampleSourceList entry is a description of the contents of
+#   a batch.  A batch most often contains a single sequence record that
+#   describes a subsequence of a large contig/chromosome.  In rarer cases
+#   ( e.g when only providing genomic inserts ), it may contain several
+#   smaller sequences packed together to form a large batch.
 #
 # TODO: Employ a stratified sampling strategy to diversify the contig sizes
 #       we sample from.  We don't want to pick mostly small contigs if they 
@@ -2577,56 +2588,77 @@ sub initializeSampleSourceList
   my $approxBlockSize = $parameters{'approxBlockSize'};
   my %dbSeqs          = %{ $parameters{'seqHash'} };
   my $dbSize          = $parameters{'dbSize'};
+  my $fragThresh      = $approxBlockSize / 2;
+  my $sizeTolerance   = $approxBlockSize / 4;
 
   my @sampleSourceList = ();
+  my $currentBlockSize = 0;
+  my @currentBlock = ();
   foreach my $seqID ( keys( %dbSeqs ) )
   {
     my $seqSize = $dbSeqs{$seqID};
+#print "cbs = $currentBlockSize seqsize = $seqSize\n";
 
-    my $partialBlockSize =
-        $seqSize - ( int( $seqSize / $approxBlockSize ) * $approxBlockSize );
-    my $numBlocks = int( $seqSize / $approxBlockSize ) + 1;
-    my $blockAddl = 0;
-    if ( $partialBlockSize < ( $approxBlockSize / 2 ) )
-    {
-
-      # divide last block between all others
-      $blockAddl = int( $partialBlockSize / $numBlocks );
+    my $blockRemaining = $approxBlockSize - $currentBlockSize;
+    
+    # Case: Sequence is within our tolerance for filling up this
+    #       batch.
+    if ( $seqSize <= ($blockRemaining + $sizeTolerance) )  {
+      # Pack the batch with the sequence.
+#print "Packing\n";
+      push @currentBlock, { 'seqID' => $seqID, 'start' => 1, 'end' => $seqSize };
+      $currentBlockSize += $seqSize;
+      next;
     }
 
-    #print "approxBlockSize=$approxBlockSize, seqSize=$seqSize, " .
-    #      "PartialBlockSize = $partialBlockSize, numBlocks = $numBlocks, " .
-    #      "blockAddl=$blockAddl \n";
-
-    my $seqRemaining = $seqSize;
-    my $startPos     = 1;
-    my $blockSize    = $approxBlockSize + $blockAddl;
-    for ( my $i = 0 ; $i < $numBlocks ; $i++ )
+    # Case: Sequence is larger than the free space in the block
+    #       *and* the space left is large enough to warrant breaking
+    #       up the new sequence.
+    my $seqIdx = 1;
+    if ( $seqSize > ($blockRemaining + $sizeTolerance) && 
+         $blockRemaining > $fragThresh )
     {
-      last if ( $blockSize >= $seqRemaining );
-      push @sampleSourceList,
-          {
-            'seqID' => $seqID,
-            'start' => $startPos,
-            'end'   => $startPos + $blockSize - 1
-          };
-
-      #print "Adding: $seqID: $startPos-". ($startPos + $blockSize - 1). "\n";
-      $seqRemaining -= $blockSize;
-      $startPos += $blockSize;
+#print "Fragmenting\n";
+      # Fragment sequence and complete the block
+      push @currentBlock, { 'seqID' => $seqID, 'start' => 1, 'end' => $blockRemaining };
+      push @sampleSourceList, [ @currentBlock ];
+      $seqSize -= $blockRemaining;
+      $seqIdx = $blockRemaining + 1;
+      $currentBlockSize += $blockRemaining;
     }
-    if ( $seqRemaining > 0 )
-    {
-      push @sampleSourceList,
-          {
-            'seqID' => $seqID,
-            'start' => $startPos,
-            'end'   => $startPos + $seqRemaining - 1
-          };
+    # Case: There is no way this will fit. 
+    else {
+#print "Closing out\n";
+      push @sampleSourceList, [ @currentBlock ];
+      # Close out the batch and start a new one
+    } 
 
-      #print "Last: $seqID: $startPos-". ($startPos + $seqRemaining - 1). "\n";
+    for ( my $i = 0; $i < int( $seqSize / $approxBlockSize ); $i++ )
+    {
+       # make complete blocks
+#print "Creating full\n";
+       push @sampleSourceList, [ { 'seqID' => $seqID, 'start' => $seqIdx, 'end' => $seqIdx + $approxBlockSize - 1 } ];
+       $seqIdx += $approxBlockSize;
+       $seqSize -= $approxBlockSize;
+    }
+
+    @currentBlock = ();
+    $currentBlockSize = 0;
+    $blockRemaining = $approxBlockSize;
+    if ( $seqSize ) 
+    {
+#print "Creating end partial\n";
+      # Start a smaller block
+      push @currentBlock, { 'seqID' => $seqID, 'start' => $seqIdx, 'end' => $seqIdx + $seqSize - 1 };
+      $currentBlockSize += $seqSize;
     }
   }
+  if ( @currentBlock ) {
+    push @sampleSourceList, [ @currentBlock ];
+  }
+  
+  print "SampleList: " . Dumper(\@sampleSourceList) . "\n";
+  exit;
   return \@sampleSourceList;
 }
 

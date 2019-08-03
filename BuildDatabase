@@ -192,8 +192,8 @@ if ( ( $#ARGV == -1 && !$options{'batch'} && !$options{'dir'} )
 RepModelConfig::resolveConfiguration(\%options);
 my $config = $RepModelConfig::configuration;
 my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
-my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/makeblastdb";
-my $NCBIDBCMD_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/bin/blastdbcmd";
+my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
+my $NCBIDBCMD_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
 
 my $engine = "rmblast";
 if ( $options{'engine'} )
