@@ -105,7 +105,7 @@ $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 #
 # Version
 #  -- NOTE: This is filled in by configure
-my $version = "open-1.0.11";
+my $version = "#VERSION#";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
 #
@@ -220,7 +220,7 @@ if ( $engine )
 # Print greeting
 #   
 print "RepeatClassifier Version $version\n";
-print "===============================\n";
+print "======================================\n";
 print "Search Engine = $engine\n";
 
 

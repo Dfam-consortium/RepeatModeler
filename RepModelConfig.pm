@@ -164,7 +164,7 @@ sequence alignment program.',
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast/bin'
+                             'value' => '/usr/local/rmblast-2.6.0/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',

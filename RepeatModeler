@@ -136,7 +136,7 @@ use FastaDB;
 # Global Class Variables/Constants
 #
 my $CLASS = "RepeatModeler";
-my $DEBUG = 1;
+my $DEBUG = 0;
 $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 $|     = 1;      # Turn autoflush on
 
@@ -344,13 +344,7 @@ if ( $engine eq "abblast" )
 } else
 {
   $genomeDB =~ s/(.+)\.n[nihs][rndiq]/$1/;
-  if ( $searchEngineN->getVersion() =~ /2.2.23+/ )
-  {
-    $dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%t %l"`;
-  } else
-  {
-    $dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
-  }
+  $dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
 }
 
 #
@@ -443,11 +437,21 @@ die "Database $genomeDB is not large enough ( minimum $fragmentSize bp ) to "
     . "process with RepeatModeler.\n"
     if ( $fragmentSize > $dbSize );
 
-my $dbSourceList = &initializeSampleSourceList(
+my $dbSourceList;
+if ( $options{'onlyIns'} ){
+  $dbSourceList = &initializeSampleSourceList(
                                                approxBlockSize => $fragmentSize,
-                                               seqHash         => \%dbSeqs,
+                                               genomeDB        => $genomeDB,
+                                               dbSize          => $dbSize,
+                                               noFrag          => 1
+                                             );
+}else {
+  $dbSourceList = &initializeSampleSourceList(
+                                               approxBlockSize => $fragmentSize,
+                                               genomeDB        => $genomeDB,
                                                dbSize          => $dbSize
-);
+                                             );
+}
 
 #
 # Randomize List
@@ -675,7 +679,6 @@ while ( $totSampledBP < $dbSize
 
   if ( $round > 1 )
   {
-    print "   - Gathering up to $sampleSize bp\n";
     if ( $seqRemaining > 0 && $seqRemaining <= $sampleSize )
     {
       print "   - Increasing sample size to include end piece now = ";
@@ -702,6 +705,8 @@ while ( $totSampledBP < $dbSize
   my $roundConsensiFile = "$roundTmpDir/consensi.fa";
   mkdir( $roundTmpDir );
 
+  # Fine grained timing
+  elapsedTime( 3 );
   # Sample from the input database
   my $usedBlockIndex = ();
   if ( $round == 1 )
@@ -709,6 +714,7 @@ while ( $totSampledBP < $dbSize
     print "   - Gathering up to $rsSampleSize bp\n";
     $usedBlockIndex = &sampleFromDB(
                                      sampleSizeMax  => $rsSampleSize,
+                                     tmpDir         => $roundTmpDir,
                                      dbUsedBlocks   => \@dbUsedBlocks,
                                      dbSourceBlocks => $dbSourceList,
                                      dbType         => $engine,
@@ -722,8 +728,10 @@ while ( $totSampledBP < $dbSize
   } else
   {
     if ( $options{'onlyIns'} ){
+    print "   - Gathering up to $sampleSize bp ( with replacement )\n";
     &sampleFromDB(
                    sampleSizeMax  => $sampleSize,
+                   tmpDir         => $roundTmpDir,
                    dbUsedBlocks   => \@dbUsedBlocks,
                    dbSourceBlocks => $dbSourceList,
                    dbType         => $engine,
@@ -732,9 +740,14 @@ while ( $totSampledBP < $dbSize
                    withReplacement => 1,
                    fastaFile      => $sampleFastaFile
     );
+      # If we are going to sample with replacement we need to at
+      # least reshuffle the source list
+      &fisherYatesShuffle( $dbSourceList );
     }else {
+    print "   - Gathering up to $sampleSize bp\n";
     &sampleFromDB(
                    sampleSizeMax  => $sampleSize,
+                   tmpDir         => $roundTmpDir,
                    dbUsedBlocks   => \@dbUsedBlocks,
                    dbSourceBlocks => $dbSourceList,
                    dbType         => $engine,
@@ -769,6 +782,7 @@ while ( $totSampledBP < $dbSize
         . "bp ( $preMaskNonAmbigBases non ambiguous )\n";
     print "   - Num Contigs Represented = "
         . scalar( keys( %sampleContigs ) ) . "\n";
+    print "   - Sequence extraction time " . elapsedTime( 3 ) . "\n";
     print " -- Running RepeatScout on the sequences...\n";
     &runRepeatScout(
                      workDir    => $roundTmpDir,
@@ -820,6 +834,8 @@ while ( $totSampledBP < $dbSize
     next;
   }
 
+  print "   - Sequence extraction time " . elapsedTime( 3 ) . "\n";
+
   # TRF sample
   print " -- Running TRFMask on the sequence...\n";
 
@@ -831,6 +847,7 @@ while ( $totSampledBP < $dbSize
   {
     system( "mv $roundTmpDir/tmpSample.fa.masked $roundTmpDir/tmpSample.fa" );
   }
+  print "   - TRFMask time " . elapsedTime( 3 ) . "\n";
 
   # Mask repeats from previous round*s*
   if ( $round > 1 && -s $consensiFile )
@@ -878,6 +895,7 @@ while ( $totSampledBP < $dbSize
     {
       system( "mv $roundTmpDir/tmpSample.fa.masked $roundTmpDir/tmpSample.fa" );
     }
+    print "   - TE Masking time " . elapsedTime( 3 ) . "\n";
 
     ## TODO: Use the *.out file of the second to last round to
     ##       gather stats on contig coverage.  Then use the
@@ -1097,7 +1115,11 @@ while ( $totSampledBP < $dbSize
       };
       $batchID++;
       $startGID = $endGID + 1;
+      $batchSize = 0;
     }
+
+#print "BatchStatus = " . Dumper(\%batchStatus) . "\n";
+#exit;
 
     my $compStartTime = time;
 
@@ -1367,33 +1389,22 @@ while ( $totSampledBP < $dbSize
                                   $resultRef->getScore(),
                                   ( 100 - $resultRef->getPctDiverge() ) );
 
-              my $qryStart = $resultRef->getQueryStart();
-              my $qryEnd = $resultRef->getQueryEnd();
-              if ( $resultRef->getOrientation eq "C" )
+              if ( $resultRef->getOrientation ne "C" )
               {
-                $qryStart = $resultRef->getQueryEnd();
-                $qryEnd = $resultRef->getQueryStart();
-             
-              } 
-              $mspLine .= sprintf( "%06d %06d ",
-                                   $qryStart,
-                                   $qryEnd );
+                $mspLine .= sprintf( "%06d %06d ",
+                                     $resultRef->getQueryStart(),
+                                     $resultRef->getQueryEnd() );
+              } else
+              {
+                $mspLine .= sprintf( "%06d %06d ",
+                                     $resultRef->getQueryEnd(),
+                                     $resultRef->getQueryStart() );
+              }
               $mspLine .= sprintf( "%s %06d %06d %s \n",
                                    "gi|$qryId",
                                    $resultRef->getSubjStart(),
                                    $resultRef->getSubjEnd(), "gi|$sbjId" );
-#TEST This was for a bad rmblast 2.9.0
-#if ( $qryStart > $sampleSeqs{"gi|$qryId"} || $qryEnd > $sampleSeqs{"gi|$qryId"} ||
-#     $resultRef->getSubjStart() > $sampleSeqs{"gi|$sbjId"} || 
-#     $resultRef->getSubjEnd() > $sampleSeqs{"gi|$sbjId"} )
-#{
-#  warn "WARNING: MSP coordinates outside range for $mspLine querySize = " . 
-#        $sampleSeqs{"gi|$qryId"} . ", subjectSize = " . $sampleSeqs{"gi|$sbjId"} . 
-#        ", round = $round, batchNum = $batchNum\nOmitting annotation and continuing.";
-#}else {
-#              print OUT $mspLine;
-#}
-#END TEST
+              print OUT $mspLine;
             }
           }
           close OUT;
@@ -2007,9 +2018,6 @@ sub buildRSConsensi
           }
         }
         close INREF;
-        if ( $maSize < $familySizeCutoff ) {
-          print "After refinement the family size doesn't reach the cutoff.\n";
-        }
         print "Refinement: " . elapsedTime( 2 ) . "\n";
 
         if ( $cons ne "" )
@@ -2400,9 +2408,6 @@ sub buildReconConsensi
           }
         }
         close INREF;
-        if ( $maSize < $familySizeCutoff ) {
-          print "After refinement the family size doesn't reach the cutoff.\n";
-        }
       }else {
         print "  WARNING: Refiner did not return a consensus.\n";
       }
@@ -2557,111 +2562,148 @@ sub buildReconConsensi
 }
 
 #
-# Build a datastructure containing details for each possible batch to sample
-# from.  
+# initializeSampleSourceList
 #
-# The basic structure is:
+#  Generate a list of sequence chunks that are between 100 and 'approxBlockSize'-ish
+# base pairs long.  This ensures that we can build batches of a reasonable size with
+# a random sampling of this list.  We also want to characterize the sequences
+# ( e.g length and non-ambiguous base length ) and keep a count of the times this
+# sequence unit was used in a sample ( for with-replacement sampling ).
 #
-#   @sampleSourceList = ( [ { 'seqID' => "", 'start' => #, 'end' => # }, ... ],
-#                         [ { 'seqID' => "", 'start' => #, 'end' => # }, ... ],
-#                         ...
-#                       );
-#                            
-#   Where each sampleSourceList entry is a description of the contents of
-#   a batch.  A batch most often contains a single sequence record that
-#   describes a subsequence of a large contig/chromosome.  In rarer cases
-#   ( e.g when only providing genomic inserts ), it may contain several
-#   smaller sequences packed together to form a large batch.
+# For instance, given human chr1 we would want to generate a list of ranges on this
+# sequence like so:
 #
-# TODO: Employ a stratified sampling strategy to diversify the contig sizes
-#       we sample from.  We don't want to pick mostly small contigs if they 
-#       are overrepresented in the DB.
+#   { 'seqID' => "chr1", 'start' => 1, 'end' => 40000, 
+#     'length' => 40000, 'non_ambig_len' => 35828, used_cnt => 0 },
+#   { 'seqID' => "chr1", 'start' => 40001, 'end' => 80000, 
+#     'length' => 40000, 'non_ambig_len' => 38238, used_cnt => 0 },
+#   ...
 #
-#       Maybe:
-#          Divide the contig size range into 4 equal bins.  Place samples into
-#          into 4 sampleSourceList bins based on the size of the source contig.
+# A contig of 500bp would be represented as:
+#
+#   { 'seqID' => "contig7", 'start' => 1, 'end' => 500, 
+#     'length' => 500, 'non_ambig_len' => 482, used_cnt => 0 },
+#
+#
+# TODO: Consider how this might be sampled from so we get a diversity of
+#       sequence lengths. 
 #
 sub initializeSampleSourceList
 {
   my %parameters = @_;
 
   my $approxBlockSize = $parameters{'approxBlockSize'};
-  my %dbSeqs          = %{ $parameters{'seqHash'} };
+  #my %dbSeqs          = %{ $parameters{'seqHash'} };
+  my $genomeDB        = $parameters{'genomeDB'};
   my $dbSize          = $parameters{'dbSize'};
-  my $fragThresh      = $approxBlockSize / 2;
-  my $sizeTolerance   = $approxBlockSize / 4;
+  my $noFrag          = $parameters{'noFrag'};
 
   my @sampleSourceList = ();
-  my $currentBlockSize = 0;
-  my @currentBlock = ();
-  foreach my $seqID ( keys( %dbSeqs ) )
-  {
-    my $seqSize = $dbSeqs{$seqID};
-#print "cbs = $currentBlockSize seqsize = $seqSize\n";
+  
+  # Open up genomeDB, breakup sequences (if need be) and
+  # catalog what we have
 
-    my $blockRemaining = $approxBlockSize - $currentBlockSize;
+  open IN,"$NCBIDBCMD_PRGM -db $genomeDB -entry all|" or 
+     die "initializeSampleSourceList: Could read from database " .
+         "$genomeDB using $NCBIDBCMD_PRGM";
+ 
+  print "initializeSampleSourceList: Scanning genome database...\n" if ( $DEBUG );
+  my $id = "";
+  my $seq = "";
+  while ( <IN> ) {
+    if ( /^>/ || eof ) {
+      my $tmpID = "endoffile";
+      $tmpID = $1 if ( /^>(\S+)/ );
+      if ( $seq ) {
+        my $seqSize = length $seq;
+        my $nonAmbigSize = $seqSize - ( $seq =~ tr/XN/XN/ );
+        if ( $nonAmbigSize >= 100 )
+        {
+          if ( defined $noFrag ) {
+            push @sampleSourceList,
+              {
+                'seqID' => $id,
+                'start' => 1,
+                'end'   => $seqSize,
+                'length' => $seqSize,
+                'non_ambig_len' => $nonAmbigSize,
+                'used_cnt' => 0
+              };
+          }else {
+            my $partialBlockSize =
+                  $seqSize - ( int( $seqSize / $approxBlockSize ) * $approxBlockSize );
+            my $numBlocks = int( $seqSize / $approxBlockSize ) + 1;
+            my $blockAddl = 0;
+            if ( $partialBlockSize < ( $approxBlockSize / 2 ) )
+            {
+              # divide last block between all others
+              $blockAddl = int( $partialBlockSize / $numBlocks );
+            }
     
-    # Case: Sequence is within our tolerance for filling up this
-    #       batch.
-    if ( $seqSize <= ($blockRemaining + $sizeTolerance) )  {
-      # Pack the batch with the sequence.
-#print "Packing\n";
-      push @currentBlock, { 'seqID' => $seqID, 'start' => 1, 'end' => $seqSize };
-      $currentBlockSize += $seqSize;
+            my $seqRemaining = $seqSize;
+            my $startPos     = 1;
+            my $blockSize    = $approxBlockSize + $blockAddl;
+            for ( my $i = 0 ; $i < $numBlocks ; $i++ )
+            {
+              last if ( $blockSize >= $seqRemaining );
+              my $blockseq = substr($seq, $startPos, $blockSize);
+              my $nonAmbigBlockSize = $blockSize - ( $blockseq =~ tr/XN/XN/ );
+              push @sampleSourceList,
+                {
+                  'seqID' => $id,
+                  'start' => $startPos,
+                  'end'   => $startPos + $blockSize - 1,
+                  'length' => $blockSize,
+                  'non_ambig_len' => $nonAmbigBlockSize,
+                  'used_cnt' => 0
+                };
+  
+              $seqRemaining -= $blockSize;
+              $startPos += $blockSize;
+            }
+            if ( $seqRemaining > 0 )
+            {
+              my $blockseq = substr($seq, $startPos);
+              my $nonAmbigBlockSize = $seqRemaining - ( $blockseq =~ tr/XN/XN/ );
+              push @sampleSourceList,
+                {
+                  'seqID' => $id,
+                  'start' => $startPos,
+                  'end'   => $startPos + $seqRemaining - 1,
+                  'length' => $seqRemaining,
+                  'non_ambig_len' => $nonAmbigBlockSize,
+                  'used_cnt' => 0
+                };
+            }
+          }
+        }else {
+          print "initializeSampleSourceList: Discarding sequence $id because " . 
+                "it's painfully small ( size=$seqSize, nonAmbigSize=$nonAmbigSize )\n"
+            if ( $DEBUG );
+        }
+      }
+      $id = $tmpID;
+      $seq = "";
       next;
     }
-
-    # Case: Sequence is larger than the free space in the block
-    #       *and* the space left is large enough to warrant breaking
-    #       up the new sequence.
-    my $seqIdx = 1;
-    if ( $seqSize > ($blockRemaining + $sizeTolerance) && 
-         $blockRemaining > $fragThresh )
-    {
-#print "Fragmenting\n";
-      # Fragment sequence and complete the block
-      push @currentBlock, { 'seqID' => $seqID, 'start' => 1, 'end' => $blockRemaining };
-      push @sampleSourceList, [ @currentBlock ];
-      $seqSize -= $blockRemaining;
-      $seqIdx = $blockRemaining + 1;
-      $currentBlockSize += $blockRemaining;
-    }
-    # Case: There is no way this will fit. 
-    else {
-#print "Closing out\n";
-      push @sampleSourceList, [ @currentBlock ];
-      # Close out the batch and start a new one
-    } 
-
-    for ( my $i = 0; $i < int( $seqSize / $approxBlockSize ); $i++ )
-    {
-       # make complete blocks
-#print "Creating full\n";
-       push @sampleSourceList, [ { 'seqID' => $seqID, 'start' => $seqIdx, 'end' => $seqIdx + $approxBlockSize - 1 } ];
-       $seqIdx += $approxBlockSize;
-       $seqSize -= $approxBlockSize;
-    }
-
-    @currentBlock = ();
-    $currentBlockSize = 0;
-    $blockRemaining = $approxBlockSize;
-    if ( $seqSize ) 
-    {
-#print "Creating end partial\n";
-      # Start a smaller block
-      push @currentBlock, { 'seqID' => $seqID, 'start' => $seqIdx, 'end' => $seqIdx + $seqSize - 1 };
-      $currentBlockSize += $seqSize;
-    }
+    s/[\n\r\s]+//g;
+    $seq .= uc($_);
   }
-  if ( @currentBlock ) {
-    push @sampleSourceList, [ @currentBlock ];
-  }
+  close IN;
   
-  print "SampleList: " . Dumper(\@sampleSourceList) . "\n";
-  exit;
+  #print "sampleSourceList: " . Dumper(\@sampleSourceList) . "\n";
+  #exit;
   return \@sampleSourceList;
 }
 
+# 
+# sampleFromDB
+#
+#   Given a list of sequence ranges that range from 100bp to 
+#   approxBlockSize-ish, pick at most sampleSizeMax bp of
+#   sample for this round.  The input list is assumed to be
+#   pre-randomized ( using FisherYatesShuffle ) and the 
+#   sample strategy is without-replacement by default.
 #
 #  Given:
 #      %dbSeqHashRef{ $seqID } = size :
@@ -2689,6 +2731,7 @@ sub sampleFromDB
   my %parameters = @_;
 
   my $dbSourceBlocks = $parameters{'dbSourceBlocks'};
+  my $tmpDir         = $parameters{'tmpDir'};
   my $dbUsedBlocks   = $parameters{'dbUsedBlocks'};
   my $sampleSizeMax  = $parameters{'sampleSizeMax'};
   my $dbFile         = $parameters{'dbFile'};
@@ -2698,119 +2741,72 @@ sub sampleFromDB
   my $prohibitX      = $parameters{'prohibitX'};
   my $withReplacement = $parameters{'withReplacement'};
 
-  # Generate a hash for quick lookup
-  my %blockBlackList = ();
-  if ( $dbUsedBlocks && ! $withReplacement ) {
-    foreach my $block ( @{$dbUsedBlocks} ) {
-      $blockBlackList{$block} = 1;
-    }
-  }
-
-  open FASTA, ">$fastaFile";
+  open ENTRYBAT,">$fastaFile.entry_batch" or 
+    die "sampleFromDB: Could not open $fastaFile.entry_batch for writing!\n";
 
   my $sampleSeqSize   = 0;
   my %usedBlocksIndex = ();
-  my $giIndex         = 1;
-  while (    $sampleSeqSize < $sampleSizeMax
-          && $#{$dbSourceBlocks} >= 0 )
+  my @blocks          = ();
+  foreach my $sampleSourceBlock ( @{ $dbSourceBlocks} )
   {
+    my $seqID = $sampleSourceBlock->{'seqID'};
+    my $start = $sampleSourceBlock->{'start'};
+    my $end = $sampleSourceBlock->{'end'};
+    my $seqSize = $sampleSourceBlock->{'length'};
+    my $nonAmbigSize = $sampleSourceBlock->{'non_ambig_len'};
 
-    my $block = pop @{$dbSourceBlocks};
-
-    my $seqID = $block->{'seqID'};
-    my $start = $block->{'start'};
-    my $end   = $block->{'end'};
-
-    my $seqSize = $end - $start + 1;
-
-    # Don't reuse blocks
-    next if ( exists $blockBlackList{$block} );
-
-    # Collect the sequence
-    my $seq;
-    if ( $dbType eq "abblast" )
+    if ( defined $withReplacement ||
+         $sampleSourceBlock->{'used_cnt'} == 0 )
     {
-      $seq = `$XDGET_PRGM -n -a$start -b$end $dbFile "$seqID"`;
-      die $CLASS
-          . "::sampleFromDB() Could not obtain sequence $seqID from"
-          . " the database!\n"
-          if ( $seq eq "" );
-    } else
-    {
-      if ( $seqID =~ /gi\|(\d+)/ )
-      {
-        my $ncbiID = $1;
-        if ( `$NCBIDBCMD_PRGM -version` =~ /2.2.23+/ )
-        {
-          my $openCoordEnd   = $end;
-          my $openCoordStart = $start - 1;
-          $seq =
-`$NCBIDBCMD_PRGM -db $dbFile -entry $ncbiID -range $openCoordStart-$openCoordEnd`;
-          die $CLASS
-              . "::sampleFromDB() Could not obtain sequence ( entry = $ncbiID, "
-              . "start = $openCoordStart end = $openCoordEnd ) from"
-              . " the database!\n"
-              if ( $seq eq "" );
-
-        } else
-        {
-          $seq =
-`$NCBIDBCMD_PRGM -db $dbFile -entry $ncbiID -range $start-$end`;
-          die $CLASS
-              . "::sampleFromDB() Could not obtain sequence ( entry = $ncbiID, "
-              . "start = $start end = $end ) from"
-              . " the database!\n"
-              if ( $seq eq "" );
-        }
-      }
+      # NOTE: It is assumed that under the "with-replacement" regime
+      #       that the caller has re-shuffled the dbSourceBlocks so
+      #       that the same sample is not re-generated each time.
+      print ENTRYBAT "$seqID $start-$end\n";
+      push @blocks, $sampleSourceBlock;
+      $sampleSourceBlock->{'used_cnt'}++;
+      $sampleSeqSize += $nonAmbigSize;
+      last if ( $sampleSeqSize >= $sampleSizeMax );
     }
-
-    # Removing header
-    $seq =~ s/^>.*$//gm;
-
-    # Remove spaces and line terminations
-    $seq =~ s/[\n\r\s]+//g;
-
-    # Collect stats
-    my $numAmbiguous = ( $seq =~ tr/xnXN/xnXN/ );
-    if ( length( $seq ) - $numAmbiguous < 100 )
-    {
-
-      # Sequence is mostly ambiguous
-      #  - discard but mark as used
-      print "Discarding sequence because it's painfully small...\n"
-          if ( $DEBUG );
-      my $seq = "";
-    }
-
-    # TODO: Break up sequences on big "n" boundaries
-    #s/^([nN]+)//;
-    #my $startPos = $randStartPos + length( $1 );
-    #while ( $seq =~ s/([^nN]+)([nN]{1000,})// ){
-    #  push @frags, $1;
-    #  push @fragStarts, $startPos;
-    #  $startPos += length( $1.$2 );
-    #}
-
-    if ( $seq )
-    {
-      $sampleSeqSize += length( $seq ) - $numAmbiguous;
-
-      # Save sequence to file
-      # Prefixing the dbFile name with "-" is problematic
-      #print FASTA ">gi|$giIndex " . "$dbFile-$seqID" . "_$start-$end\n";
-      print FASTA ">gi|$giIndex " . "$seqID" . ":$start-$end\n";
-      $giIndex++;
-      $seq =~ s/[xX]/n/g if ( $prohibitX );
-      $seq =~ s/(.{50})/$1\n/g;
-      print FASTA "$seq\n";
-    }
-
-    push @dbUsedBlocks, $block;
-    my $key = "gi|" . ( $giIndex - 1 );
-    $usedBlocksIndex{$key} = $block;
   }
+  close ENTRYBAT;
+
+
+  die "ABBLAST is no longer supported" if ( $dbType eq "abblast" );
+  open IN,"$NCBIDBCMD_PRGM -db $dbFile -entry_batch $fastaFile.entry_batch|" or
+    die "sampleFromDB: Could not read entry_batch sequences from $dbFile using $NCBIDBCMD_PRGM.";
+  open FASTA, ">$fastaFile" or
+    die "sampleFromDB: Could not open $fastaFile for writing!\n";
+
+  my $seq;
+  my $id;
+  my $giIndex         = 1;
+  while ( <IN> ) {
+    if ( /^>/ || eof ) {
+      my $tmpID = "endoffile";
+      $tmpID = $1 if ( /^>(\S+)/ );
+      if ( $seq ) {
+        # Renumber sequences
+        my $sample = $blocks[$giIndex-1];
+        print FASTA ">gi|$giIndex " . $sample->{'seqID'} . ":" . $sample->{'start'} . "-" . $sample->{'end'} . "\n";
+        $giIndex++;
+        $seq =~ s/[xX]/n/g if ( $prohibitX );
+        $seq =~ s/(.{50})/$1\n/g;
+        print FASTA "$seq\n";
+        my $key = "gi|" . ( $giIndex - 1 );
+        $usedBlocksIndex{$key} = $sample;
+      }
+      $id = $tmpID;
+      $seq = "";
+      next;
+    }
+    s/[\n\r\s]+//g;
+    $seq .= $_;
+  }
+  close IN;
   close FASTA;
+
+#print "sampleNow: " . Dumper($dbSourceBlocks) . "\n";
+#exit;
 
   return ( \%usedBlocksIndex );
 }
