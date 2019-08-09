@@ -136,12 +136,12 @@ print "Masking $fastaFile\n" if ( $DEBUG );
 my $maskedFile = $fastaFile . ".masked";
 
 # TODO....determine if we should use /tmp or not?
-if ( $DEBUG )
-{
-  my $ver = `$TRF_PRGM 2>&1`;
-  ( $ver ) = ( $ver =~ /Tandem Repeats Finder, Version (\S+)/ );
-  print "Running: $TRF_PRGM  ( version = $ver )\n";
+my $ver = `$TRF_PRGM -v 2>&1`;
+( $ver ) = ( $ver =~ /Tandem Repeats Finder, Version (\S+)/ );
+if ( $ver < 4.09 ) {
+  die "TRFMask requires TRF version 4.09 or above\n";
 }
+print "Running: $TRF_PRGM  ( version = $ver )\n" if ( $DEBUG );
 
 open IN,"$TRF_PRGM $fastaFile 2 7 7 80 10 50 500 -ngs -h |" or die;
 my %results;
