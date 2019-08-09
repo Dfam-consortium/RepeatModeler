@@ -833,6 +833,11 @@ sub buildConsensus
       my $originSeq      = $2;
       my $originStart    = $3;
       my $originEnd      = $4;
+      # RMH: 20190807
+      if ( $4 < $3 ) {
+        $originStart    = $4;
+        $originEnd      = $3;
+      }
       my $trueStart      = $malign->getAlignedSeqStart( $i ) + $originStart;
       my $trueEnd        = $malign->getAlignedSeqEnd( $i ) + $originStart;
       if ( $options{'giToID'}
