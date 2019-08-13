@@ -139,6 +139,7 @@ my $CLASS = "RepeatModeler";
 my $DEBUG = 0;
 $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 $|     = 1;      # Turn autoflush on
+my %TimeBefore = ();
 
 #
 # Version
@@ -294,11 +295,15 @@ my $fragmentSize               = 40000;        # The size of the batches for
                                                #   all-vs-other search.
 my $genomeSampleSizeStart      = 3000000;      # The initial sample size for
                                                #   RECON analysis
-my $genomeSampleSizeMax        = 100000000;    # The max sample size for
+# TODO: Make this a parameter
+my $genomeSampleSizeMax        = 243000000;    # The max sample size for
                                                #   RECON analysis
 my $genomeSampleSizeMultiplier = 3;            # The multiplier for sample size
                                                #   between rounds
 
+#
+# Override the RepeatScout sample size
+#
 $rsSampleSize = $options{'rsSampleSize'} if ( $options{'rsSampleSize'} );
 
 # The normal RECON/RS family size minimum for which
@@ -458,16 +463,36 @@ if ( $options{'onlyIns'} ){
 #
 &fisherYatesShuffle( $dbSourceList );
 
-my @dbUsedBlocks = ();
+
+#
+# Setup initial parameters
+#
+my @dbUsedBlocks = (); # TODO: Deprecate?
+my $tmpDir;
 my $round        = 1;
 $round = 2 if ( $options{'skipRS'} );
 my $totSampledBP = 0;
-my $families;
-my $numModels;
-my $sampleSize = $genomeSampleSizeStart;
-my %TimeBefore = ();
-my $tmpDir;
+my $familyCutoff = $recommendedFamilySize;
+my $sampleSize = $rsSampleSize;
+if ( $options{'skipRS'} ) {
+  # If we are skipping RS we need to do this early check to make sure
+  # the genome isn't really small and would cause only one round of
+  # RECON to run.
+  $sampleSize = $genomeSampleSizeStart if ( $options{'skipRS'} );
+  if ( ( $dbSize - ( $totSampledBP + $sampleSize ) ) <= ($sampleSize/2) )
+  {
+    print "   - Increasing sample size to include end piece now = ";
+    $sampleSize += ( $dbSize - ( $totSampledBP + $sampleSize ) );
+    print "$sampleSize\n";
+    $familyCutoff = $minFamilySize;
+    print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
+  }
+}
 
+#
+# Tweak initial parameters if we are recovering
+# from a failed run
+#
 if ( $options{'recoverDir'} && -d $options{'recoverDir'} )
 {
   my $recoverDir = $options{'recoverDir'};
@@ -609,6 +634,7 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} )
     $tmpDir = createTempDir( \@tmpDirPath );
   }
   print "Using output directory = $tmpDir\n";
+
 }
 
 # 
@@ -662,9 +688,15 @@ print "   be terminated early.\n";
 #  the sample size at $genomeSampleSizeMax
 #
 elapsedTime( "runtime" );    # Setup the timers
-while ( $totSampledBP < $dbSize
-        && ( $dbSize - $totSampledBP ) > $fragmentSize )
-{
+# TODO: What if we begin with such a small sample....?
+#        Change the cutoff and possibly increase to full genome size
+#
+#while ( $totSampledBP < $dbSize
+#        && ( $dbSize - $totSampledBP ) > $fragmentSize )
+#{
+my $families;
+my $numModels;
+while ( 1 ) {
 
   # Reset the timers
   elapsedTime( 1 );
@@ -677,24 +709,33 @@ while ( $totSampledBP < $dbSize
   print "Searching for Repeats\n";
   print " -- Sampling from the database...\n";
 
-  if ( $round > 1 )
-  {
-    if ( $seqRemaining > 0 && $seqRemaining <= $sampleSize )
-    {
-      print "   - Increasing sample size to include end piece now = ";
-      $sampleSize += $seqRemaining;
-      print "$sampleSize\n";
-    }
-  }
+  #if ( $round > 1 )
+  #{
+  #  if ( $seqRemaining > 0 && $seqRemaining <= $sampleSize )
+  #  {
+  #    print "   - Increasing sample size to include end piece now = ";
+  #    $sampleSize += $seqRemaining;
+  #    print "$sampleSize\n";
+  #  }
+  #}
 
-  my $familyCutoff = $recommendedFamilySize;
-#  if ( ( $totSampledBP >= $dbSize || $sampleSize >= $genomeSampleSizeMax || $seqRemaining <= $sampleSize )
-#       && ( $options{'onlyIns'} || $numModels == 0 ) )
-  if ( $round > 1 && ( $totSampledBP >= $dbSize || $sampleSize >= $genomeSampleSizeMax || $seqRemaining <= $sampleSize ))
-  {
+  if ( ( $options{'onlyIns'} && ( $sampleSize >= $genomeSampleSizeMax ||
+         $sampleSize >= $dbSize )) ||
+       ( ! $options{'onlyIns'} && ( $totSampledBP >= $dbSize ||
+          $sampleSize >= $genomeSampleSizeMax ||
+          $seqRemaining < $fragmentSize ))) {
+    # Next round will be last
     print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
     $familyCutoff = $minFamilySize;
   }
+
+
+  #my $familyCutoff = $recommendedFamilySize;
+  #if ( $round > 1 && ( $totSampledBP >= $dbSize || $sampleSize >= $genomeSampleSizeMax || $seqRemaining <= $sampleSize ))
+  #{
+  #  print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
+  #  $familyCutoff = $minFamilySize;
+  #}
 
   # Setup file locations
   my $roundTmpDir       = "$tmpDir/round-$round";
@@ -723,8 +764,9 @@ while ( $totSampledBP < $dbSize
                                      fastaFile      => $sampleFastaFile,
                                      prohibitX      => 1
     );
-    push @{$dbSourceList}, @dbUsedBlocks;
-    @dbUsedBlocks = ();
+    &clearSampleUsedCounts(dbSourceBlocks => $dbSourceList);
+    #push @{$dbSourceList}, @dbUsedBlocks;
+    #@dbUsedBlocks = ();
   } else
   {
     if ( $options{'onlyIns'} ){
@@ -760,7 +802,7 @@ while ( $totSampledBP < $dbSize
   }
 
   # Tabulate non-Ambiguous bases
-  # TODO: Make this more efficient by tabulating in the sampleFromDB routine
+#### TODO: NOW.....fix this
   my $sampleDB = FastaDB->new( fileName => $sampleFastaFile,
                                openMode => SeqDBI::ReadOnly );
   my $actualGenomeSampleSize = 0;
@@ -1511,17 +1553,75 @@ while ( $totSampledBP < $dbSize
 
   print "Round Time: " . elapsedTime( 1 ) . "\n";
 
-  if ( $sampleSize < $genomeSampleSizeMax )
-  {
+
+  # RMH1
+  # How do we proceed from here
+  #   
+  #  Case 1 (default): Sample without replacement.  Sample up to $genomeSampleSizeMax (100MB).  Typically
+  #                    this isn't anywhere close to the genome size, but if it is, quit when we get
+  #                    reach that.  If the last round is reached and there is only a little bit left
+  #                    over, add that as well.
+  #  Case 2 (onlyIns): Only genome inserts.  Sample (with replacement) up to $genomeSampleSizeMax.  No
+  #                    need to quit early.
+  #
+  #  $genomeSampleSizeMax          : The target sample size for the last round
+  #  $sampleSize                   : The current size of the sample requested for this round
+  #  $sampleDBLen                  : The true length of the sampleDB-#.fa file
+  #  $dbSize                       : The size of the input database
+  #  $genomeSampleSizeMultiplier   : The multiplier for sample size between rounds
+  #  $totSampledBP                 : The sum of the sampleDB-#.fa files.  The total bases searched thus far
+  #  $fragmentSize                 : The size of the batches for all-vs-other comparisons
+  #
+  # Calculate the new sampleSize for the next round
+  if ( $round == 1 ) {
+    # Just completed RepeatScout round, reset the sampleSize for the first
+    # round of RECON.
+    $sampleSize = $genomeSampleSizeStart;
+  }else {
+    # RECON Rounds, check for completion.
+    if ( $options{'onlyIns'} ) {
+      if ( $sampleSize >= $genomeSampleSizeMax ||
+           $sampleSize >= $dbSize )
+      {
+        last;
+      }
+    }else {
+       if ( $totSampledBP >= $dbSize ||
+            $sampleSize >= $genomeSampleSizeMax ||
+            $seqRemaining < $fragmentSize )
+       {
+         last;
+       }
+    }
+
+    # This is a followup round of RECON, scale sampleSize accordingly
     $sampleSize *= $genomeSampleSizeMultiplier;
+    # Are we sampling without replacement? If so, make sure
+    # we don't run out of sequence.
+    if ( ! $options{'onlyIns'} ) {
+      if ( $seqRemaining > 0 && $seqRemaining <= ($sampleSize/2) )
+      {
+        print "   - Increasing sample size to include end piece now = ";
+        $sampleSize += $seqRemaining;
+        print "$sampleSize\n";
+      }
+    }
+    # Do not go overboard
     $sampleSize = $genomeSampleSizeMax
         if ( $sampleSize > $genomeSampleSizeMax );
-  } else
-  {
-
-    # We are done
-    last;
   }
+
+  #if ( $sampleSize < $genomeSampleSizeMax )
+  #{
+  #  $sampleSize *= $genomeSampleSizeMultiplier;
+  #  $sampleSize = $genomeSampleSizeMax
+  #      if ( $sampleSize > $genomeSampleSizeMax );
+  #} else
+  #{
+  #
+  #  # We are done
+  #  last;
+  #}
 }    # Main Loop while(...
 
 print "\nDiscovery complete: $numModels families found\n";

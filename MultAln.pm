@@ -2213,7 +2213,7 @@ sub _alignFromSearchResultCollection
       gapInitiationPenalty : The penalty to initiate a gap.
       gapExtensionPenalty  : The penalty to extend a gap.
       threshold            : The maximum score for which to report
-                              low scoring blocks.
+                              low scoring blocks (DEFAULT: 1).
       columns              : A collection of low scoring columns
                               with start/end position:
                               startPosition = 

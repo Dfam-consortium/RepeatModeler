@@ -377,8 +377,6 @@ sub buildConsensus
   # Break down fastaFile path to directory/file
   # components
   my $consName = basename( $pathToFastaFile );
-
-  # TODO: This is a hack!
   $consName =~ s/\.fa//g;
 
   my $cons = "";
@@ -709,7 +707,6 @@ sub buildConsensus
             $finalRound++ if ( $finalRound == 1 );
             if ( $finalRound == 2 )
             {
-
               # TODO: Put this back when we work on this again
               #writeHTMLMultAlign(
               #                    multAln         => $malign,
@@ -733,7 +730,6 @@ sub buildConsensus
                                   rightFlankingID => $rightMostSequenceID
               );
             }
-
             #$malign->_getEndStartPairs() if ( $finalRound == 2 );
           }
 
@@ -743,7 +739,6 @@ sub buildConsensus
           $seqNames{$sbjID} = 1;
           for ( my $j = 0 ; $j < $familyCollection->size() ; $j++ )
           {
-
             # Testing
             #print "OUT: "
             #    . $familyCollection->get( $j )
@@ -813,10 +808,6 @@ sub buildConsensus
   ## Testing: Saving out unaligned fasta for experimentation
   open OUT, ">unaligned.fa"
       or die "Refiner Failed: Could not open unaligned\.fa file!\n";
-
-  #my $ff = $cons;
-  #$ff =~ s/-//g;
-  #print OUT ">consensus\n$ff\n";
   print OUT $unalignedFastaSeqs;
   close OUT;
 
@@ -1203,7 +1194,6 @@ END
     print $OUT "<b>$name</b>" . ' ' x $namePad . ": $seq\n";
   }
 
-  ## TESTING
   if ( defined $parameters{'printHistogram'} )
   {
     print $OUT "\n\n";
@@ -1291,7 +1281,7 @@ END
 
 }
 
-## TODO: Question for Arian.  Should we consider the reference
+## TODO: Should we consider the reference
 ##       when looking for the longest flanking extension?
 sub getLongestFlankingExtension
 {
@@ -1355,6 +1345,7 @@ sub resolveLowQualityBlocks
   my $lupMatrix = SequenceSimilarityMatrix->new();
   $lupMatrix->parseFromFile(
                     "$FindBin::RealBin/Matrices/linupmatrix" );
+
   ## TODO: pass in penalties
   my ( $columns, $scoreArray ) =
       $mAlign->getLowScoringAlignmentColumns( matrix => $matrix );
@@ -1364,7 +1355,6 @@ sub resolveLowQualityBlocks
   {
     my $blockWidth = $col->[ 1 ] - $col->[ 0 ] + 1;
 
-    # TODO: Make this a parameter?
     if ( $blockWidth > 1 && $blockWidth <= 50 )
     {
       my ( $refSeq, $instSeqs ) = $mAlign->getAlignmentBlock(

@@ -129,6 +129,7 @@ die $CLASS . ": Missing fasta file!\n"
     if ( !defined $ARGV[ 0 ] || -z $ARGV[ 0 ] );
 my $fastaFile = $ARGV[ 0 ];
 my $wrkDir    = ( File::Spec->splitpath( $fastaFile ) )[ 1 ];
+$fastaFile    = ( File::Spec->splitpath( $fastaFile ) )[ 2 ];
 $wrkDir = "." if ( $wrkDir eq "" );
 print "Working directory = $wrkDir\n" if ( $DEBUG );
 
@@ -143,7 +144,9 @@ if ( $ver < 4.09 ) {
 }
 print "Running: $TRF_PRGM  ( version = $ver )\n" if ( $DEBUG );
 
-open IN,"$TRF_PRGM $fastaFile 2 7 7 80 10 50 500 -ngs -h |" or die;
+my $cmd = "$TRF_PRGM $wrkDir/$fastaFile 2 7 7 80 10 50 500 -ngs -h";
+open IN,"$cmd |" or die "TRFMask: Could not run command $cmd\n";
+print "Running $cmd\n" if ( $DEBUG );
 my %results;
 my $id = "";
 while ( <IN> ){
@@ -163,8 +166,8 @@ while ( <IN> ){
 }
 close IN;
 
-open IN,"<$fastaFile" or die;
-open OUT,">$wrkDir/$fastaFile.masked" or die;
+open IN,"<$wrkDir/$fastaFile" or die "TRFMask: Could not open $fastaFile for reading!\n";
+open OUT,">$wrkDir/$fastaFile.masked" or die "TRFMask: Could not open $wrkDir/$fastaFile.masked for writing!\n";
 my $seq;
 my $id;
 my $fullHDR;
