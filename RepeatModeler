@@ -45,12 +45,6 @@ The name of the sequence database to run an analysis on.
 This is the name that was provided to the BuildDatabase script
 using the "-name" option.
 
-=item -engine <rmblast|abblast>
-
-The name of the search engine we are using.  I.e abblast/wublast or
-ncbi (rmblast version). Note "ncbi" and "wublast" are acceptable 
-(but deprecated) synonyms for "rmblast" and "abblast" respectively.
-
 =item -pa #
 
 Specify the number of parallel search jobs to run.  RMBlast jobs will
@@ -71,6 +65,11 @@ Optionally set the seed of the random number generator to a known value before
 the batches are randomly selected ( using Fisher Yates Shuffling ).  This is
 only useful if you need to reproduce the sample choice between runs.  This
 should be an integer number.
+
+=item -LTRStruct
+
+Run the LTR structural discovery pipeline and combine results with 
+the RepeatScout/RECON pipeline. [optional]
 
 =back
 
@@ -167,6 +166,7 @@ my @getopt_args = (
                     '-pa=i',
                     '-srand=i',
                     '-rsSampleSize=s',
+                    '-LTRStruct',
                     '-onlyRS',
                     '-skipRS',
                     '-onlyIns',
@@ -227,6 +227,7 @@ my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
 my $XDGET_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdget";
 my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
 my $RECON_DIR = $config->{'RECON_DIR'}->{'value'};
+my $CDHIT_DIR = $config->{'CDHIT_DIR'}->{'value'};
 # TODO: validate parameters?
 
 if ( $options{'version'} ) {
@@ -251,7 +252,11 @@ srand( $seed );
 #
 my $searchEngineN;
 my $engine = "rmblast";
-$engine = $options{'engine'} if ( $options{'engine'} );
+# DEPRECATED: Using only rmblast now
+#$engine = $options{'engine'} if ( $options{'engine'} );
+if ( $options{'engine'} && $options{'engine'} =~ /wublast|abblast/i ){
+  print "WARNING: \"-engine $options{'engine'}\" is deprecated, this verison of RepeatModeler uses rmblast only.\n";
+}
 if ( $engine )
 {
   if ( $engine =~ /wublast|abblast/i )
@@ -313,12 +318,12 @@ my $recommendedFamilySize = 15;
 # The absolute minimum RECON/RS family size for which
 #   we will build a model.  Only invoked if there
 #   are only small families returned by RECON/RS.
-#   TODO: Perhaps this should only be invoked if
-#         the genome is extremely small.
 my $minFamilySize = 4;
 
 ##
-## TODO: DEV ONLY
+## Special Case: Input consists of only TE insertions
+##               relative to it's direct ancestral 
+##               reconstructed genome.
 ##
 if ( $options{'onlyIns'} ) {
   $genomeSampleSizeMax        = 300000000; 
@@ -326,9 +331,6 @@ if ( $options{'onlyIns'} ) {
   $genomeSampleSizeMultiplier = 4;
   $recommendedFamilySize = 50;
 }
-## 
-## TODO: END DEV ONLY
-##
 
 #
 # Gather details from the database
@@ -1610,25 +1612,90 @@ while ( 1 ) {
     $sampleSize = $genomeSampleSizeMax
         if ( $sampleSize > $genomeSampleSizeMax );
   }
-
-  #if ( $sampleSize < $genomeSampleSizeMax )
-  #{
-  #  $sampleSize *= $genomeSampleSizeMultiplier;
-  #  $sampleSize = $genomeSampleSizeMax
-  #      if ( $sampleSize > $genomeSampleSizeMax );
-  #} else
-  #{
-  #
-  #  # We are done
-  #  last;
-  #}
 }    # Main Loop while(...
+print "\nRepeatScout/RECON discovery complete: $numModels families found\n";
 
-print "\nDiscovery complete: $numModels families found\n";
+## TODO: Use the last round's masking data to re-estimate the 
+##       abundance of families found in previous rounds.
 
-## TODO: Add code to serially mask the last largest
-##       sample one more time and collect the segregation
-##       data.
+# Optionally perform LTR structural search
+if ( $options{'LTRStruct'} ) {
+  # Save genome to sequence file
+  if ( $engine eq "abblast" ) {
+    system("$XDFORMAT_PRGM -r $genomeDB > $tmpDir/tmpInputSeq.fa");
+  }else {
+    system("$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt \"%f\" > $tmpDir/tmpInputSeq.fa");
+  }
+  if ( -s "$tmpDir/tmpInputSeq.fa" )
+  {
+    system("$FindBin::RealBin/LTRPipeline $tmpDir/tmpInputSeq.fa");
+    unlink "$tmpDir/tmpInputSeq.fa";
+    # TODO: Merge Results
+    if ( -s "$tmpDir/tmpInputSeq-ltrs.fa") 
+    {
+      # Combine results between both pipelines
+      # run CDhit
+      # /usr/local/cd-hit/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 -i all_consensi.fasta -o all_consensi.clusters1.fasta -T 20
+      #   T is threads 0 = unlimited
+      #
+      # >Cluster 0
+      # 0	8283nt, >rnd-3_family-2#LINE... *
+      # 1	3592nt, >rnd-4_family-1#LINE... at 1:3592:4587:8184/+/98.72%
+      # 2	2990nt, >rnd-5_family-1#LINE... at 1:2990:4994:7985/+/97.46%
+      # 3	1641nt, >rnd-5_family-22#LIN... at 2:1623:10:1632/+/87.13%
+      #
+      # Jullien clustered and removed RECON/RepeatScout hits that overlapped
+      # Then she clustered a second time and collapsed clusters using Refiner.
+      #
+      # What we are doing:
+      #   Cluster the sequences with RepeatModeler's RECON/RepeatScout pipeline.
+      #   Identify non-singletons and collapse in favor of the longest sequence
+      #   ( for RECON/RepeatScout clusters ) or in favor of LTRPipeline in mixed
+      #   clusters.
+      #
+      # 1. Combine results from both pipelines into a file
+      system("cat $tmpDir/tmpInputSeq-ltrs.fa $tmpDir/consensi.fa > $tmpDir/combined.fa");
+      # 2. Cluster results
+      my $threads = $options{'pa'} ? $options{'pa'} : 1;
+      system("$CDHIT_DIR/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 -i $tmpDir/combined.fa -o $tmpDir/cd-hit-out -T $threads");
+      unlink("$tmpDir/cd-hit-out" ) if ( -e "$tmpDir/cd-hit-out");
+      if ( -s "$tmpDir/cd-hit-out.clstr" ) {
+        open IN,"<$tmpDir/cd-hit-out.clstr" or die "RepeatModler: Could not open $tmpDir/cd-hit-out.clstr for reading!\n";
+        my @cluster = ();
+        my $rnd_present = 0;
+        my $ltr_present = 0;
+        while ( <IN> ) {
+          if ( /^>Cluster/ ) {
+            if ( @cluster > 1 ) {
+              if ( $rnd_present && $ltr_present )
+              {}
+              foreach my $seq ( @cluster ) {
+              }
+            }
+            $rnd_present = 0;
+            $ltr_present = 0;
+            @cluster = ();
+            next;
+          }
+          if ( /.*>((rnd|ltr)-\d+_family-\d+)/ ){
+            $rnd_present = 1 if ( $2 eq "rnd" );
+            $ltr_present = 1 if ( $2 eq "ltr" );
+            push @cluster, $1;
+          }
+        }
+        close IN;
+        unlink("$tmpDir/cd-hit-out.clstr" );
+      }
+      #
+      #
+      #
+    }
+  }else {
+    print "\nWARNING: Could not create input file for LTRPipeline from $genomeDB! Continuing using\nresults from RepeatScout/RECON pipeline only.\n";
+  }
+}
+
+
 
 ## TODO: This is where we run postprocessing modules
 ##

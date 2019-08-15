@@ -253,9 +253,13 @@ foreach my $cluster ( sort keys %clusters ){
   system("$FindBin::RealBin/Refiner -name ltr_family-$idx $tempDir/ltr_family-$idx.fa");
   if ( -s "$tempDir/ltr_family-$idx.fa.refiner_cons" ) 
   {
+    # TODO: create combined stockholm
+    # TODO: place the output files in a sensible place
+    # TODO: optionally hold onto the logs
     system("cat $tempDir/ltr_family-$idx.fa.refiner_cons >> $tempDir/combined_cons.fa");
   }
 }
+system ("cp $tempDir/combined_cons.fa $inputFile-ltrs.fa") if ( -s "$tempDir/combined_cons.fa" );
 
 print "Program Time: " . elapsedTime( "runtime" ) . "\n";
 

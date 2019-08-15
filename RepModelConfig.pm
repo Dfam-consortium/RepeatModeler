@@ -72,7 +72,7 @@ sequence clustering package.',
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/cd-hit'
+                           'value' => '/home/rhubley/src/cd-hit-v4.8.1-2019-0228'
                          },
           'LTR_DETECTOR_DIR' => {
                                   'command_line_override' => 'ltr_detector_dir',
