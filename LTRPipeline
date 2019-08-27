@@ -189,9 +189,12 @@ if ( $options{'pa'} ) {
 my $inputFile = $ARGV[0];
 
 ## Temp directory
-my $tempDir = "testtmp";
-system("rm -rf $tempDir");
-system("mkdir $tempDir");
+my $tempDir;
+if ( $options{'tmpdir'} ) {
+  $tempDir = &createTempDir( [ $options{'tmpdir'}, cwd() ], "LTRPipeline" );
+}else{
+  $tempDir = &createTempDir( [ dirname( $inputFile ), cwd() ], "LTRPipeline" );
+}
 
 
 my %TimeBefore = ();
@@ -390,9 +393,9 @@ sub runLtrRetriever {
   system($cmd);
   chdir $cwd or die "LTRPipeline::runLtrRetriever : Could not change directory back to $cwd : $!";
 
-  if ( -s "$tmpDir/seq.fa.mod.LTRlib.redundant.fa") 
+  if ( -s "$tmpDir/seq.fa.LTRlib.redundant.fa") 
   {
-    system("mv $tmpDir/seq.fa.mod.LTRlib.redundant.fa $outFile");
+    system("mv $tmpDir/seq.fa.LTRlib.redundant.fa $outFile");
   }
   
   # TODO: Consider keeping on error

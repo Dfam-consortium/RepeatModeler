@@ -1659,36 +1659,149 @@ if ( $options{'LTRStruct'} ) {
       my $threads = $options{'pa'} ? $options{'pa'} : 1;
       system("$CDHIT_DIR/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 -i $tmpDir/combined.fa -o $tmpDir/cd-hit-out -T $threads");
       unlink("$tmpDir/cd-hit-out" ) if ( -e "$tmpDir/cd-hit-out");
+      # 3. Process clusters and remove redundancy
+      my %redundant_families;
+      my %putative_subfamilies;
       if ( -s "$tmpDir/cd-hit-out.clstr" ) {
         open IN,"<$tmpDir/cd-hit-out.clstr" or die "RepeatModler: Could not open $tmpDir/cd-hit-out.clstr for reading!\n";
         my @cluster = ();
-        my $rnd_present = 0;
-        my $ltr_present = 0;
+        my $longest_ltr_id;
+        my $longest_ltr_size;
+        my $longest_rnd_id;
+        my $longest_rnd_size;
         while ( <IN> ) {
           if ( /^>Cluster/ ) {
             if ( @cluster > 1 ) {
-              if ( $rnd_present && $ltr_present )
-              {}
-              foreach my $seq ( @cluster ) {
+              # For now we only want to remove the 
+              # redundancy between piplines, not 
+              # within pipelines.
+              if ( $longest_ltr_id )
+              {
+                foreach my $id ( @cluster ) {
+                  if ( $id ne $longest_ltr_id ) {
+                    print "Removing $id because it's redundant with $longest_ltr_id\n";
+                    $redundant_families{$id}++;
+                  }
+                }
+              }elsif ( $longest_rnd_id ) {
+                 foreach my $id ( @cluster ) {
+                  if ( $id ne $longest_rnd_id ) {
+                    print "Labeling $id as putative subfamily of $longest_rnd_id\n";
+                    $putative_subfamilies{ $id } = $longest_rnd_id;
+                  }
+                }
               }
             }
-            $rnd_present = 0;
-            $ltr_present = 0;
+            $longest_ltr_id = undef;
+            $longest_ltr_size = 0;
+            $longest_rnd_id = undef;
+            $longest_rnd_size = 0;
             @cluster = ();
             next;
           }
-          if ( /.*>((rnd|ltr)-\d+_family-\d+)/ ){
-            $rnd_present = 1 if ( $2 eq "rnd" );
-            $ltr_present = 1 if ( $2 eq "ltr" );
-            push @cluster, $1;
+          if ( /^\d+\s+(\d+)nt,\s*>((rnd|ltr)-\d+_family-\d+)/ ){
+            my $size = $1; 
+            my $id = $2;
+            my $type = $3;
+            if ( $type eq "ltr" && 
+                 $size > $longest_ltr_size )
+            {
+              $longest_ltr_id = $id;
+              $longest_ltr_size = $size;
+            }
+            if ( $type eq "rnd" && 
+                 $size > $longest_rnd_size ) {
+              $longest_rnd_id = $id;
+              $longest_rnd_size = $size;
+            }
+            push @cluster, $id;
           }
         }
         close IN;
-        unlink("$tmpDir/cd-hit-out.clstr" );
+        # TODO: put back
+        #unlink("$tmpDir/cd-hit-out.clstr" );
       }
-      #
-      #
-      #
+      if ( keys(%redundant_families) )
+      {
+        system("mv $tmpDir/consensi.fa $tmpDir/consensi.fa.with_redunancy");
+        system("mv $tmpDir/families.stk $tmpDir/families.stk.with_redunancy");
+        # Filter consensi.fa and families.stk
+        open IN,"<$tmpDir/consensi.fa.with_redundancy" or 
+           die "RepeatModeler: Could not open $tmpDir/consensi.fa.with_redundancy for reading";
+        open OUT,">$tmpDir/consensi.fa" or 
+           die "RepeatModeler: Could not open $tmpDir/consensi.fa for writing";
+        my $id;
+        my $data;
+        while ( <IN> ) 
+        {
+          if ( /^>(\S+)/ ) 
+          {
+            my $tmpID = $1;
+            if ( $data ) {
+              if ( ! exists $redundant_families{$id} )
+              {
+                print OUT $data;
+              }
+            }
+            if ( exists $putative_subfamilies{$tmpID} )
+            {
+              my $tstr = $_;
+              $tstr =~ s/[\n\r]//g;
+              $data = "$tstr [ putative subfamily of " . $putative_subfamilies{$tmpID} . " ]\n";
+            }else {
+              $data = $_;
+            }
+            $id = $tmpID;
+            next;
+          }
+          $data .= $_;
+        }
+        if ( $data ) {
+          if ( ! exists $redundant_families{$id} )
+          {
+            print OUT $data;
+          }
+        }
+        close IN;
+        close OUT;
+        open IN,"<$tmpDir/families.stk.with_redundancy" or 
+           die "RepeatModeler: Could not open $tmpDir/families.stk.with_redundancy for reading";
+        open OUT,">$tmpDir/families.stk" or 
+           die "RepeatModeler: Could not open $tmpDir/families.stk for writing";
+        $id = "";
+        $data = "";
+        while ( <IN> ) 
+        {
+          if ( /^#=GF\s+ID\s+(\S+)/ ) 
+          {
+            $id = $1;
+          }
+
+          if ( /^#=GF\s+DE\s+(\S.*)/ ) {
+              if ( exists $putative_subfamilies{$id} )
+              {
+                my $tstr = $_;
+                $tstr =~ s/[\n\r]//g;
+                $data .= "$tstr [ putative subfamily of " . $putative_subfamilies{$id} . " ]\n";
+              }else {
+                $data .= $_;
+              }
+          }else {
+            $data .= $_;
+          }
+
+          if ( /^\/\// )
+          {
+            if ( ! exists $redundant_families{$id} )
+            {
+              print OUT $data;
+            }
+            $data = "";
+          }
+        }
+        close IN;
+        close OUT;
+      }
     }
   }else {
     print "\nWARNING: Could not create input file for LTRPipeline from $genomeDB! Continuing using\nresults from RepeatScout/RECON pipeline only.\n";
@@ -2976,6 +3089,15 @@ sub sampleFromDB
 #exit;
 
   return ( \%usedBlocksIndex );
+}
+
+sub clearSampleUsedCounts{
+  my %parameters = @_;
+  my $dbSourceBlocks = $parameters{'dbSourceBlocks'};
+  foreach my $sampleSourceRecord ( @{$dbSourceBlocks} )
+  {
+    $sampleSourceRecord->{'used_cnt'} = 0;
+  }
 }
 
 sub fisherYatesShuffle
