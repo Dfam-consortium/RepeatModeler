@@ -247,19 +247,19 @@ close IN;
 
 foreach my $cluster ( sort keys %clusters ){
   my $idx = $cluster + 1;
-  open OUT, ">$tempDir/ltr_family-$idx.fa" or die "LTRPipeline : Could not create $tempDir/ltr_family-$idx.fa!";
+  open OUT, ">$tempDir/ltr-1_family-$idx.fa" or die "LTRPipeline : Could not create $tempDir/ltr-1_family-$idx.fa!";
   foreach my $seedID ( @{$clusters{$cluster}} )
   {
     print OUT ">$seedID\n$seeds{$seedID}\n";
   }
   close OUT;
-  system("$FindBin::RealBin/Refiner -name ltr_family-$idx $tempDir/ltr_family-$idx.fa");
-  if ( -s "$tempDir/ltr_family-$idx.fa.refiner_cons" ) 
+  system("$FindBin::RealBin/Refiner -name ltr-1_family-$idx $tempDir/ltr-1_family-$idx.fa");
+  if ( -s "$tempDir/ltr-1_family-$idx.fa.refiner_cons" ) 
   {
     # TODO: create combined stockholm
     # TODO: place the output files in a sensible place
     # TODO: optionally hold onto the logs
-    system("cat $tempDir/ltr_family-$idx.fa.refiner_cons >> $tempDir/combined_cons.fa");
+    system("cat $tempDir/ltr-1_family-$idx.fa.refiner_cons >> $tempDir/combined_cons.fa");
   }
 }
 system ("cp $tempDir/combined_cons.fa $inputFile-ltrs.fa") if ( -s "$tempDir/combined_cons.fa" );

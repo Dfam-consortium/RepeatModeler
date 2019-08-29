@@ -1620,17 +1620,18 @@ print "\nRepeatScout/RECON discovery complete: $numModels families found\n";
 
 # Optionally perform LTR structural search
 if ( $options{'LTRStruct'} ) {
+  print "Running LTR Structural Analysis...\n";
   # Save genome to sequence file
   if ( $engine eq "abblast" ) {
-    system("$XDFORMAT_PRGM -r $genomeDB > $tmpDir/tmpInputSeq.fa");
+    system("$XDFORMAT_PRGM -r $genomeDB > $tmpDir/tmpInputSeq");
   }else {
-    system("$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt \"%f\" > $tmpDir/tmpInputSeq.fa");
+    system("$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt \"%f\" > $tmpDir/tmpInputSeq");
   }
-  if ( -s "$tmpDir/tmpInputSeq.fa" )
+  if ( -s "$tmpDir/tmpInputSeq" )
   {
-    system("$FindBin::RealBin/LTRPipeline $tmpDir/tmpInputSeq.fa");
-    unlink "$tmpDir/tmpInputSeq.fa";
-    # TODO: Merge Results
+    ## Run the LTR Pipeline
+    system("$FindBin::RealBin/LTRPipeline $tmpDir/tmpInputSeq");
+    unlink "$tmpDir/tmpInputSeq";
     if ( -s "$tmpDir/tmpInputSeq-ltrs.fa") 
     {
       # Combine results between both pipelines
@@ -1653,11 +1654,13 @@ if ( $options{'LTRStruct'} ) {
       #   ( for RECON/RepeatScout clusters ) or in favor of LTRPipeline in mixed
       #   clusters.
       #
+      print "  -- Clustering results with previous rounds...\n";
       # 1. Combine results from both pipelines into a file
       system("cat $tmpDir/tmpInputSeq-ltrs.fa $tmpDir/consensi.fa > $tmpDir/combined.fa");
       # 2. Cluster results
       my $threads = $options{'pa'} ? $options{'pa'} : 1;
-      system("$CDHIT_DIR/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 -i $tmpDir/combined.fa -o $tmpDir/cd-hit-out -T $threads");
+      system("$CDHIT_DIR/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 -i $tmpDir/combined.fa -o $tmpDir/cd-hit-out -T $threads >& $tmpDir/cd-hit-stdout");
+      unlink("$tmpDir/cd-hit-stdout" ) if ( -e "$tmpDir/cd-hit-stdout");
       unlink("$tmpDir/cd-hit-out" ) if ( -e "$tmpDir/cd-hit-out");
       # 3. Process clusters and remove redundancy
       my %redundant_families;
@@ -1723,8 +1726,8 @@ if ( $options{'LTRStruct'} ) {
       }
       if ( keys(%redundant_families) )
       {
-        system("mv $tmpDir/consensi.fa $tmpDir/consensi.fa.with_redunancy");
-        system("mv $tmpDir/families.stk $tmpDir/families.stk.with_redunancy");
+        system("mv $tmpDir/consensi.fa $tmpDir/consensi.fa.recon_rscout_only");
+        system("mv $tmpDir/combined.fa $tmpDir/consensi.fa.with_redundancy");
         # Filter consensi.fa and families.stk
         open IN,"<$tmpDir/consensi.fa.with_redundancy" or 
            die "RepeatModeler: Could not open $tmpDir/consensi.fa.with_redundancy for reading";
@@ -1764,6 +1767,7 @@ if ( $options{'LTRStruct'} ) {
         }
         close IN;
         close OUT;
+        system("mv $tmpDir/families.stk $tmpDir/families.stk.with_redundancy");
         open IN,"<$tmpDir/families.stk.with_redundancy" or 
            die "RepeatModeler: Could not open $tmpDir/families.stk.with_redundancy for reading";
         open OUT,">$tmpDir/families.stk" or 
@@ -1802,6 +1806,8 @@ if ( $options{'LTRStruct'} ) {
         close IN;
         close OUT;
       }
+    }else {
+      # TODO: warn that this is empty $tmpDir/tmpInputSeq-ltrs.fa
     }
   }else {
     print "\nWARNING: Could not create input file for LTRPipeline from $genomeDB! Continuing using\nresults from RepeatScout/RECON pipeline only.\n";
