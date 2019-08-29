@@ -49,6 +49,8 @@ Displays the version of the program
 
 =head1 SEE ALSO
 
+RepeatModeler
+
 =head1 COPYRIGHT
 
 Copyright 2019 Robert Hubley, Institute for Systems Biology
@@ -58,10 +60,10 @@ Copyright 2019 Robert Hubley, Institute for Systems Biology
 This code may be used in accordance with the Open Source License v. 3.0
 http://opensource.org/licenses/OSL-3.0
 
-=head1 AUTHOR
+=head1 AUTHORS
 
-Robert Hubley <rhubley@systemsbiology.org>
-Jullien Michelle Flynn <jmf422@cornell.edu>
+ Robert Hubley          <rhubley@systemsbiology.org>
+ Jullien Michelle Flynn <jmf422@cornell.edu>
 
 =cut
 
@@ -77,6 +79,9 @@ use File::Basename;
 use Cwd;
 use Time::HiRes qw( gettimeofday tv_interval);
 use RepModelConfig;
+use SeedAlignment;
+use SeedAlignmentCollection;
+
 
 #
 # Version
@@ -101,7 +106,7 @@ $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 # Magic numbers/constants here
 #  ie. my $PI = 3.14159;
 #   
-my $DEBUG = 0;
+my $DEBUG = 1;
 
 #
 # Option processing
@@ -181,10 +186,13 @@ my $NINJA_DIR = $config->{'NINJA_DIR'}->{'value'};
 #   Run NINJA
 #   Produce seed alignments and consensi
 #
-$DEBUG = 1;
 my $threads = 1;
 if ( $options{'pa'} ) {
  $threads = $options{'pa'};
+}
+
+unless ( -s $ARGV[0] ) {
+  usage();
 }
 my $inputFile = $ARGV[0];
 
@@ -196,24 +204,42 @@ if ( $options{'tmpdir'} ) {
   $tempDir = &createTempDir( [ dirname( $inputFile ), cwd() ], "LTRPipeline" );
 }
 
-
 my %TimeBefore = ();
 elapsedTime( "runtime" );    # Setup the timers
+
+# Run LTR Detector
 my $numAnnots = &runLtrDetector( $LTR_DETECTOR_DIR, $inputFile, "$tempDir/LtrDetector-results.txt", $threads, $tempDir);
 if ( $numAnnots == 0 ) {
-  print "No results returned from LTR structural finder ( LtrDetector )...\n";
+  print "LTRPipeline: No results returned from LTR structural finder ( LtrDetector ).\n";
   exit;
 }
+
+# Postprocess results using LTR_Retriever
 &runLtrRetriever( $LTR_RETRIEVER_DIR, $inputFile, "$tempDir/LtrDetector-results.txt", "$tempDir/LtrRetriever-redundant-results.fa", $threads );
+if ( ! -s "$tempDir/LtrRetriever-redundant-results.fa" )
+{
+  print "LTRPipeline: No results after LTR_Retriever filtering.\n";
+  exit;
+}
+# Group elements into families using a scoring system that accounts for common deletion products
 &runMafft( $MAFFT_DIR, "$tempDir/LtrRetriever-redundant-results.fa", "$tempDir/mafft-alignment.fa", $threads );
+if ( ! -s "$tempDir/mafft-alignment.fa" )
+{
+  print "LTRPipeline: Error - could not produce a multiple alignment from the denovo LTR results.\n";
+  exit;
+}
 &runNinja( $NINJA_DIR, "$tempDir/mafft-alignment.fa", "$tempDir/clusters.dat", $threads );
+if ( ! -s "$tempDir/clusters.dat" )
+{
+  print "LTRPipeline: Error - could not cluster MAFFT results.\n";
+}
 # TODO:
 #   Here Jullien screened out families which have similarity to DNA Transposons or LINE elements by searching
 #   with RepeatMasker.  Since this is a de-novo approach we do not expect there to be a library available.
 #   One could search against all known LINE/DNA elements but that will need further thought.
 #
-# Make a fasta file for family ( cluster ).
-open IN,"<$tempDir/clusters.dat" or die "LTRPipeline : Could not open $tempDir/clusters.dat!";
+# Read in cluster data
+open IN,"<$tempDir/clusters.dat" or die "LTRPipeline : Error - could not open $tempDir/clusters.dat!";
 my %clusters;
 while ( <IN> ) {
   # 0	utg7180_2262700..2263120_LTR#LTR/Gypsy
@@ -222,7 +248,10 @@ while ( <IN> ) {
   }
 }
 close IN;
-open IN,"<$tempDir/LtrRetriever-redundant-results.fa" or die "LTRPipeline : Could not open $tempDir/LtrRetriever-redundant-results.fa!";
+
+# Read in Ltr_Retriever sequences
+open IN,"<$tempDir/LtrRetriever-redundant-results.fa" or 
+   die "LTRPipeline : Error - could not open $tempDir/LtrRetriever-redundant-results.fa!";
 my %seeds = ();
 my $seq = "";
 my $id = "";
@@ -245,35 +274,82 @@ if ( $seq ) {
 }
 close IN;
 
+# Process each cluster
+open OUTSTK, ">$tempDir/families.stk"
+  or die "Could not create $tempDir/families.stk!\n";
+open OUTCON, ">$tempDir/families.fa"
+  or die "Could not create $tempDir/families.fa!\n";
 foreach my $cluster ( sort keys %clusters ){
   my $idx = $cluster + 1;
+  # Make a fasta file for family ( cluster ).
   open OUT, ">$tempDir/ltr-1_family-$idx.fa" or die "LTRPipeline : Could not create $tempDir/ltr-1_family-$idx.fa!";
   foreach my $seedID ( @{$clusters{$cluster}} )
   {
     print OUT ">$seedID\n$seeds{$seedID}\n";
   }
   close OUT;
-  system("$FindBin::RealBin/Refiner -name ltr-1_family-$idx $tempDir/ltr-1_family-$idx.fa");
+  # Run Refiner on the seeds
+  system("$FindBin::RealBin/Refiner -noTmp -name ltr-1_family-$idx $tempDir/ltr-1_family-$idx.fa");
+  # family-72.fa.refiner.stk
   if ( -s "$tempDir/ltr-1_family-$idx.fa.refiner_cons" ) 
   {
-    # TODO: create combined stockholm
-    # TODO: place the output files in a sensible place
-    # TODO: optionally hold onto the logs
-    system("cat $tempDir/ltr-1_family-$idx.fa.refiner_cons >> $tempDir/combined_cons.fa");
+        my $cons;
+        my $maSize;
+        open INREF, "<$tempDir/ltr-1_family-$idx.fa.refiner_cons"
+            or die "LTRPipeline"
+            . ": Could not open refined model $tempDir/ltr-1_family-$idx.fa.refiner_cons!\n";
+        while ( <INREF> )
+        {
+          if ( /Final Multiple Alignment Size = (\d+)/ )
+          {
+            $maSize = $1;
+          } else
+          {
+            $cons .= $_;
+          }
+        }
+        close INREF;
+        # Clean up consensi starting/ending with Ns
+        #   - These are sections of the multiple alignment
+        #     where there is no support for a consensus.
+        $cons =~ s/^[Nn]*([^Nn].*[^Nn])[Nn]*$/$1/;
+        if ( -s "$tempDir/ltr-1_family-$idx.fa.refiner.stk" ) {
+            my $stockholmFile = SeedAlignmentCollection->new();
+            my $IN;
+            open $IN, "<$tempDir/ltr-1_family-$idx.fa.refiner.stk"
+                or die
+                "Could not open $tempDir/ltr-1_family-$idx.fa.refiner.stk for reading!\n";
+            $stockholmFile->read_stockholm( $IN );
+            close $IN;
+
+            # File only contains one family
+            my $seedAlign = $stockholmFile->get( 0 );
+
+            # Add details to DE line
+            $seedAlign->setDescription( "RepeatModeler Generated - ltr-1"
+              . "_family-$idx, [ Final Multiple Alignment Size = $maSize ]"
+            );
+ 
+            print OUTSTK "" . $seedAlign->toString();
+        }
+
+        # Save the consensus to the consensi file.
+        print OUTCON ">ltr-1_family-$idx [ "
+            . "Final Multiple Alignment Size = "
+            . $maSize . " ]\n";
+        print OUTCON "$cons\n";
   }
 }
-system ("cp $tempDir/combined_cons.fa $inputFile-ltrs.fa") if ( -s "$tempDir/combined_cons.fa" );
+close OUTCON;
+close OUTSTK;
+system ("cp $tempDir/families.fa $inputFile-ltrs.fa") if ( -s "$tempDir/families.fa" );
+system ("cp $tempDir/families.stk $inputFile-ltrs.stk") if ( -s "$tempDir/families.stk" );
 
 print "Program Time: " . elapsedTime( "runtime" ) . "\n";
-
-## NOTE This produces many low-copy families.  Don't refine unless there is more than 3 copies.  Otherwise just 
-#       call the consensus.
-
 exit;
 
 
-
-
+###############################################################################################
 
 sub runNinja {
   my $binDir = shift;
@@ -396,6 +472,9 @@ sub runLtrRetriever {
   if ( -s "$tmpDir/seq.fa.LTRlib.redundant.fa") 
   {
     system("mv $tmpDir/seq.fa.LTRlib.redundant.fa $outFile");
+  }elsif ( -s "$tmpDir/seq.fa.mod.LTRlib.redundant.fa" )
+  {
+    system("mv $tmpDir/seq.fa.mod.LTRlib.redundant.fa $outFile");
   }
   
   # TODO: Consider keeping on error
@@ -551,51 +630,6 @@ sub runLtrDetector {
 
 
 ######################## S U B R O U T I N E S ############################
-
-
-##-------------------------------------------------------------------------##
-## Use: my _privateMethod( $parameter => value );
-##
-##      $parameter       : A parameter to the method
-##
-##  Returns
-##      Methods with the prefix "_" are conventionally considered
-##      private.  This bit-o-documentation is not formatted to
-##      print out when perldoc is run on this file.
-##
-##-------------------------------------------------------------------------##
-sub _privateMethod {
-  my %parameters = @_;
-
-  my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
-  print "$subroutine( " .  @{[%parameters]} . "): Called\n" if ( $DEBUG );
-
-}
-
-
-##-------------------------------------------------------------------------##
-
-=head2 publicMethod()
-
-  Use:  my $retVal = publicMethod( $parameter1 => value, 
-                                   $parameter2 => value );
-
-    $parameter1:   A generic scalar parameter
-    $parameter2:   A generic scalar parameter
-
-  $retVal contains the scalar result of this subroutine.  This
-  is a public function and this documentation will print out
-  when perldoc is run on this file.
-
-=cut
-
-##-------------------------------------------------------------------------##·
-sub publicMethod {
-  my %parameters = @_;
-
-  my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
-  print "$subroutine( " .  @{[%parameters]} . "): Called\n" if ( $DEBUG );
-}
 
 ##-------------------------------------------------------------------------##
 ## Use:  my ( $tempDir ) = &createTempDir( \@tmpPath );
