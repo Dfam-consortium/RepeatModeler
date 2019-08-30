@@ -2638,6 +2638,14 @@ sub buildReconConsensi
       my $startOffset = $elementRef->{'start'};
       my $endOffset   = $elementRef->{'end'};
       my $length      = $endOffset - $startOffset;
+      my $actualSeqLen = $batchDB->getSeqLength( $seqName );
+      if ( $endOffset > $actualSeqLen )
+      {
+        print  "WARNING: Attempt to extract substring outside the range of the sequence\n"
+             . "         seqID=$seqName range=$startOffset-$endOffset!  Please report this\n"
+             . "         warning to the developers at help\@dfam.org.\n";
+        next;
+      } 
       my $sequence    = $batchDB->getSubstr( $seqName, $startOffset, $length );
 
       ## Determine if we need to reorient the sequence based
