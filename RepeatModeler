@@ -1657,6 +1657,7 @@ if ( $options{'LTRStruct'} ) {
       print "  -- Clustering results with previous rounds...\n";
       # 1. Combine results from both pipelines into a file
       system("cat $tmpDir/tmpInputSeq-ltrs.fa $tmpDir/consensi.fa > $tmpDir/combined.fa");
+      system("cat $tmpDir/tmpInputSeq-ltrs.stk $tmpDir/families.stk > $tmpDir/combined.stk");
       # 2. Cluster results
       my $threads = $options{'pa'} ? $options{'pa'} : 1;
       system("$CDHIT_DIR/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 -i $tmpDir/combined.fa -o $tmpDir/cd-hit-out -T $threads >& $tmpDir/cd-hit-stdout");
@@ -1767,7 +1768,8 @@ if ( $options{'LTRStruct'} ) {
         }
         close IN;
         close OUT;
-        system("mv $tmpDir/families.stk $tmpDir/families.stk.with_redundancy");
+        system("mv $tmpDir/families.stk $tmpDir/families.stk.recon_rscout_only");
+        system("mv $tmpDir/combined.stk $tmpDir/families.stk.with_redundancy");
         open IN,"<$tmpDir/families.stk.with_redundancy" or 
            die "RepeatModeler: Could not open $tmpDir/families.stk.with_redundancy for reading";
         open OUT,">$tmpDir/families.stk" or 
