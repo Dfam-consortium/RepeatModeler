@@ -143,7 +143,7 @@ my %TimeBefore = ();
 #
 # Version
 #  -- This is filled in by configure
-my $version = "#VERSION#";
+my $version = "open-1.0.11";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
 my $cmdLine = $0 . join( ' ', @ARGV );

@@ -246,7 +246,6 @@ do
 } while ( $goodParam != 1 );
 
 
-
 ## RepeatMasker
 if ( ! $options{'repeatmasker_dir'} ) {
 $goodParam = 1;
@@ -299,8 +298,40 @@ RepModelConfig::promptForParam('TRF_PRGM');
 ## Search Engine Configuration
 ##
 if ( ! ( $options{'abblast_dir'} || $options{'rmblast_dir'} ) ) {
-  searchEngineMenu( "RepModelConfig.pm" );
+  searchEngineMenu();
 }
+
+##
+## LTRPipeline Configuration
+##
+  system( "clear" );
+  print "\n\n\n";    
+  print "LTR Structural Identication Pipeline [optional]\n\n";
+  print "In addition to RECON/RepeatScout this version of RepeatModeler\n";
+  print "has the option of running an additional analysis to identify\n";
+  print "structural features of LTR sequences.\n\n";
+  print "Do you wish to configure RepeatModeler for this type\n";
+  print "of analysis [y] or n?: ";
+  $answer = <STDIN>;
+  $answer =~ s/[\n\r]+//g;
+  if ( $answer =~ /y|yes/i || $answer eq "" )
+  {
+    if ( ! $options{'ltr_detector_dir'} ) {
+      RepModelConfig::promptForParam('LTR_DETECTOR_DIR');
+    }
+    if ( ! $options{'ltr_retriever_dir'} ) {
+      RepModelConfig::promptForParam('LTR_RETRIEVER_DIR');
+    }
+    if ( ! $options{'mafft_dir'} ) {
+      RepModelConfig::promptForParam('MAFFT_DIR');
+    }
+    if ( ! $options{'ninja_dir'} ) {
+      RepModelConfig::promptForParam('NINJA_DIR');
+    }
+    if ( ! $options{'cdhit_dir'} ) {
+      RepModelConfig::promptForParam('CDHIT_DIR');
+    }
+  }   
 
 # Save settings
 RepModelConfig::updateConfigFile();
@@ -332,10 +363,9 @@ print "\nCongratulations!  RepeatModeler is now ready to use.\n";
 
 ####################### S U B R O U T I N E S ##############################
 
+
 sub searchEngineMenu
 {
-  my $configFile = shift;
-
   my @searchEngines = (
                   {
                     name => "RMBLAST_DIR",
@@ -403,22 +433,6 @@ sub searchEngineMenu
       $answer = <STDIN>;
     }
   } while ( $done == 0 );
-
-  # Figure out who is the default.
- # if ( $defaultEngine ne "" )
- # {
- #   open IN,  "<$configFile"     || die "Could not open $configFile";
- #   open OUT, ">$configFile.tmp" || die "Could not open $configFile.tmp";
- #   while ( <IN> )
- #   {
- #     s/^(\s*\$DEFAULT_SEARCH_ENGINE\s*=\s*)\S+;/$1\"$defaultEngine\";/;
- #     print OUT $_;
- #   }
- #   close IN;
- #   close OUT;
- #   system( "mv $configFile.tmp $configFile" );
- # }
-
 }
 
 

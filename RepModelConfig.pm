@@ -92,7 +92,7 @@ structural LTR repeatfinding program.',
 structural LTR analysis package.',
                                    'environment_override' => 'LTR_RETRIEVER_DIR',
                                    'expected_binaries' => [
-                                                            'LTR_Retriever'
+                                                            'LTR_retriever'
                                                           ],
                                    'param_type' => 'directory',
                                    'required' => 0,
@@ -164,7 +164,7 @@ sequence alignment program.',
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast-2.6.0/bin'
+                             'value' => '/usr/local/rmblast/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
@@ -222,7 +222,9 @@ sub promptForParam{
       $defaultValue = `/usr/bin/which $binary`;
       $defaultValue =~ s/[\n\r\s]+//g;
       $defaultValue =~ s/^(.*)\/$binary/$1/;
-    }elsif ( exists $configuration->{$param}->{'value'} ) {
+    }
+    if ( $defaultValue eq "" && exists $configuration->{$param}->{'value'} &&
+         -d $configuration->{$param}->{'value'} ) {
       $defaultValue = $configuration->{$param}->{'value'};
     }
   }elsif ( $configuration->{$param}->{'param_type'} eq "program" )

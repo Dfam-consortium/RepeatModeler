@@ -105,7 +105,7 @@ $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 #
 # Version
 #  -- NOTE: This is filled in by configure
-my $version = "#VERSION#";
+my $version = "open-1.0.11";
 $version = "DEV" if ( $version =~ /\#VERSION\#/ );
 
 #

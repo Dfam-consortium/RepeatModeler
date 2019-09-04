@@ -299,7 +299,12 @@ for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
   $file = $fileList[ $i ];
 
   print "  Reading $file...\n";
-  open IN, "<$file" or die $CLASS . ": Cannot open file $file\n";
+  if ( $file =~ /^.*\.gz$/ )
+  {
+    open IN, "gunzip -c $file|" or die $CLASS . ": Cannot open file using gunzip $file\n";
+  }else {
+    open IN, "<$file" or die $CLASS . ": Cannot open file $file\n";
+  }
   while ( <IN> ) {
     if ( /^\>\s*(\S+)\s+(.*)/ ) {
       print SEQ ">gi|$index\n";
