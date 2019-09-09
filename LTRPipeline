@@ -86,29 +86,17 @@ use SeedAlignmentCollection;
 
 
 #
-# Version
-#  -- This is filled in by configure
-my $version = "#VERSION#";
-$version = "DEV" if ( $version =~ /\#VERSION\#/ );
-
-
-##----------------------------------------------------------------------##
-##      S I T E   S P E C I F I C   C O N F I G U R A T I O N
-##
-##  If you must include site specific variables in the program
-##  itself put them here.
-##
-##  ie. my $blastPrgrmDir = "/user/local/blast/bin";
-##      my $indelPenalty = 30;
-##
-##  END OF SITE SPECIFIC CONFIGURATION -- DO NOT EDIT BELOW THIS LINE
-##----------------------------------------------------------------------##
-
-#
 # Magic numbers/constants here
 #  ie. my $PI = 3.14159;
 #   
-my $DEBUG = 1;
+my $DEBUG = 0;
+$DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
+$|     = 1;                                         # Turn autoflush on
+
+#
+# Version
+# 
+my $version = $RepModelConfig::VERSION;
 
 #
 # Option processing
@@ -125,7 +113,6 @@ my @getopt_args = (
 );
 # Add configuration parameters as additional command-line options
 push @getopt_args, RepModelConfig::getCommandLineOptions();
-
 
 my %options = ();
 Getopt::Long::config("noignorecase", "bundling_override");

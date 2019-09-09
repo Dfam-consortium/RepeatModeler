@@ -126,7 +126,7 @@ use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 my $CLASS = "BuildDatabase";
 my $DEBUG = 0;
 $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
-my $version = "";
+my $version = $RepModelConfig::VERSION;
 
 #
 # Option processing

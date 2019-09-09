@@ -199,6 +199,15 @@ de-novo repeatfinding program.',
 ##  Do not edit below this line                                         ##
 ##----------------------------------------------------------------------##
 
+
+#
+#
+#
+$VERSION = "development";
+
+#
+#
+#
 $DEBUGALL = 0;
 
 # 

@@ -107,9 +107,8 @@ $|     = 1;                                         # Turn autoflush on
 
 #
 # Version
-#  -- NOTE: This is filled in by configure
-my $version = "open-1.0.11";
-$version = "DEV" if ( $version =~ /\#VERSION\#/ );
+# 
+my $version = $RepModelConfig::VERSION;
 
 if ( $ARGV[ 0 ] && $ARGV[ 0 ] eq '-v' )
 {

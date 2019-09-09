@@ -142,9 +142,8 @@ my %TimeBefore = ();
 
 #
 # Version
-#  -- This is filled in by configure
-my $version = "open-1.0.11";
-$version = "DEV" if ( $version =~ /\#VERSION\#/ );
+# 
+my $version = $RepModelConfig::VERSION;
 
 my $cmdLine = $0 . join( ' ', @ARGV );
 
