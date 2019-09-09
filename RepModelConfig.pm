@@ -123,13 +123,13 @@ phylogenetic analysis package.',
                            'required' => 0,
                            'value' => '/home/rhubley/projects/NINJA/NINJA'
                          },
-          'NSEG_PRGM' => {
-                           'command_line_override' => 'nseg_prgm',
-                           'description' => 'The full path including the name for the NSEG program.',
-                           'environment_override' => 'NSEG_PRGM',
+          'DUSTMASKER_PRGM' => {
+                           'command_line_override' => 'dustmasker_prgm',
+                           'description' => 'The full path including the name for the DUSTMASKER program. NOTE: This is included in the RMBlast package.',
+                           'environment_override' => 'DUSTMASKER_PRGM',
                            'param_type' => 'program',
                            'required' => 1,
-                           'value' => '/usr/local/bin/nseg'
+                           'value' => '/usr/local/rmblast-2.9.0/bin/dustmasker'
                          },
           'RECON_DIR' => {
                            'command_line_override' => 'recon_dir',

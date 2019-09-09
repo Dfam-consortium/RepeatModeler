@@ -832,7 +832,7 @@ while ( 1 ) {
                      workDir    => $roundTmpDir,
                      rscoutPath => $config->{'RSCOUT_DIR'}->{'value'},
                      trfPrgm    => $config->{'TRF_PRGM'}->{'value'}, 
-                     nsegPrgm   => $config->{'NSEG_PRGM'}->{'value'}, 
+                     dustmskPrgm   => $config->{'DUSTMASKER_PRGM'}->{'value'}, 
                      fastaFile  => $sampleFastaFile,
                      seqSize    => $actualGenomeSampleSize
     );
@@ -2020,9 +2020,9 @@ sub runRepeatScout
       if ( !defined $parameters{'trfPrgm'} );
   my $TRF_PRGM = $parameters{'trfPrgm'};
 
-  die $CLASS . "::runRepeatScout() missing nsegPath parameter!\n"
-      if ( !defined $parameters{'nsegPrgm'} );
-  my $NSEG_PRGM = $parameters{'nsegPrgm'};
+  die $CLASS . "::runRepeatScout() missing dustmskPrgm parameter!\n"
+      if ( !defined $parameters{'dustmskPrgm'} );
+  my $DUSTMASKER_PRGM = $parameters{'dustmskPrgm'};
 
   die $CLASS . "::runRepeatScout() missing workDir parameter!\n"
       if ( !defined $parameters{'workDir'} );
@@ -2072,9 +2072,9 @@ sub runRepeatScout
   `$cmd`;
   if ( $? ) { die "RepeatScout failed. Exit code $?\n"; }
 
-  # Run TRF/NSEG on sequences
+  # Run TRF/DUSTMASKER on sequences
   $ENV{'TRF_COMMAND'}  = $TRF_PRGM;
-  $ENV{'NSEG_COMMAND'} = "$NSEG_PRGM";
+  $ENV{'DUSTMASKER_COMMAND'} = "$DUSTMASKER_PRGM";
   $cmd                 =
         "$RSCOUT_DIR/filter-stage-1.prl $fastaFile.rscons > "
       . "$fastaFile.rscons.filtered 2>/dev/null";

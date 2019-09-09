@@ -277,8 +277,8 @@ RepModelConfig::promptForParam('RECON_DIR');
 if ( ! $options{'repeatscout_dir'} ) {
 RepModelConfig::promptForParam('REPEATSCOUT_DIR');
 }
-if ( ! $options{'nseg_prgm'} ) {
-RepModelConfig::promptForParam('NSEG_PRGM');
+if ( ! $options{'dustmasker_prgm'} ) {
+RepModelConfig::promptForParam('DUSTMASKER_PRGM');
 }
 if ( ! $options{'trf_prgm'} ) {
 RepModelConfig::promptForParam('TRF_PRGM');
