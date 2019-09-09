@@ -203,7 +203,7 @@ de-novo repeatfinding program.',
 #
 #
 #
-$VERSION = "development";
+$VERSION = "2.0-alpha-1";
 
 #
 #

@@ -334,7 +334,7 @@ print " -- Setting perl interpreter and version...\n";
 my @progFiles = (
                   "BuildDatabase",    "Refiner",
                   "RepeatClassifier", "RepeatModeler",
-                  "TRFMask", "util/dfamConsensusTool.pl",
+                  "TRFMask", "LTRPipeline",
                   "util/renameIds.pl", "util/viewMSA.pl" 
 );
 my $perlLocEsc = $perlLocation;

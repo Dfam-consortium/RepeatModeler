@@ -71,7 +71,8 @@ use Data::Dumper;
 use Carp;
 use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION);
 
-use lib "/usr/local/RepeatMasker";
+use RepModelConfig;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 require ArrayList;
 require Exporter;
 
