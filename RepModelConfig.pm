@@ -22,6 +22,7 @@
 ###############################################################################
 package RepModelConfig;
 use FindBin;
+use File::Basename;
 use Data::Dumper;
 require Exporter;
 @EXPORT_OK = qw();
@@ -152,7 +153,7 @@ de-novo repeatfinding program.',
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/usr/local/RepeatMasker'
+                                  'value' => '/usr/local/RepeatMasker-open-4-0-8'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
@@ -164,7 +165,7 @@ sequence alignment program.',
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast/bin'
+                             'value' => '/usr/local/rmblast-2.9.0/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
@@ -220,8 +221,13 @@ sub promptForParam{
     {
       my $binary = $configuration->{$param}->{'expected_binaries'}->[0];
       $defaultValue = `/usr/bin/which $binary`;
-      $defaultValue =~ s/[\n\r\s]+//g;
-      $defaultValue =~ s/^(.*)\/$binary/$1/;
+      if ( $defaultValue !~ /\/usr\/bin\/which:/ )
+      {
+        $defaultValue =~ s/[\n\r\s]+//g;
+        $defaultValue =~ s/^(.*)\/$binary/$1/;
+      }else {
+        $defaultValue = "";
+      }
     }
     if ( $defaultValue eq "" && exists $configuration->{$param}->{'value'} &&
          -d $configuration->{$param}->{'value'} ) {
@@ -235,7 +241,14 @@ sub promptForParam{
     # as the binary is often distributed with names like:
     # trf409.linux64 etc..
     if ( exists $configuration->{$param}->{'value'} ) {
-      $defaultValue = $configuration->{$param}->{'value'};
+      my($binary, $dirs, $suffix) = fileparse($configuration->{$param}->{'value'});
+      $defaultValue = `/usr/bin/which $binary`;
+      if ( $defaultValue !~ /\/usr\/bin\/which:/ )
+      {
+        $defaultValue =~ s/[\n\r\s]+//g;
+      }else {
+        $defaultValue = $configuration->{$param}->{'value'};
+      }
     }
   }
 

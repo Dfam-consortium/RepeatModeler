@@ -167,6 +167,7 @@ my @getopt_args = (
                     '-srand=i',
                     '-rsSampleSize=s',
                     '-LTRStruct',
+                    '-LTRMaxSeqLen=i',
                     '-onlyRS',
                     '-skipRS',
                     '-onlyIns',
@@ -1629,8 +1630,10 @@ if ( $options{'LTRStruct'} ) {
   }
   if ( -s "$tmpDir/tmpInputSeq" )
   {
+    my $optionalArgs = "";
+    $optionalArgs = "-max_seq_len $options{'LTRMaxSeqLen'}" if ( exists $options{'LTRMaxSeqLen'} );
     ## Run the LTR Pipeline
-    system("$FindBin::RealBin/LTRPipeline $tmpDir/tmpInputSeq");
+    system("$FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq");
     unlink "$tmpDir/tmpInputSeq";
     if ( -s "$tmpDir/tmpInputSeq-ltrs.fa") 
     {
@@ -1676,13 +1679,24 @@ if ( $options{'LTRStruct'} ) {
         while ( <IN> ) {
           if ( /^>Cluster/ ) {
             if ( @cluster > 1 ) {
-              # For now we only want to remove the 
-              # redundancy between piplines, not 
-              # within pipelines.
+              # I started out by picking the longest LTRPipeline
+              # derived family as the cluster rep.  Now we
+              # consider all LTRPipeline candidates as dominant.
+              # The only reason two more more LTRPipeline candidates
+              # would show up in a cluster would be due to 
+              # overlap between LTR/INT sequences that didn't get
+              # removed by LTR_retriever.
+              #
+              # Keeping the longest_ltr_id variable as an indicator
+              # that there is at least one LTRPipeline candidate in the
+              # cluster.
               if ( $longest_ltr_id )
               {
                 foreach my $id ( @cluster ) {
-                  if ( $id ne $longest_ltr_id ) {
+                  # Now...remove only overlapping RECON/RepeatScout 
+                  # candidates ( rnd-#_family-# ).
+                  if ( $id !~ /^ltr-\d+_family-\d+/ ) {
+                    # Use the longest as the "reason" why we are removing it.
                     print "Removing $id because it's redundant with $longest_ltr_id\n";
                     $redundant_families{$id}++;
                   }

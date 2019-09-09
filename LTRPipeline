@@ -76,8 +76,10 @@ use Data::Dumper;
 use Pod::Text;
 use File::Path;
 use File::Basename;
+use FindBin;
 use Cwd;
 use Time::HiRes qw( gettimeofday tv_interval);
+use lib $FindBin::RealBin;
 use RepModelConfig;
 use SeedAlignment;
 use SeedAlignmentCollection;
@@ -117,6 +119,8 @@ my $DEBUG = 1;
 #
 my @getopt_args = (
     '-version', # print out the version and exit
+    '-tmpdir=s',
+    '-max_seq_len=i',
     '-pa=i',
 );
 # Add configuration parameters as additional command-line options
@@ -221,6 +225,40 @@ if ( ! -s "$tempDir/LtrRetriever-redundant-results.fa" )
   print "LTRPipeline: No results after LTR_Retriever filtering.\n";
   exit;
 }
+
+if ( $options{'max_seq_len'} && $options{'max_seq_len'} =~ /\d+/ ) {
+  system("mv $tempDir/LtrRetriever-redundant-results.fa $tempDir/LtrRetriever-redundant-results-orig.fa");
+  open IN,"<$tempDir/LtrRetriever-redundant-results-orig.fa" or die "Could not open $tempDir/LtrRetriever-redundant-results-orig.fa for reading!\n";
+  open OUT,">$tempDir/LtrRetriever-redundant-results.fa" or die "Could not open $tempDir/LtrRetriever-redundant-results.fa for writing!\n";
+  my $seq = "";
+  my $id = "";
+  while (<IN>)
+  {
+    if ( /^>(\S+)/ ) {
+      my $tmpID = $1;
+      if ( $seq ) {
+        if ( length($seq) <= $options{'max_seq_len'} ) 
+        {
+          print OUT ">$id\n$seq\n";
+        }
+      }
+      $seq = "";
+      $id = $tmpID;
+      next;
+    }
+    s/[\n\r\s]+//g;
+    $seq .= $_;
+  }
+  if ( $seq ) {
+    if ( length($seq) <= $options{'max_seq_len'} ) 
+    {
+      print OUT ">$id\n$seq\n";
+    }
+  }
+  close IN;
+  close OUT;
+}
+
 # Group elements into families using a scoring system that accounts for common deletion products
 &runMafft( $MAFFT_DIR, "$tempDir/LtrRetriever-redundant-results.fa", "$tempDir/mafft-alignment.fa", $threads );
 if ( ! -s "$tempDir/mafft-alignment.fa" )
@@ -281,15 +319,25 @@ open OUTCON, ">$tempDir/families.fa"
   or die "Could not create $tempDir/families.fa!\n";
 foreach my $cluster ( sort keys %clusters ){
   my $idx = $cluster + 1;
+
   # Make a fasta file for family ( cluster ).
   open OUT, ">$tempDir/ltr-1_family-$idx.fa" or die "LTRPipeline : Could not create $tempDir/ltr-1_family-$idx.fa!";
+  my $intCount = 0;
+  my $ltrCount = 0;
   foreach my $seedID ( @{$clusters{$cluster}} )
   {
+    if ( $seedID =~ /_LTR/ ) {
+      $ltrCount++;
+    }else { $intCount++; }
     print OUT ">$seedID\n$seeds{$seedID}\n";
   }
   close OUT;
+  my $famType = "LTR";
+  $famType = "INT" if ( $intCount > $ltrCount );
+
   # Run Refiner on the seeds
   system("$FindBin::RealBin/Refiner -noTmp -name ltr-1_family-$idx $tempDir/ltr-1_family-$idx.fa");
+
   # family-72.fa.refiner.stk
   if ( -s "$tempDir/ltr-1_family-$idx.fa.refiner_cons" ) 
   {
@@ -327,14 +375,14 @@ foreach my $cluster ( sort keys %clusters ){
 
             # Add details to DE line
             $seedAlign->setDescription( "RepeatModeler Generated - ltr-1"
-              . "_family-$idx, [ Final Multiple Alignment Size = $maSize ]"
+              . "_family-$idx, [ Type=$famType, Final Multiple Alignment Size = $maSize ]"
             );
  
             print OUTSTK "" . $seedAlign->toString();
         }
 
         # Save the consensus to the consensi file.
-        print OUTCON ">ltr-1_family-$idx [ "
+        print OUTCON ">ltr-1_family-$idx [ Type=$famType, "
             . "Final Multiple Alignment Size = "
             . $maSize . " ]\n";
         print OUTCON "$cons\n";
