@@ -1,34 +1,56 @@
-```
-## WARNING: There is a bioconda and a docker package floating around proporting to have a functional RepeatModeler package.  Neither work correctly.  For the time being we recommend installing this program as described below.
 
-The GitHub master branch contains the files in the current release of RepeatModeler.
+```
+GitHub Conventions:
+   - Master branch is the current release
+   - Development branch is not gauranteed to be stable
+   - Source releases are avaialable under the GitHub release tab and at 
+     http://www.repeatmasker.org
 ```
 
 RepeatModeler 
 =============
 
-Arian Smit, Robert Hubley - Institute for Systems Biology
+RepeatModeler is a de novo transpposable element family identification and 
+modeling package. At the heart of RepeatModeler are three de-novo repeat finding
+programs ( RECON, RepeatScout and LtrDetector ) which employ complementary 
+computational methods for identifying repeat element boundaries and family 
+relationships from sequence data.
 
-RepeatModeler is a de novo repeat family identification and modeling
-package. At the heart of RepeatModeler are two de-novo repeat finding
-programs ( RECON and RepeatScout ) which employ complementary computational
-methods for identifying repeat element boundaries and family relationships
-from sequence data.  RepeatModeler assists in automating the runs of RECON
-and RepeatScout given a genomic database and uses the output to build, 
-refine and classify consensus models of putative interspersed repeats.
+RepeatModeler assists in automating the runs of the various algorithms
+given a genomic database, clustering redundant results, refining and 
+classifying the families and producing a high quality library of
+transposable element families suitable for use with RepeatMasker and
+ultimately for submission to the Dfam.org database.
 
-Prerequisites
--------------
+Authors
+-------
+ RepeatModeler:
+   Robert Hubley, Arian Smit - Institute for Systems Biology
+
+ LTR Pipeline Extensions:
+   Jullien M. Flynn, Cedric Feschotte - Cornell University
+
+Installation
+------------
+
+ There are two supported paths to installing RepeatModeler on a 
+ UNIX-based server. RepeatModeler may be installed from source as
+ described in the "Source Distribution Installation" instructions
+ below, or using one of our container images ( Docker or Singularity ).
+ The containers include RepeatModeler, it's prerequisites and additional
+ transposable element analysis tools/utilities used by Dfam. 
+
+Source Distribution Installation
+--------------------------------
 
   Perl
     Available at http://www.perl.org/get.html. Developed and tested
     with version 5.8.8.
 
   RepeatMasker & Libraries
-    Developed and tested with open-4.0.7. The program is available at 
+    Developed and tested with open-4.0.9. The program is available at 
     http://www.repeatmasker.org/RMDownload.html and is distributed with
-    a minimal library set ( Dfam_consensus ).  A larger set of libraries are
-    available from http://www.girinst.org.
+    Dfam - an open database of transposable element families.
 
   RECON - De Novo Repeat Finder, Bao Z. and Eddy S.R.
     Developed and tested with our patched version of RECON ( 1.08 ). 
@@ -40,51 +62,71 @@ Prerequisites
 
   RepeatScout - De Novo Repeat Finder, Price A.L., Jones N.C. and Pevzner P.A.
     Developed and tested with our multiple sequence version of RepeatScout 
-    ( 1.0.5 ).  This version is available at 
-    http://www.repeatmasker.org/RepeatScout-1.0.5.tar.gz
+    ( 1.0.6 ).  This version is available at 
+    http://www.repeatmasker.org/RepeatScout-1.0.6.tar.gz
 
   TRF - Tandem Repeat Finder, G. Benson et al.
     You can obtain a free copy at http://tandem.bu.edu/trf/trf.html. 
-    RepeatModeler was developed using 4.0.4.
-
-  And one or both of the following:
+    RepeatModeler was developed using 4.0.9.
 
   RMBlast - A modified version of NCBI Blast for use with RepeatMasker
     and RepeatModeler.  Precompiled binaries and source can be found at
     http://www.repeatmasker.org/RMBlast.html
 
-  or
+  
+  Optional. Additional search engine:
+  
+    ABBlast - Sequence Search Engine, W. Gish et al.
+      Developed and tested with 2.0 [04-May-2006]. The latest versions
+      of ABBlast may be downloaded from: http://blast.advbiocomp.com/licensing/
 
-  WUBlast/ABBlast - Sequence Search Engine, W. Gish et al.
-    Developed and tested with 2.0 [04-May-2006]. The latest versions
-    of ABBlast may be downloaded from: http://blast.advbiocomp.com/licensing/
+
+  Optional. Required for running LTR structural search pipeline:
+
+    LtrDetector - 
+    Ltr_retriever - 
+    MAFFT -
+    CD-HIT -
+    Ninja -
 
 
+  1. Obtain the source distribution
+       - Github : https://github.com/rmhubley/RepeatModeler
+         Available by cloning the master branch of the RepeatModeler repository
+         ( latest released version ) or by downloading a release from the 
+         repository "releases" tab.
 
-Installation
-------------
+       - RepeatMasker Website : http://www.repeatmasker.org/RepeatModeler
 
-  1. Uncompress and expand the distribution archive:
+  2. Uncompress and expand the distribution archive:
 
      Typically:   tar -zxvf RepeatModeler-open-#.#.#.tar.gz
                 or
                   gunzip RepeatModeler-open-#.#.#.tar.gz
                   tar -xvf RepeatModeler-open-#.#.#.tar
 
-  2. Configure for your site:
+  3. Configure for your site:
 
      Automatic:
-       1. Run the "configure" script contained in the RepeatModeler
-          distribution as:
- 
+       + Run the "configure" script contained in the RepeatModeler
+         distribution as:
+
                perl ./configure
+
+          to be prompted for each setting.
+      or 
+       
  
      By Hand:
-       1. Copy the file "RepModelConfig.pm.tmpl" to "RepModelConfig.pm" 
-       2. Edit the configuration parameters with a text editor.
+       1. Edit the configuration file "RepModelConfig.pm"
+
+     Dynamically:
+       1. Use the "configuration overrides" command line options
+          with the RepeatModeler programs.  
+
+          e.g.  ./RepeatModeler -rscout_dir .. -recon_dir .. 
+         
  
-
-
 Example Run
 -----------
 
@@ -283,13 +325,14 @@ Arnie Kas for the work done on the original MultAln.pm.
 Andy Siegel for statistics consultations.
 
 Thanks so much to Warren Gish for his invaluable assistance 
-and consultation on his WUBlast program suite.
+and consultation on his ABBlast program suite.
 
 Alkes Price and Pavel Pevzner for assistance with RepeatScout
 and hosting my multi-sequence version of RepeatScout.
 
 This work was supported by the NIH ( R44 HG02244-02), 
-and the Institute for Systems Biology.
+( RO1 HG002939 ), ( U24 HG010136 ), and the Institute 
+for Systems Biology.
 
 
 License

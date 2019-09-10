@@ -169,7 +169,7 @@ sequence alignment program.',
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
-                            'description' => 'The path to the installation of the RepeatScout
+                            'description' => 'The path to the installation of the RepeatScout ( 1.0.6 or higher )
 de-novo repeatfinding program.',
                             'environment_override' => 'RSCOUT_DIR',
                             'expected_binaries' => [
@@ -178,7 +178,7 @@ de-novo repeatfinding program.',
                                                    ],
                             'param_type' => 'directory',
                             'required' => 1,
-                            'value' => '/usr/local/RepeatScout'
+                            'value' => '/usr/local/RepeatScout-1.0.6'
                           },
           'TRF_PRGM' => {
                           'command_line_override' => 'trf_prgm',
