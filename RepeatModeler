@@ -490,7 +490,6 @@ if ( $options{'onlyIns'} ){
 #
 # Setup initial parameters
 #
-my @dbUsedBlocks = (); # TODO: Deprecate?
 my $tmpDir;
 my $round        = 1;
 $round = 2 if ( $options{'skipRS'} );
@@ -774,12 +773,9 @@ while ( 1 ) {
     print "   - Gathering up to $rsSampleSize bp\n";
     $usedBlockIndex = &sampleFromDB(
                                      sampleSizeMax  => $rsSampleSize,
-                                     tmpDir         => $roundTmpDir,
-                                     dbUsedBlocks   => \@dbUsedBlocks,
                                      dbSourceBlocks => $dbSourceList,
                                      dbType         => $engine,
                                      dbFile         => $genomeDB,
-                                     round          => $round,
                                      fastaFile      => $sampleFastaFile,
                                      prohibitX      => 1
     );
@@ -790,12 +786,9 @@ while ( 1 ) {
     print "   - Gathering up to $sampleSize bp ( with replacement )\n";
     &sampleFromDB(
                    sampleSizeMax  => $sampleSize,
-                   tmpDir         => $roundTmpDir,
-                   dbUsedBlocks   => \@dbUsedBlocks,
                    dbSourceBlocks => $dbSourceList,
                    dbType         => $engine,
                    dbFile         => $genomeDB,
-                   round          => $round,
                    withReplacement => 1,
                    fastaFile      => $sampleFastaFile
     );
@@ -806,12 +799,9 @@ while ( 1 ) {
     print "   - Gathering up to $sampleSize bp\n";
     &sampleFromDB(
                    sampleSizeMax  => $sampleSize,
-                   tmpDir         => $roundTmpDir,
-                   dbUsedBlocks   => \@dbUsedBlocks,
                    dbSourceBlocks => $dbSourceList,
                    dbType         => $engine,
                    dbFile         => $genomeDB,
-                   round          => $round,
                    fastaFile      => $sampleFastaFile
     );
 
@@ -2029,26 +2019,12 @@ sub runRepeatScout
   `$cmd`;
   if ( $? ) { die "build_lmer_table failed. Exit code $?\n"; }
 
-  #
-  # My lmer generator "elmer"
-  #
-  #print "   - RepeatScout: Running elmer ( l = $lmerSize )..\n";
-  #$ENV{'TMPDIR'} = $tmpDir;
-  #my $cmd =
-  #      "/usr/local/bin/elmer -rscompat -lmersize $lmerSize -rscompat "
-  #    . " -mincount 3 -tandemdist 500 -output $fastaFile.lfreq "
-  #    . "$fastaFile > /dev/null 2>&1\n";
-  #`$cmd`;
-  #if ( $? ) { die "elmer failed. Exit code $?\n"; }
-  #
-
   print "   - RepeatScout: Running RepeatScout..\n";
   $cmd =
         "$RSCOUT_DIR/RepeatScout -l $lmerSize -sequence $fastaFile"
       . " -tandemdist 500 -output $fastaFile.rscons -freq $fastaFile.lfreq "
       . "-stopafter 100";
 
-  #print "Running cmd: $cmd\n";
   `$cmd`;
   if ( $? ) { die "RepeatScout failed. Exit code $?\n"; }
 
@@ -2192,22 +2168,8 @@ sub buildRSConsensi
                 1 );
       }
 
-      #my $desc = $resultRef->getSubjName();
-      #$desc = $1 if ( $desc =~ /gi\|\d+\s+(\S+)/ );
-
-      # Set the new seqID
-      #my $seqID = "gi|"
-      #    . ( $k + 1 ) . " "
-      #    . $desc . ":"
-      #    . $resultRef->getSubjStart() . "-"
-      #    . $resultRef->getSubjEnd();
       my $sequence = $resultRef->getSubjString();
       $sequence =~ s/-//g;
-
-      #if ( $resultRef->getOrientation() eq "C" ) {
-      #  $sequence = reverse $sequence;
-      #  $sequence =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;    # complement
-      #}
       push @{ $families{ $resultRef->getQueryName() }->{'elements'} },
           {
             'seqID' => $seqID,
@@ -2217,7 +2179,6 @@ sub buildRSConsensi
     }
     undef $resultCollection;
 
-    #print "families: " . Dumper( \%families ) . "\n";
     # Sort keys by most abundant family first
     my @sortedKeys = sort {
       $#{ $families{$b}->{'elements'} } <=> $#{ $families{$a}->{'elements'} }
@@ -2240,15 +2201,6 @@ sub buildRSConsensi
         open FAM, ">$workDir/family-$familyID.fa"
             or die "RepeatModler: Can't open "
             . "output file family-$familyID.fa\n";
-
-        #      # Sort elements in each family by longest first
-        #      foreach my $ele ( sort { length( $b->{'seq'} ) <=>
-        #                               length( $a->{'seq'} ) }
-        #                             @{ $families{ $key }->{'elements'} } )
-        #      {
-        #        print FAM ">" . $ele->{'seqID'} . "\n";
-        #        print FAM "" . $ele->{'seq'} . "\n";
-        #      }
 
         # Sort elements in each family by highest scoring first
         my $numElements = 0;
@@ -2857,7 +2809,6 @@ sub initializeSampleSourceList
   my %parameters = @_;
 
   my $approxBlockSize = $parameters{'approxBlockSize'};
-  #my %dbSeqs          = %{ $parameters{'seqHash'} };
   my $genomeDB        = $parameters{'genomeDB'};
   my $dbSize          = $parameters{'dbSize'};
   my $noFrag          = $parameters{'noFrag'};
@@ -2955,8 +2906,6 @@ sub initializeSampleSourceList
   }
   close IN;
   
-  #print "sampleSourceList: " . Dumper(\@sampleSourceList) . "\n";
-  #exit;
   return \@sampleSourceList;
 }
 
@@ -2970,38 +2919,26 @@ sub initializeSampleSourceList
 #   sample strategy is without-replacement by default.
 #
 #  Given:
-#      %dbSeqHashRef{ $seqID } = size :
-#                   Sequence lengths for each ID.
-#      $approxBlockSize : A suggested blocksize
-#      $sampleSizeMax:    The maximum sample size
-#      %usedSeqHashRef{ $seqID }->[ [start, end, round], [start, end, round] ]:
-#                   A datastructure containing the use block lists
-#                   (sorted) for each sequence.
+#    dbSourceBlocks : a list of sample blocks e.g:
+#          ( { 'seqID' => "chr1", 'start' => 1, 'end' => 40000, 
+#              'length' => 40000, 'non_ambig_len' => 35828, used_cnt => 0 }
+#            ... )
+#    sampleSizeMax:    The maximum sample size
+#    dbFile : 
+#    dbType : 
+#    fastaFile :
+#    prohibitX : 
+#    withReplacement :
 #
-#  - Randomly pick a chromosome ( FYS )
-#  - Randomly pick a block ~blocksize large ( not already on
-#    the used list ).
-#  - Break on large string of N's and keep the bigger of the
-#    two pieces.
-#  - Append to fasta file with seqID and block range
-#  - Keep going until we reach a specific size
-#  - Convert fasta file into a XDF database.
-#
-# my $dbSourceBlocks->[]->{'seqID' =>
-#                          'start' =>
-#                          'end'   =>  };
 sub sampleFromDB
 {
   my %parameters = @_;
 
   my $dbSourceBlocks = $parameters{'dbSourceBlocks'};
-  my $tmpDir         = $parameters{'tmpDir'};
-  my $dbUsedBlocks   = $parameters{'dbUsedBlocks'};
   my $sampleSizeMax  = $parameters{'sampleSizeMax'};
   my $dbFile         = $parameters{'dbFile'};
   my $dbType         = $parameters{'dbType'};
   my $fastaFile      = $parameters{'fastaFile'};
-  my $round          = $parameters{'round'};
   my $prohibitX      = $parameters{'prohibitX'};
   my $withReplacement = $parameters{'withReplacement'};
 
@@ -3033,7 +2970,6 @@ sub sampleFromDB
     }
   }
   close ENTRYBAT;
-
 
   die "ABBLAST is no longer supported" if ( $dbType eq "abblast" );
   open IN,"$NCBIDBCMD_PRGM -db $dbFile -entry_batch $fastaFile.entry_batch|" or
