@@ -73,21 +73,19 @@ Source Distribution Installation
     and RepeatModeler.  Precompiled binaries and source can be found at
     http://www.repeatmasker.org/RMBlast.html
 
-  
   Optional. Additional search engine:
   
-    ABBlast - Sequence Search Engine, W. Gish et al.
-      Developed and tested with 2.0 [04-May-2006]. The latest versions
-      of ABBlast may be downloaded from: http://blast.advbiocomp.com/licensing/
-
+  ABBlast - Sequence Search Engine, W. Gish et al.
+    Developed and tested with 2.0 [04-May-2006]. The latest versions
+    of ABBlast may be downloaded from: http://blast.advbiocomp.com/licensing/
 
   Optional. Required for running LTR structural search pipeline:
 
-    LtrDetector - 
-    Ltr_retriever - 
-    MAFFT -
-    CD-HIT -
-    Ninja -
+  LtrDetector - 
+  Ltr_retriever - 
+  MAFFT -
+  CD-HIT -
+  Ninja -
 
 
   1. Obtain the source distribution
@@ -122,9 +120,9 @@ Source Distribution Installation
 
      Dynamically:
        + Use the "configuration overrides" command line options
-          with the RepeatModeler programs.  
+          with the RepeatModeler programs. e.g:
 
-          e.g.  ./RepeatModeler -rscout_dir .. -recon_dir .. 
+               ./RepeatModeler -rscout_dir .. -recon_dir .. 
          
  
 Example Run
