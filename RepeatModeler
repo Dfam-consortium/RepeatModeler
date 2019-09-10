@@ -222,13 +222,34 @@ my $config = $RepModelConfig::configuration;
 my $NCBIDBCMD_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
 my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
 my $NCBIDBALIAS_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdb_aliastool";
+my $DUSTMASKER_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/dustmasker";
 my $RMBLASTN_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
 my $XDGET_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdget";
 my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
+my $TRF_PRGM = $config->{'TRF_PRGM'}->{'value'};
+my $RSCOUT_DIR = $config->{'RSCOUT_DIR'}->{'value'};
 my $RECON_DIR = $config->{'RECON_DIR'}->{'value'};
 my $CDHIT_DIR = $config->{'CDHIT_DIR'}->{'value'};
-# TODO: validate parameters?
+
+## validate params
+# Minimal commands
+foreach my $param ( "RMBLAST_DIR", "TRF_PRGM", "RSCOUT_DIR", "RECON_DIR" )
+{
+  if ( ! RepModelConfig::validateParam($param) ){
+    die "\n  RepeatModeler dependency missing or incorrectly set for $param!\n  Rerun ./configure or check your command line to ensure that RepeatModeler\n  has access to and the correct version of this dependency.\n\n";    
+  }
+}
+# LTRPipeline dependencies
+if ( $options{'LTRStruct'} )
+{
+  foreach my $param ( "LTR_DETECTOR_DIR", "LTR_RETRIEVER_DIR", "MAFFT_DIR", "NINJA_DIR", "CDHIT_DIR" )
+  {
+    if ( ! RepModelConfig::validateParam($param) ){
+      die "\n  LTRPipeline dependency missing or incorrectly set for $param!\n   Rerun ./configure or check your command line to ensure that RepeatModeler\n  has access to and the correct version of this dependency.\n\n";    
+    }
+  }
+}
 
 if ( $options{'version'} ) {
   print "RepeatModeler version $version\n";
@@ -830,9 +851,9 @@ while ( 1 ) {
     print " -- Running RepeatScout on the sequences...\n";
     &runRepeatScout(
                      workDir    => $roundTmpDir,
-                     rscoutPath => $config->{'RSCOUT_DIR'}->{'value'},
-                     trfPrgm    => $config->{'TRF_PRGM'}->{'value'}, 
-                     dustmskPrgm   => $config->{'DUSTMASKER_PRGM'}->{'value'}, 
+                     rscoutPath => $RSCOUT_DIR,
+                     trfPrgm    => $TRF_PRGM,
+                     dustmskPrgm   => $DUSTMASKER_PRGM,
                      fastaFile  => $sampleFastaFile,
                      seqSize    => $actualGenomeSampleSize
     );

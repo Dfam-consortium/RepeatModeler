@@ -123,14 +123,6 @@ phylogenetic analysis package.',
                            'required' => 0,
                            'value' => '/home/rhubley/projects/NINJA/NINJA'
                          },
-          'DUSTMASKER_PRGM' => {
-                           'command_line_override' => 'dustmasker_prgm',
-                           'description' => 'The full path including the name for the DUSTMASKER program. NOTE: This is included in the RMBlast package.',
-                           'environment_override' => 'DUSTMASKER_PRGM',
-                           'param_type' => 'program',
-                           'required' => 1,
-                           'value' => '/usr/local/rmblast-2.9.0/bin/dustmasker'
-                         },
           'RECON_DIR' => {
                            'command_line_override' => 'recon_dir',
                            'description' => 'The path to the installation of the RECON
@@ -161,11 +153,16 @@ de-novo repeatfinding program.',
 sequence alignment program.',
                              'environment_override' => 'RMBLAST_DIR',
                              'expected_binaries' => [
-                                                      'rmblastn'
+                                                      'rmblastn',
+                                                      'dustmasker',
+                                                      'makeblastdb',
+                                                      'blastdbcmd',
+                                                      'blastdb_aliastool',
+                                                      'blastn'
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast-2.9.0/bin'
+                             'value' => '/usr/local/rmblast-2.9.0-p2/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
@@ -333,7 +330,55 @@ sub promptForParam{
 }
 
 #
-# save values
+# Validate parameter
+#
+sub validateParam{
+  my $param = shift;
+  my $new_setting = shift;
+
+  if ( ! exists $configuration->{$param} ) {
+    return 0;
+  }
+
+  my $value = $configuration->{$param}->{'value'};
+  $value = $new_setting if ( defined $new_setting );
+
+  # Always assume the "good" in parameters...
+  my $validParam = 1;
+  if ( $configuration->{$param}->{'param_type'} eq "directory" )
+  {
+    if ( -d $value ) {
+      foreach my $binary ( @{$configuration->{$param}->{'expected_binaries'}} )
+      {
+        if ( ! -x "$value/$binary" )
+        {
+          $validParam = 0;
+          last;
+        }elsif ( -d "$value/$binary" )
+        {
+          $validParam = 0;
+          last;
+        }
+      }
+    }else { 
+        $validParam = 0;
+    }   
+  }elsif ( $configuration->{$param}->{'param_type'} eq "program" )
+  {
+    if ( ! -x $value ) {
+        $validParam = 0;
+    }elsif ( -d $value ){
+      $validParam = 0;
+    }
+  }
+
+  return $validParam;
+}
+ 
+
+#
+# Update this file ( beware: self modifying code ) new
+# paramter settings.
 #
 sub updateConfigFile{
   open IN,"<$CLASS.pm" or die;
