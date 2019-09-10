@@ -713,10 +713,6 @@ print "   be terminated early.\n";
 elapsedTime( "runtime" );    # Setup the timers
 # TODO: What if we begin with such a small sample....?
 #        Change the cutoff and possibly increase to full genome size
-#
-#while ( $totSampledBP < $dbSize
-#        && ( $dbSize - $totSampledBP ) > $fragmentSize )
-#{
 my $families;
 my $numModels;
 while ( 1 ) {
@@ -788,8 +784,6 @@ while ( 1 ) {
                                      prohibitX      => 1
     );
     &clearSampleUsedCounts(dbSourceBlocks => $dbSourceList);
-    #push @{$dbSourceList}, @dbUsedBlocks;
-    #@dbUsedBlocks = ();
   } else
   {
     if ( $options{'onlyIns'} ){
@@ -962,11 +956,6 @@ while ( 1 ) {
     }
     print "   - TE Masking time " . elapsedTime( 3 ) . "\n";
 
-    ## TODO: Use the *.out file of the second to last round to
-    ##       gather stats on contig coverage.  Then use the
-    ##       RECON processing routine to gather the last round's
-    ##       contig coverage.
-
     if ( $options{'onlyIns'} ){
       # Remove sequences containing only/mostly Ns
       system( "mv $roundTmpDir/tmpSample.fa $roundTmpDir/tmpSample.fa.masked" );  
@@ -1131,9 +1120,6 @@ while ( 1 ) {
   my $numHSPs = 0;    # Number of High Scoring Pairs produced
   unless ( -f "$roundTmpDir/msps.out" )
   {
-
-    #open OUT, ">$roundTmpDir/msps.out";
-
     print "Running all-by-other comparisons...\n";
     my $totalComparisons =
         ( ( $sampleDBSize * $sampleDBSize ) - $sampleDBSize ) / 2;
@@ -1182,9 +1168,6 @@ while ( 1 ) {
       $startGID = $endGID + 1;
       $batchSize = 0;
     }
-
-#print "BatchStatus = " . Dumper(\%batchStatus) . "\n";
-#exit;
 
     my $compStartTime = time;
 
@@ -1386,19 +1369,6 @@ while ( 1 ) {
             $sampleID++;
           }
 
-          #if ( $startGID == $endGID )
-          #{
-          #  print "  - Comparing batch-("
-          #      . ( $startGID )
-          #      . " of $sampleDBSize) to database: ";
-          #} else
-          #{
-          #  print "  - Comparing batch-("
-          #      . ( $startGID ) . "-"
-          #      . ( $endGID )
-          #      . " of $sampleDBSize) to database: ";
-          #}
-
           $searchEngineN->setQuery( "$roundTmpDir/batch-$batchNum.fa" );
           $searchEngineN->setSubject( "$sampleFastaFile.masked" );
 
@@ -1496,8 +1466,6 @@ while ( 1 ) {
       }    # for ( $k...
 
       # Give up if it looks bad for us
-      ## TODO: Consider die'ng here...since there
-      ##       is nothing more we can do to recover.
       last if ( $badForkCount == $badForkMax );
 
       #
@@ -1576,8 +1544,6 @@ while ( 1 ) {
 
   print "Round Time: " . elapsedTime( 1 ) . "\n";
 
-
-  # RMH1
   # How do we proceed from here
   #   
   #  Case 1 (default): Sample without replacement.  Sample up to $genomeSampleSizeMax (100MB).  Typically
@@ -1675,7 +1641,7 @@ if ( $options{'LTRStruct'} ) {
       #   Cluster the sequences with RepeatModeler's RECON/RepeatScout pipeline.
       #   Identify non-singletons and collapse in favor of the longest sequence
       #   ( for RECON/RepeatScout clusters ) or in favor of LTRPipeline in mixed
-      #   clusters.
+      #   clusters.  Keep all LtrPipeline produced results.
       #
       print "  -- Clustering results with previous rounds...\n";
       # 1. Combine results from both pipelines into a file
@@ -1756,7 +1722,7 @@ if ( $options{'LTRStruct'} ) {
           }
         }
         close IN;
-        # TODO: put back
+        # TODO: Do we really want to keep this?
         #unlink("$tmpDir/cd-hit-out.clstr" );
       }
       if ( keys(%redundant_families) )
@@ -1843,20 +1809,13 @@ if ( $options{'LTRStruct'} ) {
         close OUT;
       }
     }else {
-      # TODO: warn that this is empty $tmpDir/tmpInputSeq-ltrs.fa
+      print "\nWARNING: LTRPipeline didn't produce any resuls for this input sequence.\n";
     }
   }else {
     print "\nWARNING: Could not create input file for LTRPipeline from $genomeDB! Continuing using\nresults from RepeatScout/RECON pipeline only.\n";
   }
 }
 
-
-
-## TODO: This is where we run postprocessing modules
-##
-##    - Edge extension
-##    - Family Merging
-##    - Classification
 elapsedTime( 1 );
 if ( $numModels > 0 )
 {
@@ -2169,10 +2128,6 @@ sub buildRSConsensi
     $searchEngineN->setMatrix(
       "$FindBin::RealBin/Matrices/wublast/nt/comparison.matrix"
     );
-
-    # TODO CONSIDER THIS!
-    #$searchEngineN->setMaskLevel( 80 );
-    #$searchEngineN->setMaskLevelSequence( SearchResult::SubjectStrand );
   } else
   {
     $searchEngineN =
@@ -2192,11 +2147,6 @@ sub buildRSConsensi
   $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
   $searchEngineN->setSubject( "$workDir/sampleDB-$round.fa" );
   $searchEngineN->setQuery( "$workDir/consensi.fa" );
-  ## TODO: Consider if we should define a setHSPMax parameter in
-  ##       WUBlastSearchEngine.  This might save us some time when we
-  ##       really only care about a small set of the highest scoring elements.
-  ##       Careful though...as we don't want to miss the overall distribution
-  ##       of elements and fool the segmental duplication filter.
   if ( $engine eq "abblast" )
   {
     $searchEngineN->setOverrideParameters(
@@ -2510,8 +2460,12 @@ sub buildRSConsensi
 
 ##-------------------------------------------------------------------------##
 #
-# Use: my = buildReconConsensi( .. );
+# Use: my = buildReconConsensi( workDir => "", round => #, 
+#                               consensiFile => "", combFamiliesFile => "",
+#                               familyCutoff => # );
 #
+# Process output of RECON and generate consensi for each putative
+# family.
 #
 ##-------------------------------------------------------------------------##
 sub buildReconConsensi
@@ -2593,18 +2547,6 @@ sub buildReconConsensi
     $#{ $families{$b}->{'elements'} } <=> $#{ $families{$a}->{'elements'} }
   } keys( %families );
 
- # Alter the minimum family size so that we
- #my $familySizeCutoff = $recommendedFamilySize;
- #if ( keys( %families ) > 10 ) {
- #  $familySizeCutoff = $#{ $families{ $sortedKeys[ 10 ] }->{'elements'} }
- #      if (
- #     $#{ $families{ $sortedKeys[ 10 ] }->{'elements'} } < $familySizeCutoff );
- #  $familySizeCutoff = $minFamilySize
- #      if ( $familySizeCutoff < $minFamilySize );
- #}
- #else {
- #  $familySizeCutoff = $minFamilySize;
- #}
   print "Number of families returned by RECON: "
       . scalar( keys( %families ) ) . "\n";
   print "Processing families with greater than $familySizeCutoff elements\n";
@@ -2640,8 +2582,6 @@ sub buildReconConsensi
     {
       $numElements++;
 
-      #
-      # TODO: Rethink the syntax of this convention
       #
       # Parse genomic start/end out of batch seqname:
       #
@@ -2744,14 +2684,9 @@ sub buildReconConsensi
       print "Refinement: " . elapsedTime( 2 ) . "\n";
     } else
     {
-
       print "Family too small...moving on\n";
-
-      # Only one element....strange that this makes it through
-      # recon...wish we knew why.  Anyway...for the sake of
-      # completeness we use the sequence itself as the consensus.
-      #$cons = $families{$familyID}->{'elements'}->[ 0 ]->{'sequence'};
-
+      # Only one element.  Strange that it makes its it through
+      # RECON...wish we knew why.  
     }
 
     if ( $cons ne "" )
@@ -2888,7 +2823,6 @@ sub buildReconConsensi
   print "Family Refinement: " . elapsedTime( "family_refinement" ) . "\n";
 
   return \%families, $numModels;
-
 }
 
 #
@@ -3135,9 +3069,6 @@ sub sampleFromDB
   close IN;
   close FASTA;
 
-#print "sampleNow: " . Dumper($dbSourceBlocks) . "\n";
-#exit;
-
   return ( \%usedBlocksIndex );
 }
 
@@ -3165,7 +3096,7 @@ sub fisherYatesShuffle
 ##-------------------------------------------------------------------------##
 ## Use:  my ( $tempDir ) = &createTempDir( \@tmpPath );
 ##
-##  Returns
+## Create a temporary directory.
 ##
 ##-------------------------------------------------------------------------##
 sub createTempDir
