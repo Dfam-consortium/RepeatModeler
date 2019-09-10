@@ -409,7 +409,7 @@ sub runNinja {
   if ( defined $threads && $threads > 1 ) {
     $cmd .= " -threads $threads";
   }
-  $cmd .= " >& $tmpDir/Ninja.log";
+  $cmd .= " > $tmpDir/Ninja.log 2>&1";
   
   print "LTRPipeline::runNinja : Running analysis $cmd\n" if ( $DEBUG );
   system($cmd);
@@ -497,7 +497,7 @@ sub runLtrRetriever {
   if ( $threads > 1 ) {
     $cmd .= " -threads $threads";
   }
-  $cmd .= " >& LTR_retriever.log";
+  $cmd .= " > LTR_retriever.log 2>&1";
   print "LTRPipeline::runLtrRetriever : Running analysis $cmd\n" if ( $DEBUG );
 
   my $cwd = cwd();
@@ -585,7 +585,7 @@ sub runLtrDetector {
   if ( $threads > 1 ) {
     $cmd .= " -nThreads $threads";
   }
-  $cmd .= " >& $tmpDir/ltrdetector.log";
+  $cmd .= " > $tmpDir/ltrdetector.log 2>&1";
   print "LTRPipeline::runLtrDetector : Running $cmd\n" if ( $DEBUG );
   system($cmd);
  
