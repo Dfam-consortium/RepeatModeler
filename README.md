@@ -108,20 +108,20 @@ Source Distribution Installation
   3. Configure for your site:
 
      Automatic:
-       + Run the "configure" script contained in the RepeatModeler
-         distribution as:
+       + Run the "configure" script interactively with prompts
+         for each setting:
 
                perl ./configure
 
-          to be prompted for each setting.
-      or 
-       
+       + Run the "configure" script with supplied paramters:
+
+               perl ./configure -rscout_dir .. -recon_dir ..
  
      By Hand:
-       1. Edit the configuration file "RepModelConfig.pm"
+       + Edit the configuration file "RepModelConfig.pm"
 
      Dynamically:
-       1. Use the "configuration overrides" command line options
+       + Use the "configuration overrides" command line options
           with the RepeatModeler programs.  
 
           e.g.  ./RepeatModeler -rscout_dir .. -recon_dir .. 
