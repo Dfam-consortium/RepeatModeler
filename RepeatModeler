@@ -378,8 +378,9 @@ if ( $engine eq "abblast" )
 #
 # Print greeting
 #
-print "RepeatModeler Version $version\n";
-print "================================\n";
+my $title = "RepeatModeler Version $version";
+print "$title\n";
+print "=" x length($title)."\n";
 print "Search Engine = $engine\n";
 print "Random Number Seed: $seed\n";
 print "Database = $genomeDB ";
@@ -694,10 +695,10 @@ print "\nReady to start the sampling process.\n";
 print "   The runtime of RepeatModeler heavily depends on the quality of the assembly\n";
 print "   and the repetitive content of the sequences.  It is not imperative\n";
 print "   that RepeatModeler completes all rounds in order to obtain useful\n";
-print "   results.  At the completion of each round the files ( consensi.fa, and\n";
+print "   results.  At the completion of each round, the files ( consensi.fa, and\n";
 print "   families.stk ) found in:\n";
 print "      $tmpDir/ \n";
-print "   will contain all results produced in prior rounds. These files may be \n";
+print "   will contain all results produced thus far. These files may be \n";
 print "   manually copied and run through RepeatClassifier should the program\n";
 print "   be terminated early.\n";
 
@@ -1597,7 +1598,9 @@ print "\nRepeatScout/RECON discovery complete: $numModels families found\n";
 
 # Optionally perform LTR structural search
 if ( $options{'LTRStruct'} ) {
-  print "Running LTR Structural Analysis...\n";
+  elapsedTime( 1 );
+  print "\n\nLTR Structural Analysis\n";
+  print "=======================\n";
   # Save genome to sequence file
   if ( $engine eq "abblast" ) {
     system("$XDFORMAT_PRGM -r $genomeDB > $tmpDir/tmpInputSeq");
@@ -1615,8 +1618,9 @@ if ( $options{'LTRStruct'} ) {
     {
       # Combine results between both pipelines
       # run CDhit
-      # /usr/local/cd-hit/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 -i all_consensi.fasta -o all_consensi.clusters1.fasta -T 20
-      #   T is threads 0 = unlimited
+      # /usr/local/cd-hit/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 
+      #         -i all_consensi.fasta -o all_consensi.clusters1.fasta -T 20
+      #   T is threads, 0 = unlimited
       #
       # >Cluster 0
       # 0	8283nt, >rnd-3_family-2#LINE... *
@@ -1639,14 +1643,20 @@ if ( $options{'LTRStruct'} ) {
       system("cat $tmpDir/tmpInputSeq-ltrs.stk $tmpDir/families.stk > $tmpDir/combined.stk");
       # 2. Cluster results
       my $threads = $options{'pa'} ? $options{'pa'} : 1;
-      system("$CDHIT_DIR/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 -i $tmpDir/combined.fa -o $tmpDir/cd-hit-out -T $threads >& $tmpDir/cd-hit-stdout");
+      my $cmd = "$CDHIT_DIR/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 " . 
+                "-i $tmpDir/combined.fa -o $tmpDir/cd-hit-out -T $threads " . 
+                "> $tmpDir/cd-hit-stdout 2>&1";
+      system($cmd);
       unlink("$tmpDir/cd-hit-stdout" ) if ( -e "$tmpDir/cd-hit-stdout");
       unlink("$tmpDir/cd-hit-out" ) if ( -e "$tmpDir/cd-hit-out");
       # 3. Process clusters and remove redundancy
       my %redundant_families;
       my %putative_subfamilies;
+      my $ltrFamCnt = 0;
+      my $rrFamCnt = 0;
       if ( -s "$tmpDir/cd-hit-out.clstr" ) {
-        open IN,"<$tmpDir/cd-hit-out.clstr" or die "RepeatModler: Could not open $tmpDir/cd-hit-out.clstr for reading!\n";
+        open IN,"<$tmpDir/cd-hit-out.clstr" 
+           or die "RepeatModeler: Could not open $tmpDir/cd-hit-out.clstr for reading!\n";
         my @cluster = ();
         my $longest_ltr_id;
         my $longest_ltr_size;
@@ -1673,14 +1683,14 @@ if ( $options{'LTRStruct'} ) {
                   # candidates ( rnd-#_family-# ).
                   if ( $id !~ /^ltr-\d+_family-\d+/ ) {
                     # Use the longest as the "reason" why we are removing it.
-                    print "Removing $id because it's redundant with $longest_ltr_id\n";
+                    #print "Removing $id because it's redundant with $longest_ltr_id\n";
                     $redundant_families{$id}++;
                   }
                 }
               }elsif ( $longest_rnd_id ) {
                  foreach my $id ( @cluster ) {
                   if ( $id ne $longest_rnd_id ) {
-                    print "Labeling $id as putative subfamily of $longest_rnd_id\n";
+                    #print "Labeling $id as putative subfamily of $longest_rnd_id\n";
                     $putative_subfamilies{ $id } = $longest_rnd_id;
                   }
                 }
@@ -1697,16 +1707,20 @@ if ( $options{'LTRStruct'} ) {
             my $size = $1; 
             my $id = $2;
             my $type = $3;
-            if ( $type eq "ltr" && 
-                 $size > $longest_ltr_size )
-            {
-              $longest_ltr_id = $id;
-              $longest_ltr_size = $size;
+            if ( $type eq "ltr" ) {
+              $ltrFamCnt++;
+              if ( $size > $longest_ltr_size )
+              {
+                $longest_ltr_id = $id;
+                $longest_ltr_size = $size;
+              }
             }
-            if ( $type eq "rnd" && 
-                 $size > $longest_rnd_size ) {
-              $longest_rnd_id = $id;
-              $longest_rnd_size = $size;
+            if ( $type eq "rnd" ) {
+              $rrFamCnt++;
+              if ( $size > $longest_rnd_size ) {
+                $longest_rnd_id = $id;
+                $longest_rnd_size = $size;
+              }
             }
             push @cluster, $id;
           }
@@ -1715,6 +1729,8 @@ if ( $options{'LTRStruct'} ) {
         # TODO: Do we really want to keep this?
         #unlink("$tmpDir/cd-hit-out.clstr" );
       }
+      print "       - $rrFamCnt RepeatScout/RECON families\n";
+      print "       - $ltrFamCnt LTRPipeline families\n";
       if ( keys(%redundant_families) )
       {
         system("mv $tmpDir/consensi.fa $tmpDir/consensi.fa.recon_rscout_only");
@@ -1797,25 +1813,26 @@ if ( $options{'LTRStruct'} ) {
         }
         close IN;
         close OUT;
+        print "       - Removed " . scalar(keys(%redundant_families)) . " redundant LTR families.\n";
+        print "       - Final family count = " . (($rrFamCnt + $ltrFamCnt)-scalar(keys(%redundant_families))) . "\n";
       }
-    }else {
-      print "\nWARNING: LTRPipeline didn't produce any resuls for this input sequence.\n";
     }
   }else {
     print "\nWARNING: Could not create input file for LTRPipeline from $genomeDB! Continuing using\nresults from RepeatScout/RECON pipeline only.\n";
   }
+  print "LTRPipeline Time: " . elapsedTime( 1 ) . "\n";
 }
 
 elapsedTime( 1 );
 if ( $numModels > 0 )
 {
-  print "Classifying Repeats...\n";
+  print "\n\n";
   system(   "$FindBin::RealBin/RepeatClassifier "
           . "-consensi $tmpDir/consensi.fa -stockholm $tmpDir/families.stk" );
   print "Classification Time: " . elapsedTime( 1 ) . "\n";
 }
 
-print "Program Time: " . elapsedTime( "runtime" ) . "\n";
+print "\n\nProgram Time: " . elapsedTime( "runtime" ) . "\n";
 print "Working directory:  $tmpDir\n";
 print "may be deleted unless there were problems with the run.\n";
 
@@ -1831,8 +1848,9 @@ if ( $numModels > 0 )
   print
 "  $genomeDB-families.stk - Seed alignments for each family identified.\n\n";
   print "The RepeatModeler stockholm file is formatted so that it can\n";
-  print "easily be submitted to the Dfam database.  Please consider helping\n";
-  print "expand this open database by providing families to help\@dfam.org.\n\n\n";
+  print "easily be submitted to the Dfam database.  Please consider contributing\n";
+  print "curated families to this open database and be a part of this growing\n";
+  print "community resource.  For more information contact help\@dfam.org.\n\n\n";
 } else
 {
   print "No families identified.  Perhaps the database is too small\n";
@@ -2223,9 +2241,10 @@ sub buildRSConsensi
             . ( $#{ $families{$key}->{'elements'} } + 1 )
             . ", Using $numElements ):\n";
 
-        system( "$FindBin::RealBin/Refiner -engine $engine "
-           . "-noTmp -giToID $genomeDB.translation $workDir/family-$familyID.fa"
-        );
+        my $cmd = "$FindBin::RealBin/Refiner -engine $engine "
+                . "-noTmp -giToID $genomeDB.translation $workDir/family-$familyID.fa";
+        $cmd .= " -quiet" unless ( $DEBUG );
+        system( $cmd );
 
         open INREF, "<$workDir/family-$familyID.fa.refiner_cons"
             or die $CLASS
@@ -2242,7 +2261,7 @@ sub buildRSConsensi
           }
         }
         close INREF;
-        print "Refinement: " . elapsedTime( 2 ) . "\n";
+        print "Refinement: " . elapsedTime( 2 ) . "\n" if ( $DEBUG );
 
         if ( $cons ne "" )
         {
@@ -2524,7 +2543,7 @@ sub buildReconConsensi
 
     ## Loop through the elements for a given family starting
     ## first with the longest ones.
-    print "  - Saving elements to a file...\n";
+    print "  - Saving elements to a file...\n" if ( $DEBUG);
     my $giID = 1;
     foreach my $elementRef (
       sort {
@@ -2596,8 +2615,8 @@ sub buildReconConsensi
       $giID++;
     }
     close FAM;
-    print "    - " . ( $#{$elementsRef} + 1 ) . " elements found.\n";
-    print "Element Gathering: " . elapsedTime( 2 ) . "\n";
+    print "  - Saving " . ( $#{$elementsRef} + 1 ) . " elements\n";
+    print "Element Gathering: " . elapsedTime( 2 ) . "\n" if ( $DEBUG );
 
     # Check to see if we have at least two elements in this
     # family.  If so we can attempt to make a multiple alignment
@@ -2607,11 +2626,12 @@ sub buildReconConsensi
 
     if ( @{$elementsRef} >= $familySizeCutoff )
     {
-      print "Refining family-$familyID model...\n";
+      print "  - Refining family-$familyID model...\n";
 
-      system("$FindBin::RealBin/Refiner -engine $engine "
-           . "-noTmp -giToID $genomeDB.translation $workDir/family-$familyID.fa"
-      );
+      my $cmd = "$FindBin::RealBin/Refiner -engine $engine "
+              . "-noTmp -giToID $genomeDB.translation $workDir/family-$familyID.fa";
+      $cmd .= " -quiet" unless ( $DEBUG );
+      system( $cmd );
 
       if ( -s "$workDir/family-$familyID.fa.refiner_cons" )
       {
@@ -2633,7 +2653,7 @@ sub buildReconConsensi
       }else {
         print "  WARNING: Refiner did not return a consensus.\n";
       }
-      print "Refinement: " . elapsedTime( 2 ) . "\n";
+      print "Refinement: " . elapsedTime( 2 ) . "\n" if ( $DEBUG );
     } else
     {
       print "Family too small...moving on\n";
@@ -2924,11 +2944,12 @@ sub initializeSampleSourceList
 #              'length' => 40000, 'non_ambig_len' => 35828, used_cnt => 0 }
 #            ... )
 #    sampleSizeMax:    The maximum sample size
-#    dbFile : 
-#    dbType : 
-#    fastaFile :
-#    prohibitX : 
-#    withReplacement :
+#    dbFile : The compressed sequence database
+#    dbType : rmblast or abblast
+#    fastaFile : The output file to create
+#    prohibitX : Convert 'x'/'X' to 'N'
+#    withReplacement : Allow sequences to be reused between
+#                      calls to this routine.
 #
 sub sampleFromDB
 {
@@ -3017,6 +3038,19 @@ sub clearSampleUsedCounts{
   }
 }
 
+
+##-------------------------------------------------------------------------##
+## Use:  &fisherYatesShuffle( \@input_list );
+##
+## Randomly permute elements the input list.  This implementation uses
+## the built-in random number generator so that the same sequence of 
+## shuffles can be reproduced by setting the generator seed.
+##
+## The Fisher–Yates shuffle, in its original form, was described in 1938
+## by Ronald Fisher and Frank Yates in their book "Statistical tables for 
+## biological, agricultural and medical research."
+##
+##-------------------------------------------------------------------------##
 sub fisherYatesShuffle
 {
   my $array = shift;
@@ -3029,15 +3063,28 @@ sub fisherYatesShuffle
   }
 }
 
+
 ##-------------------------------------------------------------------------##
-## Use:  my ( $tempDir ) = &createTempDir( \@tmpPath );
+## Use:  my ( $tempDir ) = &createTempDir( \@tmpPath, $prefix );
 ##
-## Create a temporary directory.
+## Attempt to create a temporary directory of the form:
+##      
+##     $prefix_$PID.$DATE/
+##
+## Where:
+##     $prefix : Option prefix string or "RM" if not provided
+##     $PID    : The process ID of this perl script
+##     $DATE   : The date in DayOfWeek, Month, Day, Hour, Min
+##               Second, Year
+## Returns:
+##    The name of the temporary directory or "" if it cannot be
+##    created or written to.
 ##
 ##-------------------------------------------------------------------------##
 sub createTempDir
 {
   my $tmpPathRef = shift;
+  my $optPrefix = shift;
 
   ## Get date
   my $date = localtime( time() );
@@ -3045,17 +3092,20 @@ sub createTempDir
   # Windows does not support the use of ":" in a filename.
   $date =~ s/[ ,\t,\n:]//g;
 
+  # Set optional prefix
+  my $prefix = "RM";
+  $prefix = $optPrefix if ( $optPrefix ne "" );
+
   my $runnumber = "$$" . ".$date";
   my $tempDir   = "";
   foreach my $directory ( @{$tmpPathRef} )
   {
-
     if ( $directory =~ /\/$/ )
     {
-      $tempDir = $directory . "RM_$runnumber";
+      $tempDir = $directory . $prefix . "_$runnumber";
     } else
     {
-      $tempDir = $directory . "/RM_$runnumber";
+      $tempDir = $directory . "/$prefix" . "_$runnumber";
     }
 
     if ( -d "$tempDir" || mkdir $tempDir, 0777 )
@@ -3072,13 +3122,12 @@ sub createTempDir
   return ( $tempDir );
 }
 
+
 ##-------------------------------------------------------------------------##
 ## Use: my $string = elapsedTime( $index );
 ##
-##   Returns
-##
-##      Great little utility for measuring the elapsed
-##      time between one or more sections of perl code.
+## Great little utility for measuring the elapsed
+## time between one or more sections of perl code.
 ##
 ##-------------------------------------------------------------------------##
 sub elapsedTime

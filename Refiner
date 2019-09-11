@@ -22,7 +22,7 @@
 
 =head1 NAME
 
-Refiner - 
+Refiner - Generate and refine a seed alignment given a set of family instances
 
 =head1 SYNOPSIS
 
@@ -127,6 +127,7 @@ my @opts = (
              '-help',
              '-noTmp',
              '-debug',
+             '-quiet',
              '-engine=s',
              '-giToID=s',
              '-name=s' );
@@ -787,14 +788,16 @@ sub buildConsensus
 
       my $gaplessCons = $cons;
       $gaplessCons =~ s/-//g;
-      print "  - numRounds = $round\n";
-      print "  - Consensus Length = "
-          . length( $gaplessCons )
-          . " ( orig = $round1ConsLen )\n";
-      print "  - Avg Kimura Divergence = "
-          . sprintf( "%0.2f", $avgKDiv ) . "\n";
-      print
-"  - Unaligned sequences = $numUnAlignSeqs ( orig = $round1NumUnAlignSeqs )\n";
+      unless ( $options{'quiet'} ) {
+        print "  - numRounds = $round\n";
+        print "  - Consensus Length = "
+            . length( $gaplessCons )
+            . " ( orig = $round1ConsLen )\n";
+        print "  - Avg Kimura Divergence = "
+            . sprintf( "%0.2f", $avgKDiv ) . "\n";
+        print
+  "  - Unaligned sequences = $numUnAlignSeqs ( orig = $round1NumUnAlignSeqs )\n";
+      }
     } else
     {
       print $CLASS
@@ -842,7 +845,8 @@ sub buildConsensus
   }
   $malign->toSTK( filename => "$pathToFastaFile.refiner.stk" );
 
-  print "  Build Consensus: " . elapsedTime( 0 ) . "\n";
+  
+  print "  Build Consensus: " . elapsedTime( 0 ) . "\n" unless( $options{'quiet'} );
   undef @multiSeqs;
   return $cons, $finalMultiAlignmentSize, $avgKDiv;
 

@@ -108,6 +108,7 @@ my $version = $RepModelConfig::VERSION;
 my @getopt_args = (
     '-version', # print out the version and exit
     '-tmpdir=s',
+    '-debug',
     '-max_seq_len=i',
     '-pa=i',
 );
@@ -120,6 +121,7 @@ unless (GetOptions(\%options, @getopt_args)) {
     usage();
 }
 
+$DEBUG = 1 if ( exists $options{'debug'} );
 
 #
 # Provide the POD text from this file and 
@@ -190,9 +192,9 @@ my $inputFile = $ARGV[0];
 ## Temp directory
 my $tempDir;
 if ( $options{'tmpdir'} ) {
-  $tempDir = &createTempDir( [ $options{'tmpdir'}, cwd() ], "LTRPipeline" );
+  $tempDir = &createTempDir( [ $options{'tmpdir'}, cwd() ], "LTR" );
 }else{
-  $tempDir = &createTempDir( [ dirname( $inputFile ), cwd() ], "LTRPipeline" );
+  $tempDir = &createTempDir( [ dirname( $inputFile ), cwd() ], "LTR" );
 }
 
 my %TimeBefore = ();
@@ -323,7 +325,9 @@ foreach my $cluster ( sort keys %clusters ){
   $famType = "INT" if ( $intCount > $ltrCount );
 
   # Run Refiner on the seeds
-  system("$FindBin::RealBin/Refiner -noTmp -name ltr-1_family-$idx $tempDir/ltr-1_family-$idx.fa");
+  my $cmd = "$FindBin::RealBin/Refiner -noTmp -name ltr-1_family-$idx $tempDir/ltr-1_family-$idx.fa";
+  $cmd .= " -quiet" unless ( $DEBUG );
+  system( $cmd );
 
   # family-72.fa.refiner.stk
   if ( -s "$tempDir/ltr-1_family-$idx.fa.refiner_cons" ) 
@@ -418,6 +422,12 @@ sub runNinja {
   {
     system("mv $tmpDir/cluster.dat $outFile");
   }
+
+  # TODO: Consider keeping on error
+  unless ( $DEBUG ) {
+    rmtree($tmpDir);
+  }
+
 }
  
 
@@ -457,7 +467,13 @@ sub runMafft {
   {
     system("mv $tmpDir/mafft-alignment.fa $outFile");
   }
- 
+
+  # TODO: Consider keeping on error
+  unless ( $DEBUG ) {
+    rmtree($tmpDir);
+  }
+
+
 }
 
 
@@ -666,10 +682,22 @@ sub runLtrDetector {
 
 ######################## S U B R O U T I N E S ############################
 
+
 ##-------------------------------------------------------------------------##
-## Use:  my ( $tempDir ) = &createTempDir( \@tmpPath );
+## Use:  my ( $tempDir ) = &createTempDir( \@tmpPath, $prefix );
 ##
-##  Returns
+## Attempt to create a temporary directory of the form:
+##      
+##     $prefix_$PID.$DATE/
+##
+## Where:
+##     $prefix : Option prefix string or "RM" if not provided
+##     $PID    : The process ID of this perl script
+##     $DATE   : The date in DayOfWeek, Month, Day, Hour, Min
+##               Second, Year
+## Returns:
+##    The name of the temporary directory or "" if it cannot be
+##    created or written to.
 ##
 ##-------------------------------------------------------------------------##
 sub createTempDir
