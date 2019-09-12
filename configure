@@ -309,6 +309,9 @@ if ( ! ( $options{'abblast_dir'} || $options{'rmblast_dir'} ) ) {
     if ( ! $options{'ltr_detector_dir'} ) {
       RepModelConfig::promptForParam('LTR_DETECTOR_DIR');
     }
+    if ( ! $options{'genometools_dir'} ) {
+      RepModelConfig::promptForParam('GENOMETOOLS_DIR');
+    }
     if ( ! $options{'ltr_retriever_dir'} ) {
       RepModelConfig::promptForParam('LTR_RETRIEVER_DIR');
     }

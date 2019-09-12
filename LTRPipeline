@@ -169,6 +169,7 @@ my $LTR_DETECTOR_DIR = $config->{'LTR_DETECTOR_DIR'}->{'value'};
 my $LTR_RETRIEVER_DIR = $config->{'LTR_RETRIEVER_DIR'}->{'value'};
 my $MAFFT_DIR = $config->{'MAFFT_DIR'}->{'value'};
 my $NINJA_DIR = $config->{'NINJA_DIR'}->{'value'};
+my $GENOMETOOLS_DIR = $config->{'GENOMETOOLS_DIR'}->{'value'};
 
 #
 #   Run LTRDetector
@@ -201,11 +202,20 @@ my %TimeBefore = ();
 elapsedTime( "runtime" );    # Setup the timers
 
 # Run LTR Detector
+if ( 1 ) {
 my $numAnnots = &runLtrDetector( $LTR_DETECTOR_DIR, $inputFile, "$tempDir/LtrDetector-results.txt", $threads, $tempDir);
 if ( $numAnnots == 0 ) {
   print "LTRPipeline: No results returned from LTR structural finder ( LtrDetector ).\n";
   exit;
 }
+} else {
+my $numAnnots = &runLtrHarvest( $GENOMETOOLS_DIR, $inputFile, "$tempDir/LtrDetector-results.txt", $threads, $tempDir);
+#if ( $numAnnots == 0 ) {
+#  print "LTRPipeline: No results returned from LTR structural finder ( LtrDetector ).\n";
+#  exit;
+#}
+}
+
 
 # Postprocess results using LTR_Retriever
 &runLtrRetriever( $LTR_RETRIEVER_DIR, $inputFile, "$tempDir/LtrDetector-results.txt", "$tempDir/LtrRetriever-redundant-results.fa", $threads );
@@ -429,11 +439,6 @@ sub runNinja {
   }
 
 }
- 
-
-
-
-
 
 
 sub runMafft {
@@ -475,7 +480,6 @@ sub runMafft {
 
 
 }
-
 
 
 sub runLtrRetriever {
@@ -539,8 +543,49 @@ sub runLtrRetriever {
 
 
 
+sub runLtrHarvest {
+  my $binDir = shift;
+  my $seqFile = shift;
+  my $outFile = shift;
+  my $threads = shift;
+  my $wrkDir = shift;
 
-######
+  die "LTRPipeline::runLtrHarvest : Could not find input file $seqFile\n"
+    if ( ! -s $seqFile );
+
+  # Create temporary directory
+  my $tmpDir;
+  if ( ! defined $wrkDir || ! -d $wrkDir ) {
+    $tmpDir = &createTempDir( [ dirname( $seqFile ), cwd() ], "LHAR" );
+  }else {
+    $tmpDir = &createTempDir( [ $wrkDir ], "LHAR" );
+  }
+  print "LTRPipeline::runLtrHarvest : tmpdir = $tmpDir\n" if ( $DEBUG );
+
+  # Build enhanced suffix array datastructure for Ltr_harvest
+  my $cmd = "$binDir/gt suffixerator -db $seqFile -indexname esa_index -tis -suf -lcp -des -ssp -sds -dna > $tmpDir/suffixerator.log 2>&1";
+  system($cmd);
+  
+  # 
+  $cmd = "$binDir/gt ltrharvest -index esa_index -out $tmpDir/ltrharvest.out > $tmpDir/ltrharvest.log 2>&1";
+  system($cmd);
+
+  if ( -s "$tmpDir/ltrharvest.out" )
+  {
+    system("mv $tmpDir/ltrharvest.out $outFile");
+  }
+
+  # TODO: Consider keeping on error
+  unless ( $DEBUG ) {
+    rmtree($tmpDir);
+  }
+
+  # TODO:
+  #print "LTRPipeline::runLtrHarvest : Returning $annotCnt annotations.\n" if ( $DEBUG );
+  #return $annotCnt;
+}
+
+
 sub runLtrDetector {
   my $binDir = shift;
   my $seqFile = shift;

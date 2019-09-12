@@ -86,6 +86,17 @@ structural LTR repeatfinding program.',
                                   'param_type' => 'directory',
                                   'required' => 0,
                                   'value' => '/home/rhubley/src/LtrDetector/bin'
+                               },
+          'GENOMETOOLS_DIR' => {
+                                  'command_line_override' => 'genometools_dir',
+                                  'description' => 'The path to the installation of the GenomeTools package.',
+                                  'environment_override' => 'GENOMETOOLS_DIR',
+                                  'expected_binaries' => [
+                                                           'gt'
+                                                         ],
+                                  'param_type' => 'directory',
+                                  'required' => 0,
+                                  'value' => '/home/rhubley/src/genometools-1.5.9/bin'
                                 },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
