@@ -2042,7 +2042,7 @@ sub runRepeatScout
     # Run TRF/DUSTMASKER on sequences
     print "   - RepeatScout: Running filtering stage..";
     $ENV{'TRF_COMMAND'}  = $TRF_PRGM;
-    $ENV{'DUSTMASKER_COMMAND'} = $DUSTMASKER_PRGM
+    $ENV{'DUSTMASKER_COMMAND'} = $DUSTMASKER_PRGM;
     $cmd                 =
           "$RSCOUT_DIR/filter-stage-1.prl $fastaFile.rscons > "
         . "$fastaFile.rscons.filtered 2>> filter-stage-1.log";
