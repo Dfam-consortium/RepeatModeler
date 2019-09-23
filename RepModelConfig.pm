@@ -75,6 +75,17 @@ sequence clustering package.',
                            'required' => 0,
                            'value' => '/home/rhubley/src/cd-hit-v4.8.1-2019-0228'
                          },
+          'GENOMETOOLS_DIR' => {
+                                 'command_line_override' => 'genometools_dir',
+                                 'description' => 'The path to the installation of the GenomeTools package.',
+                                 'environment_override' => 'GENOMETOOLS_DIR',
+                                 'expected_binaries' => [
+                                                          'gt'
+                                                        ],
+                                 'param_type' => 'directory',
+                                 'required' => 0,
+                                 'value' => '/home/rhubley/src/genometools-1.5.9/bin'
+                               },
           'LTR_DETECTOR_DIR' => {
                                   'command_line_override' => 'ltr_detector_dir',
                                   'description' => 'The path to the installation of the LtrDetector
@@ -86,17 +97,6 @@ structural LTR repeatfinding program.',
                                   'param_type' => 'directory',
                                   'required' => 0,
                                   'value' => '/home/rhubley/src/LtrDetector/bin'
-                               },
-          'GENOMETOOLS_DIR' => {
-                                  'command_line_override' => 'genometools_dir',
-                                  'description' => 'The path to the installation of the GenomeTools package.',
-                                  'environment_override' => 'GENOMETOOLS_DIR',
-                                  'expected_binaries' => [
-                                                           'gt'
-                                                         ],
-                                  'param_type' => 'directory',
-                                  'required' => 0,
-                                  'value' => '/home/rhubley/src/genometools-1.5.9/bin'
                                 },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
@@ -156,7 +156,7 @@ de-novo repeatfinding program.',
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/usr/local/RepeatMasker-open-4-0-8'
+                                  'value' => '/usr/local/RepeatMasker'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
@@ -173,7 +173,7 @@ sequence alignment program.',
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast-2.9.0-p2/bin'
+                             'value' => '/usr/local/rmblast/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
