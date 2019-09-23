@@ -93,6 +93,9 @@ my $DEBUG = 0;
 $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 $|     = 1;                                         # Turn autoflush on
 
+#### DEVELOPMENT ONLY #####
+my $useLtrDet = 0;
+
 #
 # Version
 # 
@@ -202,23 +205,24 @@ my %TimeBefore = ();
 elapsedTime( "runtime" );    # Setup the timers
 
 # Run LTR Detector
-if ( 1 ) {
-my $numAnnots = &runLtrDetector( $LTR_DETECTOR_DIR, $inputFile, "$tempDir/LtrDetector-results.txt", $threads, $tempDir);
-if ( $numAnnots == 0 ) {
-  print "LTRPipeline: No results returned from LTR structural finder ( LtrDetector ).\n";
-  exit;
-}
+if ( $useLtrDet ) {
+  my $numAnnots = &runLtrDetector( $LTR_DETECTOR_DIR, $inputFile, 
+                                   "$tempDir/raw-struct-results.txt", $threads, $tempDir);
+  if ( $numAnnots == 0 ) {
+    print "LTRPipeline: No results returned from LTR structural finder ( LtrDetector ).\n";
+    exit;
+  }
 } else {
-my $numAnnots = &runLtrHarvest( $GENOMETOOLS_DIR, $inputFile, "$tempDir/LtrDetector-results.txt", $threads, $tempDir);
-#if ( $numAnnots == 0 ) {
-#  print "LTRPipeline: No results returned from LTR structural finder ( LtrDetector ).\n";
-#  exit;
-#}
+  my $numAnnots = &runLtrHarvest( $GENOMETOOLS_DIR, $inputFile, "$tempDir/raw-struct-results.txt", $threads, $tempDir);
+  if ( $numAnnots == 0 ) {
+    print "LTRPipeline: No results returned from LTR structural finder ( LtrHarvest ).\n";
+    exit;
+  }
 }
 
 
 # Postprocess results using LTR_Retriever
-&runLtrRetriever( $LTR_RETRIEVER_DIR, $inputFile, "$tempDir/LtrDetector-results.txt", "$tempDir/LtrRetriever-redundant-results.fa", $threads );
+&runLtrRetriever( $LTR_RETRIEVER_DIR, $inputFile, "$tempDir/raw-struct-results.txt", "$tempDir/LtrRetriever-redundant-results.fa", $threads );
 if ( ! -s "$tempDir/LtrRetriever-redundant-results.fa" )
 {
   print "LTRPipeline: No results after LTR_Retriever filtering.\n";
@@ -563,16 +567,38 @@ sub runLtrHarvest {
   print "LTRPipeline::runLtrHarvest : tmpdir = $tmpDir\n" if ( $DEBUG );
 
   # Build enhanced suffix array datastructure for Ltr_harvest
-  my $cmd = "$binDir/gt suffixerator -db $seqFile -indexname esa_index -tis -suf -lcp -des -ssp -sds -dna > $tmpDir/suffixerator.log 2>&1";
+  # Must run in the tmpDir as this program will insist on creating
+  # esa_* files in the working directory only
+  my $full_seqFile = File::Spec->rel2abs( $seqFile );
+  my $origDir = getcwd();
+  chdir( $tmpDir );
+  my $cmd = "$binDir/gt suffixerator -db $full_seqFile -indexname esa_index -tis -suf -lcp -des -ssp -sds -dna > suffixerator.log 2>&1";
   system($cmd);
   
-  # 
-  $cmd = "$binDir/gt ltrharvest -index esa_index -out $tmpDir/ltrharvest.out > $tmpDir/ltrharvest.log 2>&1";
+  # Run ltrharvest
+  $cmd = "$binDir/gt ltrharvest -index esa_index -out ltrharvest.out > ltrharvest.log 2>&1";
   system($cmd);
+  chdir( $origDir );
 
-  if ( -s "$tmpDir/ltrharvest.out" )
+  my $annotCnt = 0;
+  if ( -s "$tmpDir/ltrharvest.log" )
   {
-    system("mv $tmpDir/ltrharvest.out $outFile");
+    open IN,"<$tmpDir/ltrharvest.log" or die "Could not open $tmpDir/ltrharvest.log for reading!\n";
+    open OUT,">$outFile" or die "Could not open $outFile for writing!\n";
+    while ( <IN> ) {
+      if ( /^#/ ) {
+        print OUT;
+      }elsif ( /^\d+\s+\d+\s+\d+\s+\d+/ ) {
+        $annotCnt++;
+        print OUT;
+      }elsif ( /^\s*$/ ) {
+        # Don't save
+      }else{
+        warn "LtrPipeline: Ltrharvest returned an unexpected result line:\n$_";
+      }
+    }
+    close IN;
+    close OUT;
   }
 
   # TODO: Consider keeping on error
@@ -580,9 +606,8 @@ sub runLtrHarvest {
     rmtree($tmpDir);
   }
 
-  # TODO:
-  #print "LTRPipeline::runLtrHarvest : Returning $annotCnt annotations.\n" if ( $DEBUG );
-  #return $annotCnt;
+  print "LTRPipeline::runLtrHarvest : Returning $annotCnt annotations.\n" if ( $DEBUG );
+  return $annotCnt;
 }
 
 
