@@ -319,7 +319,7 @@ my $rsSampleSize               = 40000000;     # The size of the sequence given
                                                #   to RepeatScout. ( round #1 )
 my $fragmentSize               = 40000;        # The size of the batches for
                                                #   all-vs-other search.
-my $genomeSampleSizeStart      = 3000000;      # The initial sample size for
+my $reconSampleSizeStart      = 3000000;      # The initial sample size for
                                                #   RECON analysis
 # TODO: Make this a parameter
 my $genomeSampleSizeMax        = 243000000;    # The max sample size for
@@ -348,7 +348,7 @@ my $minFamilySize = 4;
 ##
 if ( $options{'onlyIns'} ) {
   $genomeSampleSizeMax        = 300000000; 
-  $genomeSampleSizeStart = 200000;
+  $reconSampleSizeStart = 200000;
   $genomeSampleSizeMultiplier = 4;
   $recommendedFamilySize = 50;
 }
@@ -501,7 +501,7 @@ if ( $options{'skipRS'} ) {
   # If we are skipping RS we need to do this early check to make sure
   # the genome isn't really small and would cause only one round of
   # RECON to run.
-  $sampleSize = $genomeSampleSizeStart if ( $options{'skipRS'} );
+  $sampleSize = $reconSampleSizeStart if ( $options{'skipRS'} );
   if ( ( $dbSize - ( $totSampledBP + $sampleSize ) ) <= ($sampleSize/2) )
   {
     print "   - Increasing sample size to include end piece now = ";
@@ -705,7 +705,7 @@ print "   be terminated early.\n";
 #
 # Main loop
 #
-#    Sample from the sequence database starting from $genomeSampleSizeStart
+#    Sample from the sequence database starting from $reconSampleSizeStart
 #  and increasing by a factor of $genomeSampleSizeMultiplier until either
 #  the sequence database is fully covered or we complete one round with
 #  the sample size at $genomeSampleSizeMax
@@ -728,16 +728,6 @@ while ( 1 ) {
   print "Searching for Repeats\n";
   print " -- Sampling from the database...\n";
 
-  #if ( $round > 1 )
-  #{
-  #  if ( $seqRemaining > 0 && $seqRemaining <= $sampleSize )
-  #  {
-  #    print "   - Increasing sample size to include end piece now = ";
-  #    $sampleSize += $seqRemaining;
-  #    print "$sampleSize\n";
-  #  }
-  #}
-
   if ( ( $options{'onlyIns'} && ( $sampleSize >= $genomeSampleSizeMax ||
          $sampleSize >= $dbSize )) ||
        ( ! $options{'onlyIns'} && ( $totSampledBP >= $dbSize ||
@@ -747,14 +737,6 @@ while ( 1 ) {
     print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
     $familyCutoff = $minFamilySize;
   }
-
-
-  #my $familyCutoff = $recommendedFamilySize;
-  #if ( $round > 1 && ( $totSampledBP >= $dbSize || $sampleSize >= $genomeSampleSizeMax || $seqRemaining <= $sampleSize ))
-  #{
-  #  print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
-  #  $familyCutoff = $minFamilySize;
-  #}
 
   # Setup file locations
   my $roundTmpDir       = "$tmpDir/round-$round";
@@ -810,7 +792,6 @@ while ( 1 ) {
   }
 
   # Tabulate non-Ambiguous bases
-#### TODO: NOW.....fix this
   my $sampleDB = FastaDB->new( fileName => $sampleFastaFile,
                                openMode => SeqDBI::ReadOnly );
   my $actualGenomeSampleSize = 0;
@@ -1516,7 +1497,6 @@ while ( 1 ) {
     }
   }
 
-  $round++;
 
   # Remove all the old batch files
   opendir( DIR, $roundTmpDir )
@@ -1556,7 +1536,7 @@ while ( 1 ) {
   if ( $round == 1 ) {
     # Just completed RepeatScout round, reset the sampleSize for the first
     # round of RECON.
-    $sampleSize = $genomeSampleSizeStart;
+    $sampleSize = $reconSampleSizeStart;
   }else {
     # RECON Rounds, check for completion.
     if ( $options{'onlyIns'} ) {
@@ -1590,6 +1570,8 @@ while ( 1 ) {
     $sampleSize = $genomeSampleSizeMax
         if ( $sampleSize > $genomeSampleSizeMax );
   }
+
+  $round++;
 }    # Main Loop while(...
 print "\nRepeatScout/RECON discovery complete: $numModels families found\n";
 
@@ -2033,27 +2015,67 @@ sub runRepeatScout
   print "   - RepeatScout: Running build_lmer_table ( l = $lmerSize )..\n";
   my $cmd =
         "$RSCOUT_DIR/build_lmer_table -l $lmerSize -sequence "
-      . "$fastaFile -freq $fastaFile.lfreq";
+      . "$fastaFile -freq $fastaFile.lfreq 2>&1 > repeatscout.log";
   `$cmd`;
   if ( $? ) { die "build_lmer_table failed. Exit code $?\n"; }
 
-  print "   - RepeatScout: Running RepeatScout..\n";
+  print "   - RepeatScout: Running RepeatScout..";
   $cmd =
         "$RSCOUT_DIR/RepeatScout -l $lmerSize -sequence $fastaFile"
       . " -tandemdist 500 -output $fastaFile.rscons -freq $fastaFile.lfreq "
-      . "-stopafter 100";
+      . "-stopafter 100 2>&1 >> repeatscout.log";
 
   `$cmd`;
-  if ( $? ) { die "RepeatScout failed. Exit code $?\n"; }
+  if ( $? || -s "repeatscout.log" ) { 
+    die "RepeatScout failed. Exit code $?.\n  Check $tmpDir/repeatscout.log for more details.\n"; 
+  }
 
-  # Run TRF/DUSTMASKER on sequences
-  $ENV{'TRF_COMMAND'}  = $TRF_PRGM;
-  $ENV{'DUSTMASKER_COMMAND'} = "$DUSTMASKER_PRGM";
-  $cmd                 =
-        "$RSCOUT_DIR/filter-stage-1.prl $fastaFile.rscons > "
-      . "$fastaFile.rscons.filtered 2>/dev/null";
-  `$cmd`;
+  if ( -s "$fastaFile.rscons" ) {
+    my $rawFams = 0;
+    open IN,"<$fastaFile.rscons" or die "Could not open $tmpDir/$fastaFile.rscon for reading!\n";
+    while ( <IN> ) {
+      $rawFams++ if ( /^>/ );
+    }
+    close IN;
+    print " : $rawFams raw families identified\n";
 
+    # Run TRF/DUSTMASKER on sequences
+    print "   - RepeatScout: Running filtering stage..";
+    $ENV{'TRF_COMMAND'}  = $TRF_PRGM;
+    $ENV{'DUSTMASKER_COMMAND'} = $DUSTMASKER_PRGM
+    $cmd                 =
+          "$RSCOUT_DIR/filter-stage-1.prl $fastaFile.rscons > "
+        . "$fastaFile.rscons.filtered 2>> filter-stage-1.log";
+    `$cmd`;
+  
+    my $finalFams = 0;
+    if ( -s "$fastaFile.rscons.filtered" ) {
+      open IN,"<$fastaFile.rscons.filtered" or die "Could not open $tmpDir/$fastaFile.rscon.filtered for reading!\n";
+      while ( <IN> ) {
+        $finalFams++ if ( /^>/ );
+      }
+      close IN;
+    }else {
+      if ( -s "filter-stage-1.log" )
+      {
+        open IN,"<filter-stage-1.log" or die "Could not open $tmpDir/filter-stage-1.log for reading!\n";
+        my $errMsg = "";
+        while ( <IN> ) {
+          if ( /ERROR/ ) {
+            $errMsg .= $_;
+          }
+        }
+        close IN;
+        if ( $errMsg ne "" ) {
+          die "RepeatScout filter-stage-1 failed:\n$errMsg" . "Please see $tmpDir/filter-stage-1.log for details.\n";
+        }
+      }
+    }
+    print " $finalFams families remaining\n";
+  }else {
+    print " : no families identified\n";
+  }
+  
   chdir( $origDir );
 
   return;
