@@ -11,7 +11,7 @@
 ##      is compatable with the RepeatMasker program.
 ##
 #******************************************************************************
-#* Copyright (C) Institute for Systems Biology 2008 Developed by
+#* Copyright (C) Institute for Systems Biology 2008-2019 Developed by
 #* Arian Smit and Robert Hubley.
 #*
 #* This work is licensed under the Open Source License v2.1.  To view a copy
@@ -114,7 +114,7 @@ my $version = $RepModelConfig::VERSION;
 #   -t=s: String parameters
 #   -t=i: Number paramters
 #
-my @opts = qw( help consensi=s engine=s stockholm=s );
+my @opts = qw( help consensi=s engine=s stockholm=s debug preserve_class );
 # Add configuration parameters as additional command-line options
 push @opts, RepModelConfig::getCommandLineOptions();
 
@@ -126,6 +126,8 @@ my %options = ();
 unless ( &GetOptions( \%options, @opts ) ) {
   usage();
 }
+
+$DEBUG = 1 if ( $options{'debug'} );
 
 #
 # Provide the POD text from this file and 
@@ -244,34 +246,84 @@ $cmdSuffix = "" if ( $DEBUG );
 #
 print "  - Looking for Simple and Low Complexity sequences..\n";
 system( "cp $options{'consensi'} tmpConsensi.fa" );
-my $cmd = "$FindBin::RealBin/TRFMask tmpConsensi.fa "
-         ."$cmdSuffix";
+open IN,"<$options{'consensi'}" or die "Could not open $options{'consensi'} for reading!\n";
+open UNC,">tmpConsensi.fa" or die "Could not open tmpConsensi.fa for writing!\n";
+my $seq;
+my $id;
+my $desc;
+while ( <IN> ) {
+  if ( /^>(\S+)\s+(.*)$/ ) {
+    my $tmp_id = $1;
+    my $tmp_desc = $2;
+    if ( $seq ) {
+      if ( $id =~ /\#/ )
+      {
+        # Assume anything with a pound is already classified and
+        # with the 'preserve_class' option set we don't want to muck
+        # with it.
+        if ( ! $options{'preserve_class'} ) {
+          # Make sure it doesn't have multiple #'s
+          if ( $id =~ /^([^\#]+)\#([^\#]+)$/ ) {
+            $id = $1;
+            print UNC ">$id $desc\n$seq\n";
+          }else {
+            die "ERROR: Input file contains identifiers with multiple '#' characters : id = $id\n" .
+                "       RepeatClassifier treats '#'s as classification delimiters.  Rename your\n" .
+                "       identifiers and resubmit for processing.\n";
+          }
+        }
+      }else {
+        # just a standard ID no need to fuss
+        print UNC ">$id $desc\n$seq\n";
+      }
+    }
+    $seq = "";
+    $id = $tmp_id;
+    $desc = $tmp_desc;
+    next;
+  }
+  s/[\n\r\s]+//g;
+  $seq .= $_;
+}
+if ( $seq ) {
+  if ( $id =~ /\#/ )
+  {
+    if ( ! $options{'preserve_class'} ) {
+      if ( $id =~ /^([^\#]+)\#([^\#]+)$/ ) {
+        $id = $1;
+        print UNC ">$id $desc\n$seq\n";
+      }else {
+        die "ERROR: Input file contains identifiers with multiple '#' characters : id = $id\n" .
+            "       RepeatClassifier treats '#'s as classification delimiters.  Rename your\n" .
+            "       identifiers and resubmit for processing.\n";
+      }
+    }
+  }
+}
+close IN;
+close UNC;
+
+#
+# Simple Repeat Identification
+#
+my $cmd = "$REPEATMASKER_DIR/RepeatMasker -qq -noint "
+       ."-no_is tmpConsensi.fa $cmdSuffix";
 print "Running: $cmd\n" if ( $DEBUG );
 system( $cmd );
 if ( ! -s "tmpConsensi.fa.masked" )
 {
-  die "Something went wrong with the TRFMask program.  The tmpConsensi.fa.masked file was missing or empty!\n";
-}
-system("mv tmpConsensi.fa.masked tmpConsensi.fa");
-
-$cmd = "$REPEATMASKER_DIR/RepeatMasker -qq -noint "
-       ."-no_is tmpConsensi.fa $cmdSuffix";
-print "Running: $cmd\n" if ( $DEBUG );
-system( $cmd );
-system( "mv tmpConsensi.fa $options{'consensi'}.masked" );
-if ( ! -s "$options{'consensi'}.masked" )
-{
-  die "Something went wrong with the RepeatMasker program.  The "
-     ."$options{'consensi'}.masked file is missing or empty\n";
+#  die "Something went wrong with the RepeatMasker program.  The "
+#     ."$options{'consensi'}.masked file is missing or empty\n";
+  system("cp tmpConsensi.fa tmpConsensi.fa.masked");
 }
 
-# Those sequences longer than 50 bp that have no consecutive strings
-# of unmasked bases >= 50 bp left should be marked as potential
+# Those sequences longer than 40 bp that have no consecutive strings
+# of unmasked bases >= 40 bp left should be marked as potential
 # tandem/simple/segmental duplication type repeats.  If they don't 
 # hit anything significant in the blastx comparison then remove
 # them and only put them back if we can mark them as tandem with
 # a specific base consensus pattern.
-my $maskedDB = FastaDB->new( fileName => "$options{'consensi'}.masked",
+my $maskedDB = FastaDB->new( fileName => "tmpConsensi.fa.masked",
                              openMode => SeqDBI::ReadOnly );
 
 my %simpleRepeats = ();
@@ -279,18 +331,22 @@ my %simpleRepeats = ();
 foreach my $seqID ( $maskedDB->getIDs() ) 
 {
   my $seq = $maskedDB->getSequence( $seqID );
-  $seq =~ s/[Nn]+/\#/g;
+  $seq =~ s/[Nn]/\#/g;
   my $numAmbig = ($seq =~ tr/\#/\#/);
-  if ( ( $numAmbig / length( $seq ) ) > 0.8 )
+print "$seqID is $numAmbig bp of low complexity ( " . ( $numAmbig / length( $seq ) ) . " )\n$seq\n";
+  if ( $numAmbig > 0 ) 
   {
-    warn "Consensus $seqID is >80% ambiguous sequence after masking!\n"
-              if ( $DEBUG );
-    $simpleRepeats{ $seqID }++;
+    if ( length($seq)-$numAmbig < 40 ) 
+    {
+      warn "Consensus $seqID is largely simple/low-complexity ( " . ( length($seq)-$numAmbig ) . " unmasked ).\n"
+                if ( $DEBUG );
+      $simpleRepeats{ $seqID }++;
+    }
   }
 }
 
 
-###### TODO
+###### FUTURE WORK
 # Selfcomparison of this file should reveal if we're dealing with a
 # satellite that needs to be included: if the sequence matches (much)
 # higher to itself, given a shift, than to the consensus simple repeat
@@ -359,7 +415,7 @@ if ( $engine eq "abblast" )
   }
   $blastCmd = "$NCBIBLASTX_PRGM " .
        "-db $REPEATMASKER_DIR/Libraries/RepeatPeps.lib " .
-       "-query $options{'consensi'}.masked -word_size 2 > tmpBlastXResults.out 2>&1";
+       "-query tmpConsensi.fa.masked -word_size 2 > tmpBlastXResults.out 2>&1";
   print "      + Running rmblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
 }
 
@@ -385,7 +441,6 @@ my $blastXResults = &wublastxanalysis(
 # This leaves us with a modified fasta file (some classified, even
 # fewer orientation adjusted based on blastx comparison), which is
 # next compared to RepeatMasker.lib.
-
 
 
 #-------------------------------------------------------------------------##
@@ -415,7 +470,7 @@ $searchEngineN->setDelGapExt( -5 );
 $searchEngineN->setMinMatch( 7 );
 $searchEngineN->setUseDustSeg( 0 );
 $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
-$searchEngineN->setQuery( $options{'consensi'} );
+$searchEngineN->setQuery( "tmpConsensi.fa.masked" );
 
 if ( $engine eq "abblast" )
 {
@@ -468,15 +523,19 @@ print "DUMPER blastXResults = \n" . Dumper( $blastXResults ) . "\n" if ( $DEBUG 
 # comparison against the proteins and against the repeatmasker.lib ,
 # but I incorporated the printing in step2 in a different way.
 
+# TODO: Make sure we re-include saved pre-classified elements
 &changeconsensusfastafile( $classref, $oriref, \%simpleRepeats,
                            $options{'consensi'}, 
-                           "$options{'consensi'}.classified" );
+                           "$options{'consensi'}.classified",
+                           $options{'preserve_class'} );
 
-my $stkFilePrefix = $options{'stockholm'};
-$stkFilePrefix =~ s/^(\S+)\.stk$/$1/;
-&changeStockholmFile($classref, $oriref, \%simpleRepeats,
+if ( $options{'stockholm'} ) {
+  my $stkFilePrefix = $options{'stockholm'};
+  $stkFilePrefix =~ s/^(\S+)\.stk$/$1/;
+  &changeStockholmFile($classref, $oriref, \%simpleRepeats,
                      $options{'stockholm'},
-                     "$stkFilePrefix-classified.stk" );
+                     "$stkFilePrefix-classified.stk", $options{'preserve_class'} );
+}
 
 # Output is a further classified and oriented fasta file of consensus sequences
 
@@ -911,10 +970,6 @@ sub vsRMlibAnalysis {
   # so that all lines have the same number of columns.
   # They do not have the query and subject names split on #
   my ( %combscore, $oriented, @dnaclass, @ori );
-  my $query;
-  my $origquery;
-  my $protclass;
-
 
   # Initialize ds with bx results
   foreach my $bxResultsKey ( keys( %{ $blastXResults } ) ) 
@@ -923,15 +978,21 @@ sub vsRMlibAnalysis {
     $ori{ $bxResultsKey } = $blastXResults->{ $bxResultsKey }->{'orient'};
   }
 
+  # Loop through the DNA results
+  my $query = undef;
+  my $queryLen = undef;
+  my %idOverlaps = ();
+  # We should pre-sort the results by score
   for ( my $i = 0 ; $i < $resultCol->size() ; $i++ ) {
     my $result = $resultCol->get( $i );
 
-    #print "RESULT:" . $result->toStringFormatted() . "\n" if ( $DEBUG );
-    #print "RESULT:" . $result->toStringFormatted() . "\n";
-    #print "RESULT: $query\n";
+    print "RESULT:" . $result->toStringFormatted() . "\n" if ( $DEBUG );
+    if ( $result->getSubjName() =~ /\#buffer/ ){
+      # Ignore buffer matches
+      next;
+    }
 
     if ( $query && $result->getQueryName() ne $query ) {
-
       # see if there were conflicts for the last query
       # either as compared to the protein annotation
       # or within the repeatmasker library comparison
@@ -940,22 +1001,39 @@ sub vsRMlibAnalysis {
           &conflictsolver( $query, 
                            $blastXResults,
                            \@dnaclass, \@ori,
-                           \%combscore );
+                           \%combscore, $queryLen );
       %combscore = @dnaclass = @ori = ();
+      %idOverlaps = ();
+      $queryLen = 0;
     }
 
     $query = $result->getQueryName();
+    $queryLen = $result->getQueryEnd - $result->getQueryStart() + 1;
     my $subj = $result->getSubjName();
-    $subj =~ /.*\#(\S+)/;
-    my $dnaclass = $1;
-
+    $subj =~ /^(\S+)\#(\S+)$/;
+    my $id = $1;
+    my $dnaclass = $2;
     my $orient = "Plus";
     if ( $result->getOrientation() eq "C" ) {
       $orient = "Minus";
     }
-
     my $combination = "$query" . "\#$dnaclass" . "\#$orient";
-    $combscore{$combination} += $result->getScore();
+
+    if ( exists $idOverlaps{$id} ) {
+      my $startPos = $idOverlaps{$id}->[0];
+      my $endPos = $idOverlaps{$id}->[1];
+      my $overlapStart = $startPos;
+      $overlapStart = $result->getQueryStart() if ( $result->getQueryStart() > $overlapStart );
+      my $overlapEnd = $endPos;
+      $overlapEnd = $result->getQueryEnd() if ( $result->getQueryEnd() < $overlapEnd );
+      if ( ($overlapEnd-$overlapStart) < (0.9 * $endPos-$startPos) ) {
+        $combscore{$combination} += $result->getScore();
+      }
+    }else {
+      $idOverlaps{$id} = [$result->getQueryStart(), $result->getQueryEnd()];
+      $combscore{$combination} += $result->getScore();
+    }
+
     push( @dnaclass, $dnaclass );
     push( @ori,      $orient );
 
@@ -967,109 +1045,69 @@ sub vsRMlibAnalysis {
           &conflictsolver( $query, 
                            $blastXResults,
                            \@dnaclass, \@ori,
-                           \%combscore );
+                           \%combscore, $queryLen );
   }
 
   return ( \%class, \%ori );
 
 }
 
+
 sub conflictsolver {
-  my ( $query, $blastXResults, $classref, $oriref, $combscoreref )
-      = @_;
+  my $query = shift;
+  my $blastXResults = shift;
+  my $dnaClasses = shift;
+  my $orientations = shift;
+  my $dnaScores = shift;
+  my $queryLen = shift;
 
-  my @conflict    = ();
-  my $combination = "";
-  my %noconflict  = ();
-  my ( $temp1, $temp2 );    # placeholders; get more than I want from subroutine
-
-    # consensus is in an orientation that is confirmed by a
-    # significant blastx match to a transposon protein
-    #
-    # usually when there is a class assignment, the
-    # orientation is known too. The exception would be that
-    # the consensus is a chimaera of elements, in which case
-    # it needs to be broken up. So, the $orient = "Minus|Plus"
-    # may be skipped eventually
-    my $orient = $blastXResults->{$query}->{'orient'};
-    my $protclass = $blastXResults->{$query}->{'class'};
-    my $protPVal = $blastXResults->{$query}->{'pVal'};
- 
-  # Determine conflict status for each DNA match vs the top Protein
-  # match.
-  foreach my $comb ( keys %$combscoreref ) {
-    ( $temp1, $temp2, $noconflict{$comb} ) =
-        &matchprotanddnaclass( $protclass, $orient, $comb, $combscoreref,
-                               $protPVal );
-  }
-  # Find the highest scoring DNA match among all the rest
-  #print "SOLVING CONFLICT: query=$query protclass=$protclass orient=$orient\n";
-  foreach my $comb ( keys %$combscoreref ) {
-    if ( $combination ) {
-      #print "  -trying comb=$comb vs previous $combination\n";
-      #print"       - scores " . $$combscoreref{$comb} . " and " . $$combscoreref{$combination} . "\n";
-      #print"       - conflicts " . $noconflict{$comb} . " and " . $noconflict{$combination} . "\n";
-      if (
-        $$combscoreref{$comb} >= 2 * $$combscoreref{$combination}
-        ||
-
-        # if total SW score for matches to this
-        # combination of repeat class and orientation is
-        # twice better than the previous best one
-        (
-          $$combscoreref{$comb} >= 2 * $$combscoreref{$combination} / 3
-          &&
-
-          # scores are "close" and
-          $noconflict{$comb}
-        )
-          )
-      {    # $comb matches protein class and orientation
-        #print "      - PICKING $comb\n";
-        $combination = $comb;
-        @conflict    = ();
-      }
-      elsif (    $$combscoreref{$comb} >= 3 * $$combscoreref{$combination} / 2
-              && $noconflict{$combination} )
-      {
-
-       # previous one matched protein class, but this one scores somewhat better
-       #        push (@conflict, $combination, $comb);
-       # if there's more than one conflict, there will be duplicates
-      }
-      elsif (    $$combscoreref{$comb} <= 2 * $$combscoreref{$combination} / 3
-              && $noconflict{$comb} )
-      {
-        #        push (@conflict, $combination, $comb);
-        # RMH: I have no idea what this is doing...but it really doesn't look
-        #      right!
-        #print "      - PICKING2 $comb\n";
-        #$combination = $comb;
-      }
-    }
-    else {
-      $combination = $comb;
+  # get best protein match info
+  my $protOrient = $blastXResults->{$query}->{'orient'};
+  my $protClass = $blastXResults->{$query}->{'class'};
+  my $protPVal = $blastXResults->{$query}->{'pVal'};
+  
+  my $pickedClass = "";
+  my $pickedClassCompat = undef;
+  # Choose the higest scoring match at first.  If it's not
+  # compatible look for something that is at least 2/3's its
+  # score and *is* compatible to replace it.
+  print "conflictsolver: $query\n";
+  print "  - Best protein hit: class=$protClass pVal=$protPVal orient=$protOrient\n";
+  print "  - DNA Matches: " . Dumper($dnaScores) . "\n";
+  foreach my $dnaMatch ( sort { $dnaScores->{$b} <=> $dnaScores->{$a} } keys %{$dnaScores} ) {
+    my ( $temp1, $temp2, $dnaAndProteinCompatible ) =
+        &matchprotanddnaclass( $protClass, $protOrient, $dnaMatch, $dnaScores,
+                               $protPVal, $queryLen );
+    print "  - Considering $dnaMatch: score = $dnaScores->{$dnaMatch} compatible?: $dnaAndProteinCompatible\n";
+    if ( $pickedClass eq "" ||
+         ( ! $pickedClassCompat && $dnaAndProteinCompatible && 
+           $dnaScores->{$dnaMatch} >= (2/3) * $dnaScores->{$pickedClass} ) )
+    {
+      $pickedClass = $dnaMatch;
+      $pickedClassCompat = $dnaAndProteinCompatible;
+      last if ( $pickedClassCompat || $dnaScores->{$dnaMatch} < (2/3) * $dnaScores->{$pickedClass} );
     }
   }
-  #print "final combination: $combination\n";
+  print "  - Picked: $pickedClass ( compat?: $pickedClassCompat )\n";
 
   # Pick between highest scoring DNA match and highest scoring Protein match
-  &matchprotanddnaclass( $protclass,    $orient, $combination,
-                         $combscoreref, $protPVal );
+  &matchprotanddnaclass( $protClass, $protOrient, $pickedClass,
+                         $dnaScores, $protPVal, $queryLen );
 
-# returns preferred class and orientation, and if there is a conflict (yes = 0!)
 }
+      
 
 ##------------------------------------------------------------------------------##
-## No Clue
+## Arian's code
 ##------------------------------------------------------------------------------##
 sub matchprotanddnaclass {
-  my ( $protclass, $orient, $comb, $combscoreref, $pval ) = @_;
+  my ( $protclass, $orient, $comb, $combscoreref, $pval, $queryLen ) = @_;
 
-  #print $CLASS
-  #    . "::matchprotanddnaclass( $protclass, $orient, " . Dumper($comb) . ", "
-  #    . Dumper($combscoreref) . ", $pval ): Called.\n"
-  #    if (  $DEBUG );
+  $Data::Dumper::Terse = 1;
+  print $CLASS
+      . "::matchprotanddnaclass( $protclass, $orient, $comb, "
+      . Dumper($combscoreref) . ", $pval ): Called.\n"
+      if (  $DEBUG );
 
   my %combscore = %$combscoreref;
   my ( $q, $dnaclass, $dnaori ) = split /\#/, $comb;
@@ -1095,19 +1133,29 @@ sub matchprotanddnaclass {
 
   # which one has the better score?
   my $choice = "";
-  if ( defined $pval ) {
+print "Making a choice with pval=$pval ($protclass) score=$combscore{$comb} ($dnaclass) \n";
+  if ( defined $pval && $pval ne "" ) {
     if ( $combscore{$comb} < 333 && $pval < 0.00001 ) {
+print "Picking PROT\n";
       $choice = $protclass;
       $ori        = $orient;
     }
     elsif ( $combscore{$comb} >= 333 && $pval >= 0.00001 ) {
+print "Picking DNA\n";
       $choice = $dnaclass;
       $ori        = $dnaori;
+    }elsif ( $combscore{$comb} >= 250 && $pval < 0.0001 && $protclass eq $dnaclass ) {
+      $choice = $dnaclass;
+      $ori    = $dnaori;
     }
+  }elsif ( $combscore{$comb} >= 250 ) 
+  {
+    $choice = $dnaclass;
+    $ori    = $dnaori;
   }
-  #print $CLASS
-  #    . "::matchprotanddnaclass(): choice = $choice\n"
-  #    if ( $DEBUG );
+  print $CLASS
+      . "::matchprotanddnaclass(): choice = $choice orient=$ori\n"
+      if ( $DEBUG );
  
   if ( $protclass =~ /Unknown/ ) {
     $class = $dnaclass;
@@ -1188,27 +1236,27 @@ sub matchprotanddnaclass {
     if ( $choice eq $protclass ) {
 
       # don't change class or orientation
-      #print "rejected repeatmasker match $comb of score $combscore{$comb}; "
-      #    . "different orientation that blastx match with p "
-      #    . "value $pval\n"
-      #    if ( $DEBUG );
+      print "rejected repeatmasker match $comb of score $combscore{$comb}; "
+          . "different orientation that blastx match with p "
+          . "value $pval\n"
+          if ( $DEBUG );
       $ori = $orient;
     }
     elsif ( $choice ) {
       $class = $dnaclass;
       $ori   = $dnaori;
-      #print "rejected blastx match to $q with p value $pval "
-      #    . "because of a Smith Waterman score $combscore{$comb} "
-      #    . "to the opposite strand\n"
-      #    if ( $DEBUG );
+      print "rejected blastx match to $q with p value $pval "
+          . "because of a Smith Waterman score $combscore{$comb} "
+          . "to the opposite strand\n"
+          if ( $DEBUG );
     }
     else {
       $class = "Unknown";
       $ori   = 'Plus';
-      #print "Changed class $protclass to \'Unknown\' because of a "
-      #    . "poor blastn match in opposite orientation and an equally "
-      #    . "poor p value of the blastx match ($pval)\n"
-      #    if ( $DEBUG );
+      print "Changed class $protclass to \'Unknown\' because of a "
+          . "poor blastn match in opposite orientation and an equally "
+          . "poor p value of the blastx match ($pval)\n"
+          if ( $DEBUG );
     }
   }
   if ( $class =~ /^SINE/ ) {
@@ -1217,12 +1265,12 @@ sub matchprotanddnaclass {
     }
   }
   elsif ( $class eq 'tRNA' ) {
-    $class = "SINE\?";
-
-    # TO FIX: if length of sequence > 80 bp, but I did not save
-    # length -> these could be genuine tRNAs
+    # Length of the query is such that it might not be a tRNA but rather a SINE
+    if ( $queryLen > 85 ) {
+      $class = "SINE\?";
+    }
   }
-  print "matchprotanddnaclass RETURNING $class, $ori, $noconflict\n" if ( $DEBUG );
+  #print "matchprotanddnaclass RETURNING class=$class, orient=$ori, noconflict=$noconflict\n" if ( $DEBUG );
   return ( $class, $ori, $noconflict );
 }
 
@@ -1236,33 +1284,37 @@ sub changeconsensusfastafile {
   my $outfile  = shift;
   my %class    = %$classref;    # I find it easier that way
   my %ori      = %$oriref;
-  open( OUT, ">$outfile" );
+  my $preserve_class = shift;
 
+  open OUT, ">$outfile" or die "Could not open $outfile for writing!\n";
   my $consDB = FastaDB->new( fileName => $infile,
                              openMode => SeqDBI::ReadOnly );
-
   foreach my $seqID ( $consDB->getIDs() ) {
-    
-    my $className = $class{ $seqID };
-    $className = "Unknown" if ( $className eq "" );
-    if ( defined $simpleRepeatsRef->{ $seqID } ) {
-      $className = "Simple_repeat";
-    }
-    print OUT ">" . $seqID . "#$className " . $consDB->getDescription( $seqID ) . "\n";
+    my $sanitizedID = $seqID;
+    $sanitizedID = $1 if ( $seqID =~ /^([^\#]+)\#.*$/ ); 
     my $seq = $consDB->getSequence( $seqID );
-    if ( defined $ori{ $seqID } && 
-         $ori{ $seqID } eq "Minus" ) {
-      $seq =~ tr/ACGTYRMKHBVDacgtyrmkhbvd/TGCARYKMDVBHtgcarykmdvbh/;
-      $seq = reverse $seq;
+    if ( $preserve_class && 
+         $sanitizedID ne $seqID ) {
+      print OUT ">$seqID " . $consDB->getDescription( $seqID ) . "\n";
+    }else {
+      my $className = $class{ $sanitizedID };
+      $className = "Unknown" if ( $className eq "" );
+      if ( defined $simpleRepeatsRef->{ $sanitizedID } ) {
+        $className = "Simple_repeat";
+      }
+      print OUT ">" . $sanitizedID . "#$className " . $consDB->getDescription( $seqID ) . "\n";
+      if ( defined $ori{ $sanitizedID } && 
+           $ori{ $sanitizedID } eq "Minus" ) {
+        $seq =~ tr/ACGTYRMKHBVDacgtyrmkhbvd/TGCARYKMDVBHtgcarykmdvbh/;
+       $seq = reverse $seq;
+      }
     }
     $seq =~ s/(.{50})/$1\n/g;
     print OUT "$seq\n";
-
   }
   close OUT;
   undef $consDB;
 }
-
 
 sub changeStockholmFile 
 {
@@ -1273,13 +1325,14 @@ sub changeStockholmFile
   my $outfile  = shift;
   my %class    = %$classref;  
   my %ori      = %$oriref;
+  my $preserve_class = shift;
 
 #
 # NOTE: This is a temporary translation table from the RepeatMasker classication
 #       scheme to the Dfam_consensus one.  It's temporary for two reasons.  First
 #       the RM scheme has a one-one mapping with the Dfam_consensus scheme at this
 #       stage but that is not guaranteed to last.  Second, we intend to use the
-#       new scheme in the classifier at some point making it nuncessary to do this
+#       new scheme in the classifier at some point making it unnecessary to do this
 #       mapping or maintain this table.
 my %rmToDfamClass = (
     'dna/crypton' => 'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton',
@@ -1511,22 +1564,25 @@ my %rmToDfamClass = (
   {
     my $seedAlign = $stockholmFile->get($i);
     my $id = $seedAlign->getId();
-    my $className = $class{ $id };
-    $className = "Unknown" if ( $className eq "" );
-    if ( defined $simpleRepeatsRef->{ $id } ) {
-      $className = "Simple_repeat";
-    }
-    my $dfamClass = "";
-    if ( defined $rmToDfamClass{lc($className)} )
-    {
-      $dfamClass = $rmToDfamClass{lc($className)};
-    }
-    $seedAlign->setClassification( $dfamClass );
-    # TODO: Reverse the seed alignments if we determine
-    #       the element to be reversed.
-    if ( defined $ori{ $id } &&
-         $ori{ $id } eq "Minus" ) {
-      $seedAlign->reverseComplementAlignment();
+    my $sanitizedID = $id;
+    $sanitizedID = $1 if ( $id =~ /^([^\#]+)\#.*$/ ); 
+    unless ( $preserve_class && 
+             $sanitizedID ne $id ) {
+      my $className = $class{ $sanitizedID };
+      $className = "Unknown" if ( $className eq "" );
+      if ( defined $simpleRepeatsRef->{ $id } ) {
+        $className = "Simple_repeat";
+      }
+      my $dfamClass = "";
+      if ( defined $rmToDfamClass{lc($className)} )
+      {
+        $dfamClass = $rmToDfamClass{lc($className)};
+      }
+      $seedAlign->setClassification( $dfamClass );
+      if ( defined $ori{ $id } &&
+           $ori{ $id } eq "Minus" ) {
+        $seedAlign->reverseComplementAlignment();
+      }
     }
     print OUT "" . $seedAlign->toString();
   }
