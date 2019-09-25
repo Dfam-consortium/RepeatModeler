@@ -333,12 +333,11 @@ foreach my $seqID ( $maskedDB->getIDs() )
   my $seq = $maskedDB->getSequence( $seqID );
   $seq =~ s/[Nn]/\#/g;
   my $numAmbig = ($seq =~ tr/\#/\#/);
-print "$seqID is $numAmbig bp of low complexity ( " . ( $numAmbig / length( $seq ) ) . " )\n$seq\n";
   if ( $numAmbig > 0 ) 
   {
     if ( length($seq)-$numAmbig < 40 ) 
     {
-      warn "Consensus $seqID is largely simple/low-complexity ( " . ( length($seq)-$numAmbig ) . " unmasked ).\n"
+      warn "Consensus $seqID is largely simple/low-complexity ( " . ( length($seq)-$numAmbig ) . "bp unmasked ).\n"
                 if ( $DEBUG );
       $simpleRepeats{ $seqID }++;
     }
@@ -1071,14 +1070,14 @@ sub conflictsolver {
   # Choose the higest scoring match at first.  If it's not
   # compatible look for something that is at least 2/3's its
   # score and *is* compatible to replace it.
-  print "conflictsolver: $query\n";
-  print "  - Best protein hit: class=$protClass pVal=$protPVal orient=$protOrient\n";
-  print "  - DNA Matches: " . Dumper($dnaScores) . "\n";
+  #print "conflictsolver: $query\n";
+  #print "  - Best protein hit: class=$protClass pVal=$protPVal orient=$protOrient\n";
+  #print "  - DNA Matches: " . Dumper($dnaScores) . "\n";
   foreach my $dnaMatch ( sort { $dnaScores->{$b} <=> $dnaScores->{$a} } keys %{$dnaScores} ) {
     my ( $temp1, $temp2, $dnaAndProteinCompatible ) =
         &matchprotanddnaclass( $protClass, $protOrient, $dnaMatch, $dnaScores,
                                $protPVal, $queryLen );
-    print "  - Considering $dnaMatch: score = $dnaScores->{$dnaMatch} compatible?: $dnaAndProteinCompatible\n";
+    #print "  - Considering $dnaMatch: score = $dnaScores->{$dnaMatch} compatible?: $dnaAndProteinCompatible\n";
     if ( $pickedClass eq "" ||
          ( ! $pickedClassCompat && $dnaAndProteinCompatible && 
            $dnaScores->{$dnaMatch} >= (2/3) * $dnaScores->{$pickedClass} ) )
@@ -1088,7 +1087,7 @@ sub conflictsolver {
       last if ( $pickedClassCompat || $dnaScores->{$dnaMatch} < (2/3) * $dnaScores->{$pickedClass} );
     }
   }
-  print "  - Picked: $pickedClass ( compat?: $pickedClassCompat )\n";
+  #print "  - Picked: $pickedClass ( compat?: $pickedClassCompat )\n";
 
   # Pick between highest scoring DNA match and highest scoring Protein match
   &matchprotanddnaclass( $protClass, $protOrient, $pickedClass,
@@ -1133,15 +1132,12 @@ sub matchprotanddnaclass {
 
   # which one has the better score?
   my $choice = "";
-print "Making a choice with pval=$pval ($protclass) score=$combscore{$comb} ($dnaclass) \n";
   if ( defined $pval && $pval ne "" ) {
     if ( $combscore{$comb} < 333 && $pval < 0.00001 ) {
-print "Picking PROT\n";
       $choice = $protclass;
       $ori        = $orient;
     }
     elsif ( $combscore{$comb} >= 333 && $pval >= 0.00001 ) {
-print "Picking DNA\n";
       $choice = $dnaclass;
       $ori        = $dnaori;
     }elsif ( $combscore{$comb} >= 250 && $pval < 0.0001 && $protclass eq $dnaclass ) {

@@ -211,7 +211,7 @@ de-novo repeatfinding program.',
 #
 #
 #
-$VERSION = "2.0-alpha-1";
+$VERSION = "2.0-beta-1";
 
 #
 #
