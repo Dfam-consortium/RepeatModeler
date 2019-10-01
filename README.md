@@ -10,17 +10,17 @@ GitHub Conventions:
 RepeatModeler 
 =============
 
-RepeatModeler is a de novo transpposable element family identification and 
+RepeatModeler is a de novo transposable element (TE) family identification and 
 modeling package. At the heart of RepeatModeler are three de-novo repeat finding
-programs ( RECON, RepeatScout and LtrDetector ) which employ complementary 
-computational methods for identifying repeat element boundaries and family 
-relationships from sequence data.
+programs ( RECON, RepeatScout and LtrHarvest/Ltr_retriever ) which employ 
+complementary computational methods for identifying repeat element boundaries
+and family relationships from sequence data.
 
 RepeatModeler assists in automating the runs of the various algorithms
 given a genomic database, clustering redundant results, refining and 
 classifying the families and producing a high quality library of
-transposable element families suitable for use with RepeatMasker and
-ultimately for submission to the Dfam.org database.
+TE families suitable for use with RepeatMasker and ultimately for submission
+to the Dfam database ( http://dfam.org ).
 
 Authors
 -------
@@ -38,7 +38,13 @@ Installation
  described in the "Source Distribution Installation" instructions
  below, or using one of our container images ( Docker or Singularity ).
  The containers include RepeatModeler, it's prerequisites and additional
- transposable element analysis tools/utilities used by Dfam. 
+ TE analysis tools/utilities used by Dfam. 
+
+
+Container Distribution Installation
+-----------------------------------
+
+
 
 Source Distribution Installation
 --------------------------------
@@ -66,12 +72,13 @@ Source Distribution Installation
     http://www.repeatmasker.org/RepeatScout-1.0.6.tar.gz
 
   TRF - Tandem Repeat Finder, G. Benson et al.
-    You can obtain a free copy at http://tandem.bu.edu/trf/trf.html. 
-    RepeatModeler was developed using 4.0.9.
+    You can obtain a free copy at http://tandem.bu.edu/trf/trf.html
+    RepeatModeler requires version 4.0.9 or higher.
 
   RMBlast - A modified version of NCBI Blast for use with RepeatMasker
     and RepeatModeler.  Precompiled binaries and source can be found at
     http://www.repeatmasker.org/RMBlast.html
+    We recommend using 2.9.0-p2 or higher.
 
   Optional. Additional search engine:
   
@@ -81,19 +88,36 @@ Source Distribution Installation
 
   Optional. Required for running LTR structural search pipeline:
 
-  LtrDetector - 
-  Ltr_retriever - 
-  MAFFT -
-  CD-HIT -
-  Ninja -
+  LtrHarvest - The LtrHarvest program is part of the GenomeTools suite.  We
+    have developed this release of RepeatModeler on GenomeTools version 1.5.9 
+    available for download from here: http://genometools.org/pub/
+          
+  Ltr_retriever - A LTR discovery post-processing and filtering tool.  We 
+    recommend using version 2.6 or higher from here: 
+    https://github.com/oushujun/LTR_retriever/releases
+
+  MAFFT - A multiple sequence alignment program.  We developed and tested
+    RepeatModeler using mafft version 7.407.  Please use this verison or
+    higher from here:
+    https://mafft.cbrc.jp/alignment/software/
+
+  CD-HIT - A sequence clustering package.  We developed and tested
+    RepeatModeler using version 4.8.1.  Please use this version or higher
+    from:
+    http://weizhongli-lab.org/cd-hit/
+
+  Ninja - A tool for large-scale neighbor-joining phylogeny inference and 
+    clustering.  We developed and tested RepeatModeler using Ninja version
+    ....  Please obtain a copy from:
+    https://github.com/TravisWheelerLab/NINJA/releases 
 
 
   1. Obtain the source distribution
-       - Github : https://github.com/rmhubley/RepeatModeler
+       - Github : https://github.com/Dfam-consortium/RepeatModeler
          Available by cloning the master branch of the RepeatModeler repository
          ( latest released version ) or by downloading a release from the 
          repository "releases" tab.
-
+     or 
        - RepeatMasker Website : http://www.repeatmasker.org/RepeatModeler
 
   2. Uncompress and expand the distribution archive:
@@ -146,39 +170,49 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
      which make it easier to import multiple sequence files into
      one database.
   
-     NOTE: It is a good idea to place your datafiles and run this
-           program suite from a local disk rather than over NFS.
+     TIP: It is a good idea to place your datafiles and run this
+          program suite from a local disk rather than over NFS. 
+          This will greatly improve runtime as the filesystem 
+          access is considerable
 
   2. Run RepeatModeler
      
      RepeatModeler runs several compute intensive programs on the
-     input sequence.  For best results run this on a machine with
-     a moderate amount of memory and several processors.  Our typical
-     setup was P4 - 4 cpus, 2.4Ghz, 3GB Memory, and Red Hat Linux. 
+     input sequence.  For best results run this on a single machine with
+     a moderate amount of memory > 32GB and multiple processors.  
+     Our setup is Xeon(R) CPU E5-2680 v4 @ 2.40GHz - 28 cores, 128GB RAM.
+     To specify a run using 20 cpus, and including the new LTR discovery
+     pipeline:
      
-     nohup <RepeatModelerPath>/RepeatModeler -database elephant >& run.out &
+     nohup <RepeatModelerPath>/RepeatModeler -database elephant 
+            -pa 20 -LTRStruct >& run.out &
      
      The nohup is used on our machines when running long ( > 3-4 hour ) 
-     jobs.  The output is saved to a file and the process is backgrounded.
-     For typical runtimes ( can be > 2 days with this configuration )
-     see the run statistics section of this file.
+     jobs.  The log output is saved to a file and the process is backgrounded.
+     For typical runtimes ( can be > 3 days with this configuration )
+     see the run statistics section of this file.  It is important to save
+     the log output for later usage.  It contains the random number 
+     generator seed so that the sampling process may be reproduced if
+     necessary.  In addition the log file contains details about the
+     progress of the run for later assesment of peformance or debuging 
+     problems.
 
   3. Interpret the results
 
-     This development version of RepeatModeler produces a voluminous
-     amount of output.  The raw output is directed to a working directory
-     named RM_<PID>.<DATE> ie. "RM_5098.MonMar141305172005" and remains
-     after each run for debugging purposes.  At the completion of the
+     RepeatModeler produces a voluminous amount of temporary files stored
+     in a directory created at runtime named like:
+       RM_<PID>.<DATE> ie. "RM_5098.MonMar141305172005" 
+     and remains after each run for debugging purposes or resumed runs
+     if a failure occurs.  At the succesful completion of a run
      run two files are generated:
 
                <database_name>-families.fa  : Consensus sequences
                <database_name>-families.stk : Seed alignments
 
      The seed alignment file is in a Dfam compatible Stockholm format and
-     may be uploaded to the new open Dfam_consensus database using the 
-     util/dfamConsensusTool.pl. 
-     See http://www.repeatmasker.org/RepeatModeler/dfamConsensusTool for
-     details.
+     may be uploaded to the Dfam database by submiting the data to 
+     help@dfam.org.  In the near future we will provide a tool for uploading
+     families directly to the database.
 
      The fasta format is useful for running quick custom library searches
      using RepeatMasker.  Ie.:
@@ -188,6 +222,8 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
      Other files produced in the working directory include:
 
        RM_<PID>.<DATE>/
+          consensi.fa
+          families.stk
           round-1/
                sampleDB-#.fa       : The genomic sample used in this round
                sampleDB-#.fa.lfreq : The RepeatScout lmer table
