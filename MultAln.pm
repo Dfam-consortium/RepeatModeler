@@ -4573,6 +4573,17 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 )
   assumes a AT bias in the genome ( good for mammals ) in the
   hardcoded lineup matrix.  
 
+  CpG mutability is due to the frequent methylation of the cytosine
+  ( 5-methylcytosine ). In vertebrates this accounts for 70-80% of the
+  CpG sites. In most eukaryotes the percentage is much smaller.
+
+  Plants in particular also methylate the cytosine at additional sites:
+  Cp[ACT]pG and Cp[ACT]p[ACT].
+
+  Colot, Vincent, and Jean¿Luc Rossignol. "Eukaryotic DNA methylation as an evolutionary device." Bioessays 21.5 (1999): 402-411.
+
+
+
 =cut
 
 ##---------------------------------------------------------------------##

@@ -501,7 +501,7 @@ if ( $options{'skipRS'} ) {
   # If we are skipping RS we need to do this early check to make sure
   # the genome isn't really small and would cause only one round of
   # RECON to run.
-  $sampleSize = $reconSampleSizeStart if ( $options{'skipRS'} );
+  $sampleSize = $reconSampleSizeStart; 
   if ( ( $dbSize - ( $totSampledBP + $sampleSize ) ) <= ($sampleSize/2) )
   {
     print "   - Increasing sample size to include end piece now = ";
@@ -861,7 +861,11 @@ while ( 1 ) {
     }
     $round++;
 
-    last if ( $options{'onlyRS'} );
+    last if ( $options{'onlyRS'} )
+
+    # reset the sampleSize for the first round of RECON.
+    $sampleSize = $reconSampleSizeStart;
+
     next;
   }
 
@@ -880,10 +884,9 @@ while ( 1 ) {
   }
   print "   - TRFMask time " . elapsedTime( 3 ) . "\n";
 
-  # Mask repeats from previous round*s*
-  if ( $round > 1 && -s $consensiFile )
+  # Mask repeats from previous round*s* - if there are any
+  if ( -s $consensiFile )
   {
-
     print " -- Masking repeats from the previous rounds...\n";
 
     $searchEngineN->setMinScore( 250 );
@@ -1533,43 +1536,37 @@ while ( 1 ) {
   #  $fragmentSize                 : The size of the batches for all-vs-other comparisons
   #
   # Calculate the new sampleSize for the next round
-  if ( $round == 1 ) {
-    # Just completed RepeatScout round, reset the sampleSize for the first
-    # round of RECON.
-    $sampleSize = $reconSampleSizeStart;
+  # RECON Rounds, check for completion.
+  if ( $options{'onlyIns'} ) {
+    if ( $sampleSize >= $genomeSampleSizeMax ||
+         $sampleSize >= $dbSize )
+    {
+      last;
+    }
   }else {
-    # RECON Rounds, check for completion.
-    if ( $options{'onlyIns'} ) {
-      if ( $sampleSize >= $genomeSampleSizeMax ||
-           $sampleSize >= $dbSize )
-      {
-        last;
-      }
-    }else {
-       if ( $totSampledBP >= $dbSize ||
-            $sampleSize >= $genomeSampleSizeMax ||
-            $seqRemaining < $fragmentSize )
-       {
-         last;
-       }
-    }
-
-    # This is a followup round of RECON, scale sampleSize accordingly
-    $sampleSize *= $genomeSampleSizeMultiplier;
-    # Are we sampling without replacement? If so, make sure
-    # we don't run out of sequence.
-    if ( ! $options{'onlyIns'} ) {
-      if ( $seqRemaining > 0 && $seqRemaining <= ($sampleSize/2) )
-      {
-        print "   - Increasing sample size to include end piece now = ";
-        $sampleSize += $seqRemaining;
-        print "$sampleSize\n";
-      }
-    }
-    # Do not go overboard
-    $sampleSize = $genomeSampleSizeMax
-        if ( $sampleSize > $genomeSampleSizeMax );
+     if ( $totSampledBP >= $dbSize ||
+          $sampleSize >= $genomeSampleSizeMax ||
+          $seqRemaining < $fragmentSize )
+     {
+       last;
+     }
   }
+
+  # This is a followup round of RECON, scale sampleSize accordingly
+  $sampleSize *= $genomeSampleSizeMultiplier;
+  # Are we sampling without replacement? If so, make sure
+  # we don't run out of sequence.
+  if ( ! $options{'onlyIns'} ) {
+    if ( $seqRemaining > 0 && $seqRemaining <= ($sampleSize/2) )
+    {
+      print "   - Increasing sample size to include end piece now = ";
+      $sampleSize += $seqRemaining;
+      print "$sampleSize\n";
+    }
+  }
+  # Do not go overboard
+  $sampleSize = $genomeSampleSizeMax
+      if ( $sampleSize > $genomeSampleSizeMax );
 
   $round++;
 }    # Main Loop while(...
