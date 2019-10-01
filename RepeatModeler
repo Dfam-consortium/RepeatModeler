@@ -861,7 +861,7 @@ while ( 1 ) {
     }
     $round++;
 
-    last if ( $options{'onlyRS'} )
+    last if ( $options{'onlyRS'} );
 
     # reset the sampleSize for the first round of RECON.
     $sampleSize = $reconSampleSizeStart;
