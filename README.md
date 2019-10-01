@@ -49,7 +49,8 @@ Container Distribution Installation
 Source Distribution Installation
 --------------------------------
 
-__Prerequisites__
+**Prerequisites**
+
   Perl
     Available at http://www.perl.org/get.html. Developed and tested
     with version 5.8.8.
@@ -81,13 +82,13 @@ __Prerequisites__
     http://www.repeatmasker.org/RMBlast.html
     We recommend using 2.9.0-p2 or higher.
 
-  **Optional. Additional search engine:**
+**Optional. Additional search engine:**
   
   ABBlast - Sequence Search Engine, W. Gish et al.
     Developed and tested with 2.0 [04-May-2006]. The latest versions
     of ABBlast may be downloaded from: http://blast.advbiocomp.com/licensing/
 
-  **Optional. Required for running LTR structural search pipeline:**
+**Optional. Required for running LTR structural search pipeline:**
 
   LtrHarvest - The LtrHarvest program is part of the GenomeTools suite.  We
     have developed this release of RepeatModeler on GenomeTools version 1.5.9 
@@ -112,6 +113,7 @@ __Prerequisites__
     ....  Please obtain a copy from:
     https://github.com/TravisWheelerLab/NINJA/releases 
 
+**Installation**
 
   1. Obtain the source distribution
        - Github : https://github.com/Dfam-consortium/RepeatModeler
