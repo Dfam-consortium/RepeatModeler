@@ -1590,6 +1590,7 @@ if ( $options{'LTRStruct'} ) {
   {
     my $optionalArgs = "";
     $optionalArgs = "-max_seq_len $options{'LTRMaxSeqLen'}" if ( exists $options{'LTRMaxSeqLen'} );
+    $optionalArgs = "-pa $options{'pa'}" if ( exists $options{'pa'} );
     ## Run the LTR Pipeline
     system("$FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq");
     unlink "$tmpDir/tmpInputSeq";

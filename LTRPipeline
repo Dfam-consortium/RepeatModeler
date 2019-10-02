@@ -205,7 +205,9 @@ my %TimeBefore = ();
 elapsedTime( "runtime" );    # Setup the timers
 
 # Run LTR Detector
+elapsedTime( "step" );    
 if ( $useLtrDet ) {
+  print "Running LtrDetector...";
   my $numAnnots = &runLtrDetector( $LTR_DETECTOR_DIR, $inputFile, 
                                    "$tempDir/raw-struct-results.txt", $threads, $tempDir);
   if ( $numAnnots == 0 ) {
@@ -213,21 +215,26 @@ if ( $useLtrDet ) {
     exit;
   }
 } else {
+  print "Running LtrHarvest...";
   my $numAnnots = &runLtrHarvest( $GENOMETOOLS_DIR, $inputFile, "$tempDir/raw-struct-results.txt", $threads, $tempDir);
   if ( $numAnnots == 0 ) {
     print "LTRPipeline: No results returned from LTR structural finder ( LtrHarvest ).\n";
     exit;
   }
 }
+print "  : runtime " . elapsedTime( "step" ) . "\n";
 
 
 # Postprocess results using LTR_Retriever
+elapsedTime( "step" );    
+print "Running Ltr_retriever...";
 &runLtrRetriever( $LTR_RETRIEVER_DIR, $inputFile, "$tempDir/raw-struct-results.txt", "$tempDir/LtrRetriever-redundant-results.fa", $threads );
 if ( ! -s "$tempDir/LtrRetriever-redundant-results.fa" )
 {
   print "LTRPipeline: No results after LTR_Retriever filtering.\n";
   exit;
 }
+print "  : runtime " . elapsedTime( "step" ) . "\n";
 
 if ( $options{'max_seq_len'} && $options{'max_seq_len'} =~ /\d+/ ) {
   system("mv $tempDir/LtrRetriever-redundant-results.fa $tempDir/LtrRetriever-redundant-results-orig.fa");
@@ -263,18 +270,26 @@ if ( $options{'max_seq_len'} && $options{'max_seq_len'} =~ /\d+/ ) {
 }
 
 # Group elements into families using a scoring system that accounts for common deletion products
+elapsedTime( "step" );    
+print "Aligning instances...";
 &runMafft( $MAFFT_DIR, "$tempDir/LtrRetriever-redundant-results.fa", "$tempDir/mafft-alignment.fa", $threads );
 if ( ! -s "$tempDir/mafft-alignment.fa" )
 {
   print "LTRPipeline: Error - could not produce a multiple alignment from the denovo LTR results.\n";
   exit;
 }
+print "  : runtime " . elapsedTime( "step" ) . "\n";
+
+#
+elapsedTime( "step" );    
+print "Clustering...";
 &runNinja( $NINJA_DIR, "$tempDir/mafft-alignment.fa", "$tempDir/clusters.dat", $threads );
 if ( ! -s "$tempDir/clusters.dat" )
 {
   print "LTRPipeline: Error - could not cluster MAFFT results.\n";
 }
-# TODO:
+print "  : runtime " . elapsedTime( "step" ) . "\n";
+#
 #   Here Jullien screened out families which have similarity to DNA Transposons or LINE elements by searching
 #   with RepeatMasker.  Since this is a de-novo approach we do not expect there to be a library available.
 #   One could search against all known LINE/DNA elements but that will need further thought.
@@ -316,6 +331,8 @@ if ( $seq ) {
 close IN;
 
 # Process each cluster
+elapsedTime( "step" );    
+print "Refining families...";
 open OUTSTK, ">$tempDir/families.stk"
   or die "Could not create $tempDir/families.stk!\n";
 open OUTCON, ">$tempDir/families.fa"
@@ -393,6 +410,7 @@ foreach my $cluster ( sort keys %clusters ){
         print OUTCON "$cons\n";
   }
 }
+print "  : runtime " . elapsedTime( "step" ) . "\n";
 close OUTCON;
 close OUTSTK;
 system ("cp $tempDir/families.fa $inputFile-ltrs.fa") if ( -s "$tempDir/families.fa" );
