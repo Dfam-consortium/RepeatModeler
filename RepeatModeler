@@ -1807,6 +1807,8 @@ elapsedTime( 1 );
 if ( $numModels > 0 )
 {
   print "\n\n";
+  my $addlOpts = "";
+  $addlOpts = "-pa $options{'pa'} " if ( $options{'pa'} );
   system(   "$FindBin::RealBin/RepeatClassifier "
           . "-consensi $tmpDir/consensi.fa -stockholm $tmpDir/families.stk" );
   print "Classification Time: " . elapsedTime( 1 ) . "\n";

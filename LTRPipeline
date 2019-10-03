@@ -575,6 +575,11 @@ sub runLtrHarvest {
   die "LTRPipeline::runLtrHarvest : Could not find input file $seqFile\n"
     if ( ! -s $seqFile );
 
+  # Flag to maintain files should an error occur
+  my $errorFlag = 0;
+  # Total number of annotations found
+  my $annotCnt = 0;
+
   # Create temporary directory
   my $tmpDir;
   if ( ! defined $wrkDir || ! -d $wrkDir ) {
@@ -589,38 +594,50 @@ sub runLtrHarvest {
   # esa_* files in the working directory only
   my $full_seqFile = File::Spec->rel2abs( $seqFile );
   my $origDir = getcwd();
+  my $addlOpts = "";
+  $addlOpts = "-j $options{'pa'} " if ( $options{'pa'} );
   chdir( $tmpDir );
-  my $cmd = "$binDir/gt suffixerator -db $full_seqFile -indexname esa_index -tis -suf -lcp -des -ssp -sds -dna > suffixerator.log 2>&1";
-  system($cmd);
-  
-  # Run ltrharvest
-  $cmd = "$binDir/gt ltrharvest -index esa_index -out ltrharvest.out > ltrharvest.log 2>&1";
-  system($cmd);
+  my $cmd = "$binDir/gt $addlOpts suffixerator -db $full_seqFile -indexname esa_index -tis -suf -lcp -des -ssp -sds -dna > suffixerator.log 2>&1";
+  my $retCode = system($cmd);
+  if ( $retCode != 0 ) {
+    warn "LtrPipeline: GenomeTools failed to build suffixtree datastructure.  This is frequently\n" .
+         "             caused by a lack of disk space. Error code: " . ( $? << 8 ) . "\n";
+    $errorFlag = 1;
+  }else {
+    # Run ltrharvest
+    $cmd = "$binDir/gt $addlOpts ltrharvest -index esa_index -out ltrharvest.out > ltrharvest.log 2>&1";
+    $retCode = system($cmd);
+    if ( $retCode != 0 ) {
+      warn "LtrPipeline: GenomeTools failed to run ltrharvest. Error code: " . ( $? << 8 ) . "\n";
+      $errorFlag = 1;
+    }
+    if ( -s "$tmpDir/ltrharvest.log" )
+    {
+      open IN,"<$tmpDir/ltrharvest.log" or die "Could not open $tmpDir/ltrharvest.log for reading!\n";
+      open OUT,">$outFile" or die "Could not open $outFile for writing!\n";
+      while ( <IN> ) {
+        if ( /^#/ ) {
+          print OUT;
+        }elsif ( /^\d+\s+\d+\s+\d+\s+\d+/ ) {
+          $annotCnt++;
+          print OUT;
+        }elsif ( /^\s*$/ ) {
+          # Don't save
+        }else{
+          warn "LtrPipeline: Ltrharvest returned an unexpected result line:\n$_";
+          $errorFlag = 1;
+        }
+      }
+      close IN;
+      close OUT;
+    }else {
+      # Expected some sort of output 
+      $errorFlag = 1;
+    }
+  }
   chdir( $origDir );
 
-  my $annotCnt = 0;
-  if ( -s "$tmpDir/ltrharvest.log" )
-  {
-    open IN,"<$tmpDir/ltrharvest.log" or die "Could not open $tmpDir/ltrharvest.log for reading!\n";
-    open OUT,">$outFile" or die "Could not open $outFile for writing!\n";
-    while ( <IN> ) {
-      if ( /^#/ ) {
-        print OUT;
-      }elsif ( /^\d+\s+\d+\s+\d+\s+\d+/ ) {
-        $annotCnt++;
-        print OUT;
-      }elsif ( /^\s*$/ ) {
-        # Don't save
-      }else{
-        warn "LtrPipeline: Ltrharvest returned an unexpected result line:\n$_";
-      }
-    }
-    close IN;
-    close OUT;
-  }
-
-  # TODO: Consider keeping on error
-  unless ( $DEBUG ) {
+  unless ( $DEBUG || $errorFlag ) {
     rmtree($tmpDir);
   }
 

@@ -114,7 +114,7 @@ my $version = $RepModelConfig::VERSION;
 #   -t=s: String parameters
 #   -t=i: Number paramters
 #
-my @opts = qw( help consensi=s engine=s stockholm=s debug preserve_class );
+my @opts = qw( help consensi=s engine=s stockholm=s debug preserve_class pa=s );
 # Add configuration parameters as additional command-line options
 push @opts, RepModelConfig::getCommandLineOptions();
 
@@ -401,7 +401,8 @@ if ( $engine eq "abblast" )
   $ENV{WUBLASTMAT} = $ENV{BLASTMAT};
   $blastCmd = "$WUBLASTX_PRGM " .
                "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib " .
-               "$options{'consensi'}.masked -W 2 > tmpBlastXResults.out 2>&1";
+               "$options{'consensi'}.masked -W 2 " . 
+               " > tmpBlastXResults.out 2>&1";
   print "      + Running abblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
 }elsif ( $engine eq "rmblast"  )
 {
@@ -412,8 +413,11 @@ if ( $engine eq "abblast" )
        ."Please rerun the configure program in the RepeatModeler directory\n"
        ."before running this script.\n";
   }
+  my $additionalOpts = "";
+  $additionalOpts = "-num_threads $options{'pa'} " if ( $options{'pa'} );
   $blastCmd = "$NCBIBLASTX_PRGM " .
        "-db $REPEATMASKER_DIR/Libraries/RepeatPeps.lib " .
+       $additionalOpts . 
        "-query tmpConsensi.fa.masked -word_size 2 > tmpBlastXResults.out 2>&1";
   print "      + Running rmblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
 }
@@ -468,6 +472,9 @@ $searchEngineN->setInsGapExt( -5 );
 $searchEngineN->setDelGapExt( -5 );
 $searchEngineN->setMinMatch( 7 );
 $searchEngineN->setUseDustSeg( 0 );
+if ( $options{'pa'} ) {
+  $searchEngineN->setCores( $options{'pa'} );
+}
 $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
 $searchEngineN->setQuery( "tmpConsensi.fa.masked" );
 

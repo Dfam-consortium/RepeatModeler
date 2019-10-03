@@ -93,6 +93,8 @@ Source Distribution Installation
   LtrHarvest - The LtrHarvest program is part of the GenomeTools suite.  We
     have developed this release of RepeatModeler on GenomeTools version 1.5.9 
     available for download from here: http://genometools.org/pub/
+    NOTE: use the "make threads=yes" build options to enable multi-threaded
+          runs.
           
   Ltr_retriever - A LTR discovery post-processing and filtering tool.  We 
     recommend using version 2.6 or higher from here: 
@@ -110,8 +112,8 @@ Source Distribution Installation
 
   Ninja - A tool for large-scale neighbor-joining phylogeny inference and 
     clustering.  We developed and tested RepeatModeler using Ninja version
-    ....  Please obtain a copy from:
-    https://github.com/TravisWheelerLab/NINJA/releases 
+    "0.95-cluster_only". Please obtain a copy from:
+    https://github.com/TravisWheelerLab/NINJA/releases/tag/0.95-cluster_only
 
 **Installation**
 
