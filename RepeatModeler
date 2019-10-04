@@ -337,10 +337,13 @@ $rsSampleSize = $options{'rsSampleSize'} if ( $options{'rsSampleSize'} );
 my $recommendedFamilySize = 15;
 
 
+# Feature On Hold : We need a system that takes into
+#   account genome size, false positive rate of each
+#   discovery method, and detection target.
 # The absolute minimum RECON/RS family size for which
 #   we will build a model.  Only invoked if there
 #   are only small families returned by RECON/RS.
-my $minFamilySize = 4;
+#my $minFamilySize = 4;
 
 ##
 ## Special Case: Input consists of only TE insertions
@@ -508,8 +511,8 @@ if ( $options{'skipRS'} ) {
     print "   - Increasing sample size to include end piece now = ";
     $sampleSize += ( $dbSize - ( $totSampledBP + $sampleSize ) );
     print "$sampleSize\n";
-    $familyCutoff = $minFamilySize;
-    print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
+    #$familyCutoff = $minFamilySize;
+    #print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
   }
 }
 
