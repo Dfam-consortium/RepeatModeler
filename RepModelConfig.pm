@@ -34,6 +34,9 @@ BEGIN
 ##----------------------------------------------------------------------##
 ##     CONFIGURE THE FOLLOWING PARAMETERS FOR YOUR INSTALLATION         ##
 ##                                                                      ##
+##  This file may be hand edited or preferably, modified with the       ##
+##  the use of the "configure" script.                                  ##
+##                                                                      ##
 ##  In the following section default values for paths/programs          ##
 ##  may be hardcoded. Each parameter appears in a block of text         ##
 ##  below as:                                                           ##
@@ -209,12 +212,12 @@ de-novo repeatfinding program.',
 
 
 #
-#
+# Current version of the software
 #
 $VERSION = "2.0-beta-4";
 
 #
-#
+# Set this flag to default to debug mode for the entire package
 #
 $DEBUGALL = 0;
 

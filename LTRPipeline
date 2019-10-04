@@ -216,13 +216,13 @@ if ( $useLtrDet ) {
   }
 } else {
   print "Running LtrHarvest...";
-  my $numAnnots = &runLtrHarvest( $GENOMETOOLS_DIR, $inputFile, "$tempDir/raw-struct-results.txt", $threads, $tempDir);
+  my $numAnnots = &runLtrHarvest( $GENOMETOOLS_DIR, $inputFile, "$tempDir/raw-struct-results.txt", $threads, $tempDir );
   if ( $numAnnots == 0 ) {
     print "LTRPipeline: No results returned from LTR structural finder ( LtrHarvest ).\n";
     exit;
   }
 }
-print "  : runtime " . elapsedTime( "step" ) . "\n";
+print "     : " . elapsedTime( "step" ) . "\n";
 
 
 # Postprocess results using LTR_Retriever
@@ -234,7 +234,7 @@ if ( ! -s "$tempDir/LtrRetriever-redundant-results.fa" )
   print "LTRPipeline: No results after LTR_Retriever filtering.\n";
   exit;
 }
-print "  : runtime " . elapsedTime( "step" ) . "\n";
+print "  : " . elapsedTime( "step" ) . "\n";
 
 if ( $options{'max_seq_len'} && $options{'max_seq_len'} =~ /\d+/ ) {
   system("mv $tempDir/LtrRetriever-redundant-results.fa $tempDir/LtrRetriever-redundant-results-orig.fa");
@@ -278,7 +278,7 @@ if ( ! -s "$tempDir/mafft-alignment.fa" )
   print "LTRPipeline: Error - could not produce a multiple alignment from the denovo LTR results.\n";
   exit;
 }
-print "  : runtime " . elapsedTime( "step" ) . "\n";
+print "     : " . elapsedTime( "step" ) . "\n";
 
 #
 elapsedTime( "step" );    
@@ -288,7 +288,7 @@ if ( ! -s "$tempDir/clusters.dat" )
 {
   print "LTRPipeline: Error - could not cluster MAFFT results.\n";
 }
-print "  : runtime " . elapsedTime( "step" ) . "\n";
+print "             : " . elapsedTime( "step" ) . "\n";
 #
 #   Here Jullien screened out families which have similarity to DNA Transposons or LINE elements by searching
 #   with RepeatMasker.  Since this is a de-novo approach we do not expect there to be a library available.
@@ -410,7 +410,7 @@ foreach my $cluster ( sort keys %clusters ){
         print OUTCON "$cons\n";
   }
 }
-print "  : runtime " . elapsedTime( "step" ) . "\n";
+print "      : " . elapsedTime( "step" ) . "\n";
 close OUTCON;
 close OUTSTK;
 system ("cp $tempDir/families.fa $inputFile-ltrs.fa") if ( -s "$tempDir/families.fa" );
@@ -595,7 +595,9 @@ sub runLtrHarvest {
   my $full_seqFile = File::Spec->rel2abs( $seqFile );
   my $origDir = getcwd();
   my $addlOpts = "";
-  $addlOpts = "-j $options{'pa'} " if ( $options{'pa'} );
+  # There is a bug in 1.5.9 and 1.5.10 that appears to not generate the correct files
+  # if -j is used.
+  #$addlOpts = "-j $options{'pa'} " if ( $options{'pa'} );
   chdir( $tmpDir );
   my $cmd = "$binDir/gt $addlOpts suffixerator -db $full_seqFile -indexname esa_index -tis -suf -lcp -des -ssp -sds -dna > suffixerator.log 2>&1";
   my $retCode = system($cmd);
@@ -603,10 +605,12 @@ sub runLtrHarvest {
     warn "LtrPipeline: GenomeTools failed to build suffixtree datastructure.  This is frequently\n" .
          "             caused by a lack of disk space. Error code: " . ( $? << 8 ) . "\n";
     $errorFlag = 1;
+    chdir( $origDir );
   }else {
     # Run ltrharvest
     $cmd = "$binDir/gt $addlOpts ltrharvest -index esa_index -out ltrharvest.out > ltrharvest.log 2>&1";
     $retCode = system($cmd);
+    chdir( $origDir );
     if ( $retCode != 0 ) {
       warn "LtrPipeline: GenomeTools failed to run ltrharvest. Error code: " . ( $? << 8 ) . "\n";
       $errorFlag = 1;
@@ -635,7 +639,6 @@ sub runLtrHarvest {
       $errorFlag = 1;
     }
   }
-  chdir( $origDir );
 
   unless ( $DEBUG || $errorFlag ) {
     rmtree($tmpDir);

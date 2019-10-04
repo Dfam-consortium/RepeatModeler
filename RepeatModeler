@@ -336,6 +336,7 @@ $rsSampleSize = $options{'rsSampleSize'} if ( $options{'rsSampleSize'} );
 #   we are interested in building models for.
 my $recommendedFamilySize = 15;
 
+
 # The absolute minimum RECON/RS family size for which
 #   we will build a model.  Only invoked if there
 #   are only small families returned by RECON/RS.
@@ -715,6 +716,7 @@ elapsedTime( "runtime" );    # Setup the timers
 #        Change the cutoff and possibly increase to full genome size
 my $families;
 my $numModels;
+my $inLastRound = 0;
 while ( 1 ) {
 
   # Reset the timers
@@ -733,9 +735,10 @@ while ( 1 ) {
        ( ! $options{'onlyIns'} && ( $totSampledBP >= $dbSize ||
           $sampleSize >= $genomeSampleSizeMax ||
           $seqRemaining < $fragmentSize ))) {
-    # Next round will be last
-    print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
-    $familyCutoff = $minFamilySize;
+    # this round will be last
+    $inLastRound = 1;
+    #print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
+    #$familyCutoff = $minFamilySize;
   }
 
   # Setup file locations
@@ -1485,6 +1488,22 @@ while ( 1 ) {
     #
     if ( -f "$roundTmpDir/summary/eles" )
     {
+      #if ( $inLastRound )
+      #{
+      #  open IN,"$roundTmpDir/summary/eles" or die "Could not open $roundTmpDir/summary/eles for reading!\n";
+      #  my $numFams = 0;
+      #  while ( <IN> ) {
+      #    if ( /^\s+(\d+)\s+/ )
+      #    {
+      #      $numFams = $1 if ( $1 > $numFams );
+      #    }
+      #  }
+      #  close IN;
+      #  if ( $numFams < 10 ) {
+      #    print "   - Last round with low discovery count ( $numFams families ), lowering family cutoff to $minFamilySize elements.\n";
+      #    $familyCutoff = $minFamilySize;
+      #  }
+      #}
       my $tmpNumModels = 0;
       ( $families, $tmpNumModels ) = &buildReconConsensi(
                                           workDir          => $roundTmpDir,
