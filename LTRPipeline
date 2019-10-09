@@ -443,7 +443,7 @@ sub runNinja {
 
   my $cmd = "$binDir/Ninja --in $alnFile --out $tmpDir/cluster.dat --out_type c --corr_type m --cluster_cutoff 0.2";
   if ( defined $threads && $threads > 1 ) {
-    $cmd .= " -threads $threads";
+    $cmd .= " --threads $threads";
   }
   $cmd .= " > $tmpDir/Ninja.log 2>&1";
   

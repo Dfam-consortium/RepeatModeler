@@ -8,7 +8,7 @@
 ##      A configuration utility for the RepeatModeler distribution.
 ##
 #******************************************************************************
-#* Copyright (C) Institute for Systems Biology 2003-2005 Developed by
+#* Copyright (C) Institute for Systems Biology 2003-2019 Developed by
 #* Arian Smit and Robert Hubley.
 #*
 #* This work is licensed under the Open Source License v2.1.  To view a copy
@@ -16,18 +16,6 @@
 #* see the license.txt file contained in this distribution.
 #*
 ###############################################################################
-#
-# ChangeLog
-#
-#   $Log: configure,v $
-#   Revision 1.40  2017/04/05 00:03:32  rhubley
-#   Cleanup before a distribution
-#
-#
-###############################################################################
-#
-# To Do:
-#
 
 =head1 NAME
 
@@ -160,7 +148,7 @@ BEGIN
                           "Tie::File",  "Getopt::Long",
                           "POSIX",      "File::Copy",
                           "File::Path", "Data::Dumper",
-                          "Cwd",        "JSON",
+                          "Cwd",        "JSON", "File::Which",
                           "URI",        "LWP::UserAgent"
   );
 

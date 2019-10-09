@@ -165,6 +165,7 @@ my @getopt_args = (
                     '-pa=i',
                     '-srand=i',
                     '-rsSampleSize=s',
+                    '-genomeSampleSizeMax=s',
                     '-LTRStruct',
                     '-LTRMaxSeqLen=i',
                     '-onlyRS',
@@ -319,9 +320,8 @@ my $rsSampleSize               = 40000000;     # The size of the sequence given
                                                #   to RepeatScout. ( round #1 )
 my $fragmentSize               = 40000;        # The size of the batches for
                                                #   all-vs-other search.
-my $reconSampleSizeStart      = 3000000;      # The initial sample size for
+my $reconSampleSizeStart       = 3000000;      # The initial sample size for
                                                #   RECON analysis
-# TODO: Make this a parameter
 my $genomeSampleSizeMax        = 243000000;    # The max sample size for
                                                #   RECON analysis
 my $genomeSampleSizeMultiplier = 3;            # The multiplier for sample size
@@ -331,6 +331,11 @@ my $genomeSampleSizeMultiplier = 3;            # The multiplier for sample size
 # Override the RepeatScout sample size
 #
 $rsSampleSize = $options{'rsSampleSize'} if ( $options{'rsSampleSize'} );
+
+#
+# Override the genomeSampleSizeMax
+#
+$genomeSampleSizeMax = $options{'genomeSampleSizeMax'} if ( $options{'genomeSampleSizeMax'} );
 
 # The normal RECON/RS family size minimum for which
 #   we are interested in building models for.
@@ -819,7 +824,7 @@ while ( 1 ) {
         . "bp ( $preMaskNonAmbigBases non ambiguous )\n";
     print "   - Num Contigs Represented = "
         . scalar( keys( %sampleContigs ) ) . "\n";
-    print "   - Sequence extraction time " . elapsedTime( 3 ) . "\n";
+    print "   - Sequence extraction : " . elapsedTime( 3 ) . "\n";
     print " -- Running RepeatScout on the sequences...\n";
     &runRepeatScout(
                      workDir    => $roundTmpDir,
@@ -875,7 +880,7 @@ while ( 1 ) {
     next;
   }
 
-  print "   - Sequence extraction time " . elapsedTime( 3 ) . "\n";
+  print "   - Sequence extraction : " . elapsedTime( 3 ) . "\n";
 
   # TRF sample
   print " -- Running TRFMask on the sequence...\n";
@@ -2083,7 +2088,7 @@ sub runRepeatScout
         open IN,"<filter-stage-1.log" or die "Could not open $tmpDir/filter-stage-1.log for reading!\n";
         my $errMsg = "";
         while ( <IN> ) {
-          if ( /ERROR/ ) {
+          if ( /ERROR/ || /Can\'t locate/ || /BEGIN failed/ ) {
             $errMsg .= $_;
           }
         }
