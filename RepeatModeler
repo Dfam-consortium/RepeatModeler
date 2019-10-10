@@ -537,14 +537,8 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} )
     if ( -d "$recoverDir/round-$i" )
     {
       if (
-        $i == 1 && (
-          -s "$recoverDir/round-1/consensi-refined.fa"
-          ||
-
-          # TEST THIS!!!
-          !-s "$recoverDir/round-1/sampleDB-1/fa.rscons.filtered"
-        )
-        || $i > 1 && -s "$recoverDir/round-$i/consensi.fa"
+            ( $i == 1 && -s "$recoverDir/round-1/consensi-refined.fa" )
+          ||( $i > 1 && -s "$recoverDir/round-$i/consensi.fa" )
           )
       {
         $highestGoodRound = $i;
@@ -569,7 +563,7 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} )
   my $badRound    = ( $highestGoodRound + 1 );
   my $badRoundDir = "$recoverDir/round-$badRound";
 
-  if ( !-d $badRoundDir )
+  if ( ! -d $badRoundDir )
   {
     print "\n\nThis directory ( $recoverDir )\n"
         . "appears to contain a successful run of RepeatModeler.  If this\n"
@@ -585,7 +579,6 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} )
   print "  - Backing up previous $recoverDir/consensi.fa file\n";
   if ( -s "$recoverDir/consensi.fa" )
   {
-
     # Back this up
     my $i = 1;
     while ( -s "$recoverDir/consensi.fa.backup_$i" && $i < 100 )
@@ -2288,7 +2281,7 @@ sub buildRSConsensi
 
         print " -- Refining Family $key / $familyID ( RS Elements: "
             . ( $#{ $families{$key}->{'elements'} } + 1 )
-            . ", Using $numElements ):\n";
+            . ", Using $numElements )\n";
 
         my $cmd = "$FindBin::RealBin/Refiner -engine $engine "
                 . "-noTmp -giToID $genomeDB.translation $workDir/family-$familyID.fa";

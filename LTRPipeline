@@ -53,7 +53,7 @@ RepeatModeler
 
 =head1 COPYRIGHT
 
-Copyright 2019 Robert Hubley, Institute for Systems Biology
+Copyright 2019 Institute for Systems Biology
 
 =head1 LICENSE
 
@@ -84,7 +84,6 @@ use RepModelConfig;
 use SeedAlignment;
 use SeedAlignmentCollection;
 
-
 #
 # Magic numbers/constants here
 #  ie. my $PI = 3.14159;
@@ -112,6 +111,7 @@ my @getopt_args = (
     '-version', # print out the version and exit
     '-tmpdir=s',
     '-debug',
+    '-ltr_seq_limit=i',
     '-max_seq_len=i',
     '-pa=i',
 );
@@ -174,6 +174,9 @@ my $MAFFT_DIR = $config->{'MAFFT_DIR'}->{'value'};
 my $NINJA_DIR = $config->{'NINJA_DIR'}->{'value'};
 my $GENOMETOOLS_DIR = $config->{'GENOMETOOLS_DIR'}->{'value'};
 
+my $ltrSeqLimit = 10000;
+$ltrSeqLimit = $options{'ltr_seq_limit'} if ( $options{'ltr_seq_limit'} );
+
 #
 #   Run LTRDetector
 #   Run LTR_retreiver
@@ -228,7 +231,7 @@ print "     : " . elapsedTime( "step" ) . "\n";
 # Postprocess results using LTR_Retriever
 elapsedTime( "step" );    
 print "Running Ltr_retriever...";
-&runLtrRetriever( $LTR_RETRIEVER_DIR, $inputFile, "$tempDir/raw-struct-results.txt", "$tempDir/LtrRetriever-redundant-results.fa", $threads );
+&runLtrRetriever( $LTR_RETRIEVER_DIR, $inputFile, "$tempDir/raw-struct-results.txt", "$tempDir/LtrRetriever-redundant-results.fa", $threads, $ltrSeqLimit );
 if ( ! -s "$tempDir/LtrRetriever-redundant-results.fa" )
 {
   print "LTRPipeline: No results after LTR_Retriever filtering.\n";
@@ -510,6 +513,7 @@ sub runLtrRetriever {
   my $annotFile = shift;
   my $outFile = shift;
   my $threads = shift;
+  my $ltrSeqLimit = shift;
   my $wrkDir = shift;
 
   die "LTRPipeline::runLtrRetriever : Could not find sequence input file $seqFile\n"
@@ -546,21 +550,61 @@ sub runLtrRetriever {
   system($cmd);
   chdir $cwd or die "LTRPipeline::runLtrRetriever : Could not change directory back to $cwd : $!";
 
+  my $redundantLibFile = "";
+  my $error = 0;
   if ( -s "$tmpDir/seq.fa.LTRlib.redundant.fa") 
   {
-    system("mv $tmpDir/seq.fa.LTRlib.redundant.fa $outFile");
+    $redundantLibFile = "$tmpDir/seq.fa.LTRlib.redundant.fa";
   }elsif ( -s "$tmpDir/seq.fa.mod.LTRlib.redundant.fa" )
   {
-    system("mv $tmpDir/seq.fa.mod.LTRlib.redundant.fa $outFile");
+    $redundantLibFile = "$tmpDir/seq.fa.mod.LTRlib.redundant.fa";
+  }else {
+    print "ERROR: LTRPipeline::runLtrRetriever : Could not locate redundant library in $tmpDir\n";
+    $error = 1;
+  }
+
+  my $count = 0;
+  if ( $redundantLibFile ) {
+    open IN,"<$redundantLibFile" 
+       or die "LTRPipeline::runLtrRetriever : Could not open $redundantLibFile for reading!\n";
+    my $numRedundant = 0;
+    while ( <IN> ) {
+      $numRedundant++ if ( /^>/ );
+    }
+    close IN;
+    if ( $numRedundant > $ltrSeqLimit )
+    {
+      if ( -s "$tmpDir/seq.fa.mod.LTRlib.fa" ) {
+        open IN,"<$tmpDir/seq.fa.mod.LTRlib.fa" 
+             or die "LTRPipeline::runLtrRetriever : Could not open $tmpDir/seq.fa.mod.LTRlib.fa for reading!\n";
+        my $numNonRedundant = 0;
+        while ( <IN> ) {
+          $numNonRedundant++ if ( /^>/ );
+        }
+        close IN;
+        if ( $numNonRedundant < $ltrSeqLimit ) {
+          print "INFO: LTRPipeline - redundant library too large ( $numRedundant ).  Falling back to non-redundant library ( $numNonRedundant ).\n";
+          system("mv $tmpDir/seq.fa.mod.LTRlib.fa $outFile");
+          $count = $numRedundant;
+        }else {
+          print "ERROR: LTRPipeline::runLtrRetriever : LTR libraries ( redundant: $numRedundant, non-redundant: $numNonRedundant ) are larger than permissible threshold $ltrSeqLimit ).  See $tmpDir for details.\n";
+          $error = 1;
+        }
+      }else {
+        print "ERROR: LTRPipeline::runLtrRetriever : Could not find non-redundant library $tmpDir/seq.fa.mod.LTRlib.fa!\n";
+        $error = 1;
+      }
+    }elsif ( $numRedundant > 0 ) {
+      system("mv $redundantLibFile $outFile");
+      $count = $numRedundant;
+    }
   }
   
-  # TODO: Consider keeping on error
-  unless ( $DEBUG ) {
+  unless ( $DEBUG || $error ) {
     rmtree($tmpDir);
   }
 
-  # TODO: Return count
-
+  return $count;
 }
 
 
