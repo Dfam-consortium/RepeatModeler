@@ -574,9 +574,15 @@ sub runLtrRetriever {
     close IN;
     if ( $numRedundant > $ltrSeqLimit )
     {
+      my $nonRedundantLibFile;
       if ( -s "$tmpDir/seq.fa.mod.LTRlib.fa" ) {
-        open IN,"<$tmpDir/seq.fa.mod.LTRlib.fa" 
-             or die "LTRPipeline::runLtrRetriever : Could not open $tmpDir/seq.fa.mod.LTRlib.fa for reading!\n";
+        $nonRedundantLibFile = "$tmpDir/seq.fa.mod.LTRlib.fa";
+      }elsif ( -s "$tmpDir/seq.fa.LTRlib.fa" ) {
+        $nonRedundantLibFile = "$tmpDir/seq.fa.LTRlib.fa";
+      }
+      if ( $nonRedundantLibFile ) {
+        open IN,"<$nonRedundantLibFile" 
+             or die "LTRPipeline::runLtrRetriever : Could not open $nonRedundantLibFile for reading!\n";
         my $numNonRedundant = 0;
         while ( <IN> ) {
           $numNonRedundant++ if ( /^>/ );
@@ -584,14 +590,14 @@ sub runLtrRetriever {
         close IN;
         if ( $numNonRedundant < $ltrSeqLimit ) {
           print "INFO: LTRPipeline - redundant library too large ( $numRedundant ).  Falling back to non-redundant library ( $numNonRedundant ).\n";
-          system("mv $tmpDir/seq.fa.mod.LTRlib.fa $outFile");
+          system("mv $nonRedundantLibFile $outFile");
           $count = $numRedundant;
         }else {
           print "ERROR: LTRPipeline::runLtrRetriever : LTR libraries ( redundant: $numRedundant, non-redundant: $numNonRedundant ) are larger than permissible threshold $ltrSeqLimit ).  See $tmpDir for details.\n";
           $error = 1;
         }
       }else {
-        print "ERROR: LTRPipeline::runLtrRetriever : Could not find non-redundant library $tmpDir/seq.fa.mod.LTRlib.fa!\n";
+        print "ERROR: LTRPipeline::runLtrRetriever : Could not find non-redundant library $tmpDir/seq.fa.mod.LTRlib.fa or $tmpDir/seq.fa.LTRlib.fa!\n";
         $error = 1;
       }
     }elsif ( $numRedundant > 0 ) {

@@ -4796,6 +4796,7 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 )
       ##  ex5              TC      -13    (dito) Matrix G->C = -15 = -13
       ##  ex6              AA      -13    (dito)Matrix C->A = -15 = -13
       ##  ex7              GA      -13    (dito)Matrix C->G = -15 = -13
+      ##
       ##  ex8              GT      -30    Normal matrix score C->G = -15,
       ##                                  G->T = -15, Total = -30
       ##  ex9              AG      -5     Normal matrix score C->A = -15,

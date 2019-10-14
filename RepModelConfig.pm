@@ -214,7 +214,7 @@ de-novo repeatfinding program.',
 #
 # Current version of the software
 #
-$VERSION = "2.0-beta-7";
+$VERSION = "2.0-beta-8";
 
 #
 # Set this flag to default to debug mode for the entire package

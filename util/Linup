@@ -118,7 +118,7 @@ use Data::Dumper;
 use lib $FindBin::RealBin;
 use lib "$FindBin::RealBin/..";
 use RepModelConfig;
-use lib $RepModelConfig::REPEATMASKER_DIR;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use MultAln;
 use SeedAlignment;
 
