@@ -263,7 +263,7 @@ if ( ! $options{'recon_dir'} ) {
 RepModelConfig::promptForParam('RECON_DIR');
 }
 if ( ! $options{'repeatscout_dir'} ) {
-RepModelConfig::promptForParam('REPEATSCOUT_DIR');
+RepModelConfig::promptForParam('RSCOUT_DIR');
 }
 if ( ! $options{'dustmasker_prgm'} ) {
 RepModelConfig::promptForParam('DUSTMASKER_PRGM');
@@ -294,9 +294,9 @@ if ( ! ( $options{'abblast_dir'} || $options{'rmblast_dir'} ) ) {
   $answer =~ s/[\n\r]+//g;
   if ( $answer =~ /y|yes/i || $answer eq "" )
   {
-    if ( ! $options{'ltr_detector_dir'} ) {
-      RepModelConfig::promptForParam('LTR_DETECTOR_DIR');
-    }
+    #if ( ! $options{'ltr_detector_dir'} ) {
+    #  RepModelConfig::promptForParam('LTR_DETECTOR_DIR');
+    #}
     if ( ! $options{'genometools_dir'} ) {
       RepModelConfig::promptForParam('GENOMETOOLS_DIR');
     }
