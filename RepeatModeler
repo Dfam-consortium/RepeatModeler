@@ -159,6 +159,7 @@ my @getopt_args = (
                     '-version',     # print out the version and exit
                     '-help',
                     '-dir=s',
+                    '-debug',
                     '-database=s',
                     '-engine=s',
                     '-recoverDir=s',
@@ -183,6 +184,8 @@ Getopt::Long::config( "noignorecase", "bundling_override" );
 unless ( GetOptions( \%options, @getopt_args ) ) {
   usage();
 }
+
+$DEBUG = 1 if ( exists $options{'debug'} );
 
 #
 # Provide the POD text from this file and 
@@ -244,7 +247,7 @@ foreach my $param ( "RMBLAST_DIR", "TRF_PRGM", "RSCOUT_DIR", "RECON_DIR" )
 # LTRPipeline dependencies
 if ( $options{'LTRStruct'} )
 {
-  foreach my $param ( "LTR_DETECTOR_DIR", "LTR_RETRIEVER_DIR", "MAFFT_DIR", "NINJA_DIR", "CDHIT_DIR" )
+  foreach my $param ( "GENOMETOOLS_DIR", "LTR_RETRIEVER_DIR", "MAFFT_DIR", "NINJA_DIR", "CDHIT_DIR" )
   {
     if ( ! RepModelConfig::validateParam($param) ){
       die "\n  LTRPipeline dependency missing or incorrectly set for $param!\n   Rerun ./configure or check your command line to ensure that RepeatModeler\n  has access to and the correct version of this dependency.\n\n";    
@@ -1609,11 +1612,13 @@ if ( $options{'LTRStruct'} ) {
   if ( -s "$tmpDir/tmpInputSeq" )
   {
     my $optionalArgs = "";
-    $optionalArgs = "-max_seq_len $options{'LTRMaxSeqLen'}" if ( exists $options{'LTRMaxSeqLen'} );
-    $optionalArgs = "-pa $options{'pa'}" if ( exists $options{'pa'} );
+    $optionalArgs .= " -max_seq_len $options{'LTRMaxSeqLen'}" if ( exists $options{'LTRMaxSeqLen'} );
+    $optionalArgs .= " -pa $options{'pa'}" if ( exists $options{'pa'} );
+    $optionalArgs .= " -debug" if ( $DEBUG );
     ## Run the LTR Pipeline
+    print "Calling LTRPipeline as: $FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq\n";
     system("$FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq");
-    unlink "$tmpDir/tmpInputSeq";
+    unlink "$tmpDir/tmpInputSeq" unless ( $DEBUG );
     if ( -s "$tmpDir/tmpInputSeq-ltrs.fa") 
     {
       # Combine results between both pipelines

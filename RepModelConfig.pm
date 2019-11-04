@@ -89,18 +89,6 @@ sequence clustering package.',
                                  'required' => 0,
                                  'value' => '/home/rhubley/src/genometools-1.5.9/bin'
                                },
-          'LTR_DETECTOR_DIR' => {
-                                  'command_line_override' => 'ltr_detector_dir',
-                                  'description' => 'The path to the installation of the LtrDetector
-structural LTR repeatfinding program.',
-                                  'environment_override' => 'LTR_DETECTOR_DIR',
-                                  'expected_binaries' => [
-                                                           'LtrDetector'
-                                                         ],
-                                  'param_type' => 'directory',
-                                  'required' => 0,
-                                  'value' => '/home/rhubley/src/LtrDetector/bin'
-                                },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
                                    'description' => 'The path to the installation of the LTR_Retriever
@@ -214,7 +202,7 @@ de-novo repeatfinding program.',
 #
 # Current version of the software
 #
-$VERSION = "2.0-beta-8";
+$VERSION = "2.0-beta-9";
 
 #
 # Set this flag to default to debug mode for the entire package

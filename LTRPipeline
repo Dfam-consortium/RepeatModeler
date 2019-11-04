@@ -168,7 +168,8 @@ if ($options{'version'}) {
 #
 RepModelConfig::resolveConfiguration(\%options);
 my $config = $RepModelConfig::configuration;
-my $LTR_DETECTOR_DIR = $config->{'LTR_DETECTOR_DIR'}->{'value'};
+#my $LTR_DETECTOR_DIR = $config->{'LTR_DETECTOR_DIR'}->{'value'};
+my $LTR_DETECTOR_DIR;
 my $LTR_RETRIEVER_DIR = $config->{'LTR_RETRIEVER_DIR'}->{'value'};
 my $MAFFT_DIR = $config->{'MAFFT_DIR'}->{'value'};
 my $NINJA_DIR = $config->{'NINJA_DIR'}->{'value'};
@@ -483,9 +484,10 @@ sub runMafft {
   }else {
     $tmpDir = &createTempDir( [ $wrkDir ], "MAFFT" );
   }
+  $ENV{MAFFT_TMPDIR} = $tmpDir;
   print "LTRPipeline::runMafft : tmpdir = $tmpDir\n" if ( $DEBUG );
 
-  my $cmd = "$binDir/bin/mafft --quiet";
+  my $cmd = "$binDir/bin/mafft --large --quiet";
   if ( defined $threads && $threads > 1 ) {
     $cmd .= " --thread $threads";
   }
