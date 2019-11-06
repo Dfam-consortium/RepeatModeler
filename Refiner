@@ -210,6 +210,9 @@ if ( $options{'giToID'} )
     if ( /^(\S+)\s+(\d+)/ )
     {
       $genomeDBToSeqID{"gi|$2"} = $1;
+      # LTR_retriever has an issue with "|" symbols.  For this
+      # process the seq identifier will be gi-# instead.
+      $genomeDBToSeqID{"gi-$2"} = $1;
     }
   }
   close IN;
@@ -820,27 +823,47 @@ sub buildConsensus
     my $dbDesc = $db->getDescription( $id );
 
     # If we are provided a translation system -- do the translation
+    #  e.g hg38:chr1:300-400
+    #    or 
+    #      chr1:300-400
+    #      gi|1:300-400
+    #      gi-1:300-400
+    #      gi-1:300..400
+    #
+    my $assembly;
+    my $seqID;
+    my $start;
+    my $end;
     if ( $dbDesc =~ /^\s*(\S+:)?(\S+):(\d+)-(\d+)\s*.*$/ )
     {
-      my $originAssembly = $1;
-      my $originSeq      = $2;
-      my $originStart    = $3;
-      my $originEnd      = $4;
-      # RMH: 20190807
-      if ( $4 < $3 ) {
-        $originStart    = $4;
-        $originEnd      = $3;
+      $assembly = $1;
+      $seqID    = $2;
+      $start    = $3;
+      $end      = $4;
+    # LTR Retriever prints out stuff like this:
+    #    gi-1:11224114..11230723_INT#LTR/Gypsy
+    }elsif ( $id =~ /^\s*(\S+):(\d+)\.\.(\d+)/ )
+    {
+      $seqID = $1;
+      $start = $2;
+      $end   = $3;
+    }
+    if ( $seqID && $start && $end ) {
+      if ( $end < $start ) {
+          my $tmp = $start;
+          $start    = $end;
+          $end      = $tmp;
       }
-      my $trueStart      = $malign->getAlignedSeqStart( $i ) + $originStart;
-      my $trueEnd        = $malign->getAlignedSeqEnd( $i ) + $originStart;
+      $start      = $malign->getAlignedSeqStart( $i ) + $start;
+      $end        = $malign->getAlignedSeqEnd( $i ) + $end;
       if ( $options{'giToID'}
-           && defined $genomeDBToSeqID{$originSeq} )
+           && exists $genomeDBToSeqID{$seqID} )
       {
-        $originSeq = $genomeDBToSeqID{$originSeq};
+        $seqID = $genomeDBToSeqID{$seqID};
       }
-      $malign->setAlignedName( $i, $originSeq );
-      $malign->setAlignedSeqStart( $i, $trueStart );
-      $malign->setAlignedSeqEnd( $i, $trueEnd );
+      $malign->setAlignedName( $i, $seqID );
+      $malign->setAlignedSeqStart( $i, $start );
+      $malign->setAlignedSeqEnd( $i, $end );
     }
   }
   $malign->toSTK( filename => "$pathToFastaFile.refiner.stk" );

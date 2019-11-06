@@ -985,7 +985,8 @@ sub clearClades
      RA     Reference Author:           Reference Author
      RL     Reference Location:         Journal location. 
      DR     Database Reference:         Reference to external database. 
-     CC HC  Handbuilt Consensus:        An alternative consnesus for the SEED alignment.
+     CC     Curators Notes, Handbuilt Consensus
+            RepeatMasker Stages
 
   #=GC
   

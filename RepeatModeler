@@ -1604,15 +1604,28 @@ if ( $options{'LTRStruct'} ) {
   print "\n\nLTR Structural Analysis\n";
   print "=======================\n";
   # Save genome to sequence file
+  open OUT,">$tmpDir/tmpInputSeq" or die "Could not open $tmpDir/tmpInputSeq for writing!\n";
   if ( $engine eq "abblast" ) {
-    system("$XDFORMAT_PRGM -r $genomeDB > $tmpDir/tmpInputSeq");
+    #system("$XDFORMAT_PRGM -r $genomeDB > $tmpDir/tmpInputSeq");
+    open SEQ,"$XDFORMAT_PRGM -r $genomeDB|" or die "Could not run: $XDFORMAT_PRGM -r $genomeDB\n";
   }else {
-    system("$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt \"%f\" > $tmpDir/tmpInputSeq");
+    #system("$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt \"%f\" > $tmpDir/tmpInputSeq");
+    open SEQ,"$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt \"%f\"|" or die "Could not run: $NCBIDBCMD_PRGM\n";
   }
+  while ( <SEQ> ) {
+    if ( /^>/ ) {
+      # Replace >gi|232 with >gi-232 so that LTR_retriever is happy.  This is
+      # a known issue with LTR_retriever-2.6
+      s/\|/-/;
+    }
+    print OUT;
+  }
+  close SEQ;
+  close OUT;
   if ( -s "$tmpDir/tmpInputSeq" )
   {
-    my $optionalArgs = "";
-    $optionalArgs .= " -max_seq_len $options{'LTRMaxSeqLen'}" if ( exists $options{'LTRMaxSeqLen'} );
+    my $optionalArgs = " -giToID $genomeDB.translation";
+    $optionalArgs .= " -LTRMaxSeqLen $options{'LTRMaxSeqLen'}" if ( exists $options{'LTRMaxSeqLen'} );
     $optionalArgs .= " -pa $options{'pa'}" if ( exists $options{'pa'} );
     $optionalArgs .= " -debug" if ( $DEBUG );
     ## Run the LTR Pipeline

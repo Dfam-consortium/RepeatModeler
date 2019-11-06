@@ -111,8 +111,9 @@ my @getopt_args = (
     '-version', # print out the version and exit
     '-tmpdir=s',
     '-debug',
-    '-ltr_seq_limit=i',
-    '-max_seq_len=i',
+    '-LTRSeqLimit=i',
+    '-giToID=s',
+    '-LTRMaxSeqLen=i',
     '-pa=i',
 );
 # Add configuration parameters as additional command-line options
@@ -176,7 +177,7 @@ my $NINJA_DIR = $config->{'NINJA_DIR'}->{'value'};
 my $GENOMETOOLS_DIR = $config->{'GENOMETOOLS_DIR'}->{'value'};
 
 my $ltrSeqLimit = 10000;
-$ltrSeqLimit = $options{'ltr_seq_limit'} if ( $options{'ltr_seq_limit'} );
+$ltrSeqLimit = $options{'LTRSeqLimit'} if ( $options{'LTRSeqLimit'} );
 
 #
 #   Run LTRDetector
@@ -240,7 +241,7 @@ if ( ! -s "$tempDir/LtrRetriever-redundant-results.fa" )
 }
 print "  : " . elapsedTime( "step" ) . "\n";
 
-if ( $options{'max_seq_len'} && $options{'max_seq_len'} =~ /\d+/ ) {
+if ( $options{'LTRMaxSeqLen'} && $options{'LTRMaxSeqLen'} =~ /\d+/ ) {
   system("mv $tempDir/LtrRetriever-redundant-results.fa $tempDir/LtrRetriever-redundant-results-orig.fa");
   open IN,"<$tempDir/LtrRetriever-redundant-results-orig.fa" or die "Could not open $tempDir/LtrRetriever-redundant-results-orig.fa for reading!\n";
   open OUT,">$tempDir/LtrRetriever-redundant-results.fa" or die "Could not open $tempDir/LtrRetriever-redundant-results.fa for writing!\n";
@@ -251,7 +252,7 @@ if ( $options{'max_seq_len'} && $options{'max_seq_len'} =~ /\d+/ ) {
     if ( /^>(\S+)/ ) {
       my $tmpID = $1;
       if ( $seq ) {
-        if ( length($seq) <= $options{'max_seq_len'} ) 
+        if ( length($seq) <= $options{'LTRMaxSeqLen'} ) 
         {
           print OUT ">$id\n$seq\n";
         }
@@ -264,7 +265,7 @@ if ( $options{'max_seq_len'} && $options{'max_seq_len'} =~ /\d+/ ) {
     $seq .= $_;
   }
   if ( $seq ) {
-    if ( length($seq) <= $options{'max_seq_len'} ) 
+    if ( length($seq) <= $options{'LTRMaxSeqLen'} ) 
     {
       print OUT ">$id\n$seq\n";
     }
@@ -334,6 +335,7 @@ if ( $seq ) {
 }
 close IN;
 
+print "Called with " . $options{'giToID'} . "\n" if ( $options{'giToID'} );
 # Process each cluster
 elapsedTime( "step" );    
 print "Refining families...";
@@ -360,8 +362,11 @@ foreach my $cluster ( sort keys %clusters ){
   $famType = "INT" if ( $intCount > $ltrCount );
 
   # Run Refiner on the seeds
-  my $cmd = "$FindBin::RealBin/Refiner -noTmp -name ltr-1_family-$idx $tempDir/ltr-1_family-$idx.fa";
+  my $additionalOpts = "";
+  $additionalOpts .= "-giToID " . $options{'giToID'} if ( $options{'giToID'} );
+  my $cmd = "$FindBin::RealBin/Refiner -noTmp $additionalOpts -name ltr-1_family-$idx $tempDir/ltr-1_family-$idx.fa";
   $cmd .= " -quiet" unless ( $DEBUG );
+  print "LTRPipeline: Running $cmd\n" if ( $DEBUG );
   system( $cmd );
 
   # family-72.fa.refiner.stk
@@ -487,6 +492,29 @@ sub runMafft {
   $ENV{MAFFT_TMPDIR} = $tmpDir;
   print "LTRPipeline::runMafft : tmpdir = $tmpDir\n" if ( $DEBUG );
 
+  # NOTE: --quiet hides some error reporting.  Need to develop a way 
+  #       to catch common errors like:
+  #
+  #       nthread = 20
+  #       nthreadpair = 20
+  #       nthreadtb = 16
+  #       ppenalty_ex = 0
+  #       stacksize: 8192 kb
+  #       generating a scoring matrix for nucleotide (dist=200) ... done
+  #       Gap Penalty = -1.53, +0.00, +0.00
+  #       ========================================================================= 
+  #       ========================================================================= 
+  #       === 
+  #       === Alphabet 'i' is unknown.
+  #       === Please check site 8234 in sequence 2.
+  #       === 
+  #       === To make an alignment that has unusual characters (U, @, #, etc), try  
+  #       === % mafft --anysymbol input > output
+  #       === 
+  #       ========================================================================= 
+  #       ========================================================================= 
+  #       Illegal character i
+  #
   my $cmd = "$binDir/bin/mafft --large --quiet";
   if ( defined $threads && $threads > 1 ) {
     $cmd .= " --thread $threads";
