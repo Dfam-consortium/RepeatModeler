@@ -335,7 +335,6 @@ if ( $seq ) {
 }
 close IN;
 
-print "Called with " . $options{'giToID'} . "\n" if ( $options{'giToID'} );
 # Process each cluster
 elapsedTime( "step" );    
 print "Refining families...";
