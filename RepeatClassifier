@@ -515,6 +515,14 @@ if ( $status ) {
 my ( $classref, $oriref ) = &vsRMlibAnalysis( searchResults => $searchResultCol,
                                               blastXResults => $blastXResults );
 
+# 2.0 change. If family originates from the LTR pipeline
+# assume that it's at least an LTR/Unknown rather than Uknown.
+foreach my $id ( keys %{$classref} ) {
+  if ( $id =~ /^ltr-/ && (  $classref->{$id} eq "" || $classref->{$id} =~ /Unknown/ ) ) {
+    $classref->{$id} = "LTR/Unknown"; 
+   } 
+}
+
 print "DUMPER: classref = \n" . Dumper( $classref ) . "\n" if ( $DEBUG );
 print "DUMPER blastXResults = \n" . Dumper( $blastXResults ) . "\n" if ( $DEBUG );
 
