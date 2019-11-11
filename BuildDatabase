@@ -113,6 +113,7 @@ use FindBin;
 use lib $FindBin::RealBin;
 use Getopt::Long;
 use Pod::Text;
+use File::Temp qw/ tempfile tempdir /;
 use Cwd;
 
 # RepeatModeler Libraries
@@ -293,7 +294,8 @@ print "Building database $options{'name'}:\n";
 
 # Sanitizing the names of all input databases and placing
 # in one big tempfile
-open SEQ, ">tmpSeqData.fa" or die $CLASS . ": Cannot open file tmpSeqData.fa for writing!\n";
+#   $fh = tempfile();
+my ($SEQ, $seqFilename) = tempfile( DIR => "." );
 my $file;
 for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
   $file = $fileList[ $i ];
@@ -307,18 +309,18 @@ for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
   }
   while ( <IN> ) {
     if ( /^\>\s*(\S+)\s+(.*)/ ) {
-      print SEQ ">gi|$index\n";
+      print $SEQ ">gi|$index\n";
       print $IDX "$1\t$index\n";
       $index++;
     }
     else {
-      print SEQ $_;
+      print $SEQ $_;
     }
   }
   close IN;
 }
-close SEQ;
-$file = "tmpSeqData.fa";
+close $SEQ;
+$file = $seqFilename;
 
 if ( $engine eq "rmblast" )
 {
@@ -372,6 +374,6 @@ if ( $engine eq "abblast" )
 
 close $IDX;
 
-unlink( "tmpSeqData.fa" ) if ( -s "tmpSeqData.fa" );
+unlink( $seqFilename ) if ( -e $seqFilename );
 
 1;

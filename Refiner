@@ -350,6 +350,7 @@ foreach my $file ( @ARGV )
     $cons = $malign->consensus();
     $maSize = 1;
     $avgKDiv = 0;
+    #$malign->toSTK( filename => "$file.refiner.stk", id => $id, includeTemplate => 1, nuclRF => 1 );
     $malign->toSTK( filename => "$file.refiner.stk", id => $id );
   }
 
@@ -866,7 +867,8 @@ sub buildConsensus
       $malign->setAlignedSeqEnd( $i, $end );
     }
   }
-  $malign->toSTK( filename => "$pathToFastaFile.refiner.stk" );
+  #$malign->toSTK( filename => "$pathToFastaFile.refiner.stk", includeTemplate => 1, nuclRF => 1 );
+  $malign->toSTK( filename => "$pathToFastaFile.refiner.stk" ); 
 
   
   print "  Build Consensus: " . elapsedTime( 0 ) . "\n" unless( $options{'quiet'} );

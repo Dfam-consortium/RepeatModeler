@@ -352,6 +352,7 @@ my $recommendedFamilySize = 15;
 #   we will build a model.  Only invoked if there
 #   are only small families returned by RECON/RS.
 #my $minFamilySize = 4;
+my $insertMinFamilySize = 15;
 
 ##
 ## Special Case: Input consists of only TE insertions
@@ -743,6 +744,10 @@ while ( 1 ) {
     $inLastRound = 1;
     #print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
     #$familyCutoff = $minFamilySize;
+    if ( $options{'onlyIns'} ){
+      print "   - Last round, lowering family cutoff to $insertMinFamilySize elements.\n";
+      $familyCutoff = $insertMinFamilySize;
+    }
   }
 
   # Setup file locations
@@ -1523,22 +1528,24 @@ while ( 1 ) {
     }
   }
 
-
   # Remove all the old batch files
-  opendir( DIR, $roundTmpDir )
-      or die $CLASS . ": Can't open director $roundTmpDir " . "for reading!\n";
-  my $file;
-  while ( defined( $file = readdir( DIR ) ) )
-  {
-    if ( $file =~ /batch-(\d+).fa/ )
+  unless ( $DEBUG ) {
+    opendir( DIR, $roundTmpDir )
+        or die $CLASS . ": Can't open director $roundTmpDir " . "for reading!\n";
+    my $file;
+    while ( defined( $file = readdir( DIR ) ) )
     {
-      print "Unlinking old batch $roundTmpDir/$file\n" if ( $DEBUG );
-
-      #unlink( "$roundTmpDir/$file" );
+      if ( $file =~ /batch-(\d+)(.fa|.gilist|.gilist.txt)/ ||
+           $file =~ /family-(\d+)(-cons.html|-cons-\d+.fa)/ )
+      {
+        # family-68-cons.html family-68-cons.malign     
+        # batch-11.fa  family-6-cons-3.fa
+        unlink( "$roundTmpDir/$file" );
+      }
     }
+    closedir( DIR );
   }
-  closedir( DIR );
-
+  
   print "Round Time: " . elapsedTime( 1 ) . "\n";
 
   # How do we proceed from here
@@ -1844,11 +1851,14 @@ if ( $options{'LTRStruct'} ) {
 elapsedTime( 1 );
 if ( $numModels > 0 )
 {
-  print "\n\n";
+  print "\n\n";  
+  my $origDir = getcwd();
+  chdir( $tmpDir );
   my $addlOpts = "";
   $addlOpts = "-pa $options{'pa'} " if ( $options{'pa'} );
   system(   "$FindBin::RealBin/RepeatClassifier "
-          . "-consensi $tmpDir/consensi.fa -stockholm $tmpDir/families.stk" );
+          . "-consensi consensi.fa -stockholm families.stk" );
+  chdir( $origDir );
   print "Classification Time: " . elapsedTime( 1 ) . "\n";
 }
 
@@ -2005,6 +2015,12 @@ sub runRECON
   print "RECON Elapsed: " . elapsedTime( 2 ) . "\n";
 
   `rm -f tmp`;
+
+  unless ( $DEBUG ) {
+    `rm -rf ele_def_res`;
+    `rm -rf ele_redef_res`;
+    `rm -rf edge_redef_res`;
+  }
 
   chdir( $origDir );
 

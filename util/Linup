@@ -406,7 +406,7 @@ if ( $options{'stockholm'} )
   if ( $options{'name'} ) { 
     $mAlign->setReferenceName( $options{'name'} );
   }
-  $mAlign->toSTK();
+  $mAlign->toSTK( includeTemplate => 1, nuclRF => 1 );
 } elsif ( $options{'msf'} )
 {
   $mAlign->toMSF( includeReference => 1 );

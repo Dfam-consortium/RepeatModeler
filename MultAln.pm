@@ -3573,10 +3573,14 @@ sub _getEndStartPairs
 
   Use: $obj->toSTK( filename => "filename",
                     includeReference => 1, header => "## foo", 
-                    id => "fullID" );
+                    id => "fullID", includeTemplate => 1 );
 
   Export the multiple alignment data to a file in the Stockholm 1.0
   format.
+
+  11/2019:  Added option "inclTemplate" to generate a standard
+            Dfam Stockholm template.  This includes all required
+            and optional fields with descriptive text.
 
 =cut
 
@@ -3604,11 +3608,31 @@ sub toSTK
   # Print header
   print $OUT "# STOCKHOLM 1.0\n";
   print $OUT "#=GF ID $id\n";
-  print $OUT "#=GF CC refLength="
-      . $object->getGappedReferenceLength()
-      . " refName="
-      . $object->getReferenceName() . "\n";
-  print $OUT "#=GF BM RepeatMasker/MultAln\n";
+  if ( $parameters{'includeTemplate'} ) {
+    # Print Dfam variant
+    print $OUT "#=GF DE My favorite ERVL ~:Title\n";
+    print $OUT "#=GF AU Foobar Jones ~:Author\n";
+    print $OUT "#=GF TP LTR/ERVL ~:Classification\n";
+    print $OUT "#=GF OC Muridae ~:Clade1\n";
+    print $OUT "#=GF OC Drosophila melanogaster ~:multiple OC lines allowed\n";
+    print $OUT "#=GF TD CATATAC ~:TSD\n";
+    print $OUT "#=GF RN [1]\n";
+    print $OUT "#=GF RM 12343244 ~:PubMed ID\n";
+    print $OUT "#=GF RN [2]\n";
+    print $OUT "#=GF RM 289283 ~: Another PubMed ID\n";
+    print $OUT "#=GF CC ~:Public description with more details of the family\n";
+    print $OUT "#=GF ** ~:Curation details and metdata go in the ** field\n";
+    print $OUT "#=GF **\n";
+    print $OUT "#=GF ** SearchStages: 3, 5, 10  ~: stages, separated by commas\n";
+    print $OUT "#=GF ** BufferStages: 3[1-2], 5[3-6], 1020 ~: 'stage'[start-end] or just 'stage'\n";
+    print $OUT "#=GF ** HC: CACTACCCCC ~: Handbuilt consensus\n";
+  }else {
+    print $OUT "#=GF CC refLength="
+        . $object->getGappedReferenceLength()
+        . " refName="
+        . $object->getReferenceName() . "\n";
+  }
+  print $OUT "#=GF BM RepeatModeler/MultAln\n";
 
   my $numSeqs = $object->getNumAlignedSeqs();
   $numSeqs += 1 if ( defined $parameters{'includeReference'} );
@@ -3680,8 +3704,12 @@ sub toSTK
   #       sequence.  Treat these spaces as consensus positions in the
   #       RF line. 8/21/2015
   $seq =~ s/-/./g;
-  $seq =~ s/ /x/g;
-  $seq =~ s/[ACGTBDHVRYKMSWN]/x/ig;
+  if ( $parameters{'nuclRF'} ){
+    $seq = uc($seq);
+  }else {
+    $seq =~ s/ /x/g;
+    $seq =~ s/[ACGTBDHVRYKMSWN]/x/ig;
+  }
   my $name = "#=GC RF ";
   if ( length( $name ) <= $maxNameLen )
   {
