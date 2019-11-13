@@ -68,8 +68,8 @@ should be an integer number.
 
 =item -LTRStruct
 
-Run the LTR structural discovery pipeline and combine results with 
-the RepeatScout/RECON pipeline. [optional]
+Run the LTR structural discovery pipeline ( LTR_Harvest and LTR_retreiver ) and 
+combine results with the RepeatScout/RECON pipeline. [optional]
 
 =back
 
@@ -395,6 +395,11 @@ my $title = "RepeatModeler Version $version";
 print "$title\n";
 print "=" x length($title)."\n";
 print "Search Engine = $engine\n";
+if ( $options{'LTRStruct'} ) {
+  print "LTR Structural Analysis: Enabled\n";
+}else {
+  print "LTR Structural Analysis: Disabled [use -LTRStruct to enable]\n";
+}
 print "Random Number Seed: $seed\n";
 print "Database = $genomeDB ";
 
@@ -698,15 +703,15 @@ if ( $performance eq "poor" ) {
 # Basic info
 #
 print "\nReady to start the sampling process.\n";
-print "   The runtime of RepeatModeler heavily depends on the quality of the assembly\n";
-print "   and the repetitive content of the sequences.  It is not imperative\n";
-print "   that RepeatModeler completes all rounds in order to obtain useful\n";
-print "   results.  At the completion of each round, the files ( consensi.fa, and\n";
-print "   families.stk ) found in:\n";
+print "INFO: The runtime of RepeatModeler heavily depends on the quality of the assembly\n";
+print "      and the repetitive content of the sequences.  It is not imperative\n";
+print "      that RepeatModeler completes all rounds in order to obtain useful\n";
+print "      results.  At the completion of each round, the files ( consensi.fa, and\n";
+print "      families.stk ) found in:\n";
 print "      $tmpDir/ \n";
-print "   will contain all results produced thus far. These files may be \n";
-print "   manually copied and run through RepeatClassifier should the program\n";
-print "   be terminated early.\n";
+print "      will contain all results produced thus far. These files may be \n";
+print "      manually copied and run through RepeatClassifier should the program\n";
+print "      be terminated early.\n";
 
 #
 # Main loop
