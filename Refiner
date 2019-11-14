@@ -850,21 +850,26 @@ sub buildConsensus
       $end   = $3;
     }
     if ( $seqID && $start && $end ) {
-      if ( $end < $start ) {
-          my $tmp = $start;
-          $start    = $end;
-          $end      = $tmp;
-      }
-      $start      = $malign->getAlignedSeqStart( $i ) + $start;
-      $end        = $malign->getAlignedSeqEnd( $i ) + $end;
       if ( $options{'giToID'}
            && exists $genomeDBToSeqID{$seqID} )
       {
         $seqID = $genomeDBToSeqID{$seqID};
       }
       $malign->setAlignedName( $i, $seqID );
-      $malign->setAlignedSeqStart( $i, $start );
-      $malign->setAlignedSeqEnd( $i, $end );
+      my $adjStart;
+      my $adjEnd;
+      if ( $end < $start ) {
+        $malign->setAlignedOrientation($i, "-" );
+        $adjStart = $malign->getAlignedSeqStart( $i ) + $end - 1;
+        $adjEnd = $malign->getAlignedSeqEnd( $i ) + $end - 1;
+      }else {
+        $adjStart = $malign->getAlignedSeqStart( $i ) + $start - 1;
+        $adjEnd   = $malign->getAlignedSeqEnd( $i ) + $start - 1;
+      }
+      $malign->setAlignedSeqStart( $i, $adjStart );
+      $malign->setAlignedSeqEnd( $i, $adjEnd );
+    }else {
+      warn "Could not parse identifier: $dbDesc\n";
     }
   }
   #$malign->toSTK( filename => "$pathToFastaFile.refiner.stk", includeTemplate => 1, nuclRF => 1 );
