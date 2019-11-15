@@ -203,7 +203,9 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
 
      RepeatModeler produces a voluminous amount of temporary files stored
      in a directory created at runtime named like:
-       RM_<PID>.<DATE> ie. "RM_5098.MonMar141305172005" 
+
+               RM_<PID>.<DATE> ie. "RM_5098.MonMar141305172005" 
+
      and remains after each run for debugging purposes or for the purpose
      of resuming runs if a failure occures. At the succesful completion 
      of a run, two files are generated:
@@ -219,10 +221,11 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
      The fasta format is useful for running quick custom library searches
      using RepeatMasker.  Ie.:
 
-     <RepeatMaskerPath>/RepeatMasker -lib <database_name>-families.fa mySequence.fa 
+               <RepeatMaskerPath>/RepeatMasker -lib <database_name>-families.fa mySequence.fa 
 
      Other files produced in the working directory include:
 
+```
        RM_<PID>.<DATE>/
           consensi.fa
           families.stk
@@ -255,6 +258,7 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
                Same as round-2
            ..
           round-n/
+```
 
 
   Recover from a failure
