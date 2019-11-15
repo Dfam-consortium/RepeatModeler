@@ -298,12 +298,12 @@ genomes.
 
 RepeatModeler 2.0 ( RECON + RepeatScout + LTRStruct ):
 
-                  Genome DB    Run Time*   Models   
-Genome            Size (bp)    (hh:mm)     Built   
-----------------  -----------  ----------  -------- 
-D. melanogaster   164 Mbp       12:56        734    
-D. rerio          1.4 Gbp       40:36       3851
-O. sativa         375 Mbp       37:23       2648
+|                |  Genome DB |   Run Time*|   Models | 
+|Genome          |  Size (bp) |   (hh:mm)  |   Built  | 
+|----------------|------------|------------|----------| 
+|D. melanogaster |  164 Mbp   |    12:56   |     734  |  
+|D. rerio        |  1.4 Gbp   |    40:36   |    3851  |
+|O. sativa       |  375 Mbp   |    37:23   |    2648  |
 
   *  Analysis run on a CentOS 7.6.1810 Linux system with
      Intel... processors.  D. melanogaster was run using 
