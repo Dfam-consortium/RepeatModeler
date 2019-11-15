@@ -219,8 +219,7 @@ my $CLASS = "SequenceSimilarityMatrix";
 ##
 ##
 ##-------------------------------------------------------------------------##
-sub new
-{
+sub new {
   my $class = shift;
   my $this  = {};
   bless $this, $class;
@@ -238,8 +237,7 @@ sub new
 =cut
 
 ##---------------------------------------------------------------------##
-sub parseFromFile
-{
+sub parseFromFile {
   my $object   = shift;
   my $fileName = shift
       || croak $CLASS. "::parseFromFile() needs a filename!";
@@ -251,28 +249,23 @@ sub parseFromFile
   my @rowValues = ();
   my $row       = 0;
   my $i         = 0;
-  while ( <MATRIX> )
-  {
+  while ( <MATRIX> ) {
     $_ = uc( $_ );
     chomp;
-    if ( /FREQS\s+(.*)/ )
-    {
+    if ( /FREQS\s+(.*)/ ) {
       %freqHash = split " ", $1;
     }
-    if ( /^\s*[A-Z]\s+[A-Z]\s+[A-Z]\s+[A-Z]\s+/ )
-    {
+    if ( /^\s*[A-Z]\s+[A-Z]\s+[A-Z]\s+[A-Z]\s+/ ) {
       chomp;
       s/\s//g;
       $object->{alphabet} = $_;
       $object->{alphabetArray} = [ split( '', $_ ) ];
     }
-    if ( /^\s*([a-zA-Z]\s+)?[\d-]+\s+[\d-]+\s+[\d-]+\s+[\d-]+\s+/ )
-    {
+    if ( /^\s*([a-zA-Z]\s+)?[\d-]+\s+[\d-]+\s+[\d-]+\s+[\d-]+\s+/ ) {
       @rowValues = split;
       shift @rowValues if ( $1 ne "" );
       my $col = 0;
-      foreach $a ( @{ $object->{alphabetArray} } )
-      {
+      foreach $a ( @{ $object->{alphabetArray} } ) {
         $object->{matrixHash}{ $object->{alphabetArray}[ $row ], $a } =
             $rowValues[ $col++ ];
       }
@@ -281,16 +274,14 @@ sub parseFromFile
   }
   close MATRIX;
 
-  if ( scalar( keys %freqHash ) == 0 )
-  {
+  if ( scalar( keys %freqHash ) == 0 ) {
     $freqHash{"A"} = 0.25;
     $freqHash{"C"} = 0.25;
     $freqHash{"G"} = 0.25;
     $freqHash{"T"} = 0.25;
   }
 
-  for ( $i = 0 ; $i < length( $object->{alphabet} ) ; $i++ )
-  {
+  for ( $i = 0 ; $i < length( $object->{alphabet} ) ; $i++ ) {
     $object->{freqArray}[ $i ] =
         $freqHash{ substr( $object->{alphabet}, $i, 1 ) } || 0;
   }
@@ -314,8 +305,7 @@ sub parseFromFile
 ##-------------------------------------------------------------------------##
 ## TODO: This could be moved into a generic object class.
 ##       or placed in perlhelpers module.
-sub toString
-{
+sub toString {
   my $object = shift;
   my $data_dumper = new Data::Dumper( [ $object ] );
   $data_dumper->Purity( 1 )->Terse( 1 )->Deepcopy( 1 );
@@ -334,8 +324,7 @@ sub toString
 ##      read back into an object of this type.
 ##
 ##-------------------------------------------------------------------------##
-sub serializeOUT
-{
+sub serializeOUT {
   my $object   = shift;
   my $fileName = shift;
 
@@ -357,8 +346,7 @@ sub serializeOUT
 ##      from a serialized PERL object or data structure.
 ##
 ##-------------------------------------------------------------------------##
-sub serializeIN
-{
+sub serializeIN {
   my $object       = shift;
   my $fileName     = shift;
   my $fileContents = "";
@@ -396,8 +384,7 @@ sub serializeIN
 =cut
 
 ##-------------------------------------------------------------------------##
-sub addMatrices
-{
+sub addMatrices {
   my $object    = shift;
   my $matrix    = shift;
   my $addCounts = shift;
@@ -405,15 +392,13 @@ sub addMatrices
   my $addSubs   = shift;
 
   # Mono nucleotide counts
-  foreach my $cBase ( keys( %{ $matrix->{monoAlphabetHash} } ) )
-  {
+  foreach my $cBase ( keys( %{ $matrix->{monoAlphabetHash} } ) ) {
 
     # Add to alphabets if necessary
     $object->{monoAlphabetHash}{$cBase} = 1;
 
     # Add matrix counts to object counts
-    foreach my $sBase ( keys( %{ $matrix->{monoAlphabetHash} } ) )
-    {
+    foreach my $sBase ( keys( %{ $matrix->{monoAlphabetHash} } ) ) {
       $object->{monoSubCounts}{ $cBase . $sBase } +=
           $matrix->{monoSubCounts}{ $cBase . $sBase }
           if ( $addCounts && $matrix->{monoSubCounts}{ $cBase . $sBase } > 0 );
@@ -427,15 +412,13 @@ sub addMatrices
   }
 
   # Tri nucleotide counts
-  foreach my $cBase ( keys( %{ $matrix->{trippleAlphabetHash} } ) )
-  {
+  foreach my $cBase ( keys( %{ $matrix->{trippleAlphabetHash} } ) ) {
 
     # Add to alphabets if necessary
     $object->{trippleAlphabetHash}{$cBase} = 1;
 
     # Add matrix counts to object counts
-    foreach my $sBase ( keys( %{ $matrix->{trippleAlphabetHash} } ) )
-    {
+    foreach my $sBase ( keys( %{ $matrix->{trippleAlphabetHash} } ) ) {
       $object->{trippleSubCounts}{ $cBase . $sBase } +=
           $matrix->{trippleSubCounts}{ $cBase . $sBase }
           if (    $addCounts
@@ -470,8 +453,7 @@ sub addMatrices
 =cut
 
 ##-------------------------------------------------------------------------##
-sub divMatrices
-{
+sub divMatrices {
   my $object = shift;
   my $value  = shift;
   my $counts = shift;
@@ -479,10 +461,8 @@ sub divMatrices
   my $subs   = shift;
 
   # Mono nucleotide matrices
-  foreach my $cBase ( keys( %{ $object->{monoAlphabetHash} } ) )
-  {
-    foreach my $sBase ( keys( %{ $object->{monoAlphabetHash} } ) )
-    {
+  foreach my $cBase ( keys( %{ $object->{monoAlphabetHash} } ) ) {
+    foreach my $sBase ( keys( %{ $object->{monoAlphabetHash} } ) ) {
       $object->{monoSubCounts}{ $cBase . $sBase } /= $value
           if ( $counts && $object->{monoSubCounts}{ $cBase . $sBase } > 0 );
       $object->{monoRateHash}{ $cBase . $sBase } /= $value
@@ -493,10 +473,8 @@ sub divMatrices
   }
 
   # Tri nucleotide matrices
-  foreach my $cBase ( keys( %{ $object->{trippleAlphabetHash} } ) )
-  {
-    foreach my $sBase ( keys( %{ $object->{trippleAlphabetHash} } ) )
-    {
+  foreach my $cBase ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
+    foreach my $sBase ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
       $object->{trippleSubCounts}{ $cBase . $sBase } /= $value
           if ( $counts && $object->{trippleSubCounts}{ $cBase . $sBase } > 0 );
       $object->{triRateHash}{ $cBase . $sBase } /= $value
@@ -536,30 +514,26 @@ sub divMatrices
 ##               1 - ( p(A)*p(A->A) + p(C) * p(C->C)...)
 ##
 ##-------------------------------------------------------------------------##
-sub _matrixDivergence
-{
+sub _matrixDivergence {
   my $matrixArrayRef   = shift;
   my $alphabetArrayRef = shift;
   my $monoFreqHashRef  = shift;
 
   my $diagTotal = 0;
-  for ( my $i = 0 ; $i <= $#$matrixArrayRef ; $i++ )
-  {
-    if ( defined $monoFreqHashRef )
-    {
+  for ( my $i = 0 ; $i <= $#$matrixArrayRef ; $i++ ) {
+    if ( defined $monoFreqHashRef ) {
       $diagTotal +=
           $matrixArrayRef->[ $i ][ $i ] *
           $monoFreqHashRef->{ $alphabetArrayRef->[ $i ] };
-    } else
-    {
+    }
+    else {
       $diagTotal += $matrixArrayRef->[ $i ][ $i ];
     }
   }
-  if ( defined $monoFreqHashRef )
-  {
+  if ( defined $monoFreqHashRef ) {
     return ( 1 - ( $diagTotal ) );
-  } else
-  {
+  }
+  else {
     return ( 1 - ( $diagTotal / ( $#$matrixArrayRef + 1 ) ) );
   }
 }
@@ -602,8 +576,7 @@ sub _matrixDivergence
 ##            1 - (p(AAA) * p(AAA->NAN) + p(AAT) * p(AAT->NAN) + ....)
 ##
 ##-------------------------------------------------------------------------##
-sub _triMatrixDivergence
-{
+sub _triMatrixDivergence {
   my $matrixArrayRef      = shift;
   my $alphabetArrayRef    = shift;
   my $noCGSites           = shift;
@@ -611,39 +584,34 @@ sub _triMatrixDivergence
 
   my $diagTotal    = 0;
   my $diagElements = 0;
-  for ( my $i = 0 ; $i <= $#$matrixArrayRef ; $i++ )
-  {
+  for ( my $i = 0 ; $i <= $#$matrixArrayRef ; $i++ ) {
     next if ( $noCGSites && index( $alphabetArrayRef->[ $i ], "CG" ) >= 0 );
     $diagElements++;
-    for ( my $j = 0 ; $j <= $#$matrixArrayRef ; $j++ )
-    {
+    for ( my $j = 0 ; $j <= $#$matrixArrayRef ; $j++ ) {
       if (
            substr( $alphabetArrayRef->[ $i ], 1, 1 ) eq
            substr( $alphabetArrayRef->[ $j ], 1, 1 ) )
       {
-        if ( defined $trippletFreqHashRef )
-        {
+        if ( defined $trippletFreqHashRef ) {
           $diagTotal +=
               ( $matrixArrayRef->[ $i ][ $j ] *
                 $trippletFreqHashRef->{ $alphabetArrayRef->[ $i ] } );
-        } else
-        {
+        }
+        else {
           $diagTotal += $matrixArrayRef->[ $i ][ $j ];
         }
       }
     }
   }
-  if ( defined $trippletFreqHashRef )
-  {
+  if ( defined $trippletFreqHashRef ) {
     return ( 1 - ( $diagTotal ) );
-  } else
-  {
+  }
+  else {
     return ( 1 - ( $diagTotal / $diagElements ) );
   }
 }
 
-sub hashToArray
-{
+sub hashToArray {
   my $object               = shift;
   my $matrixHashRef        = shift;
   my $alphabetArrayRefOrig = shift;
@@ -675,15 +643,13 @@ sub hashToArray
 ##		A PERL array form of the hash matrix data.
 ##
 ##-------------------------------------------------------------------------##
-sub _hashToArray
-{
+sub _hashToArray {
   my $matrixHashRef    = shift;
   my $alphabetArrayRef = shift;
 
   # Calculate the unique set of key pairs for the
   # hash if we are not given this information already
-  unless ( defined $alphabetArrayRef )
-  {
+  unless ( defined $alphabetArrayRef ) {
     my %seen = ();
     $alphabetArrayRef = [
       grep    { !$seen{$_}++ }
@@ -701,10 +667,8 @@ sub _hashToArray
   my $i           = 0;
   my $j           = 0;
   my @matrixArray = ();
-  foreach my $conSeq ( @{$alphabetArrayRef} )
-  {
-    foreach my $subSeq ( @{$alphabetArrayRef} )
-    {
+  foreach my $conSeq ( @{$alphabetArrayRef} ) {
+    foreach my $subSeq ( @{$alphabetArrayRef} ) {
       $matrixArray[ $i ][ $j++ ] = $matrixHashRef->{ $conSeq . $subSeq };
     }
     $j = 0;
@@ -734,8 +698,7 @@ sub _hashToArray
 ##		A PERL hash form of the array matrix data.
 ##
 ##-------------------------------------------------------------------------##
-sub _arrayToHash
-{
+sub _arrayToHash {
   my $matrixArrayRef   = shift;
   my $alphabetArrayRef = shift;
 
@@ -743,10 +706,8 @@ sub _arrayToHash
   my $i          = 0;
   my $j          = 0;
   my %matrixHash = ();
-  foreach my $conSeq ( @{$alphabetArrayRef} )
-  {
-    foreach my $subSeq ( @{$alphabetArrayRef} )
-    {
+  foreach my $conSeq ( @{$alphabetArrayRef} ) {
+    foreach my $subSeq ( @{$alphabetArrayRef} ) {
       $matrixHash{ $conSeq . $subSeq } = $matrixArrayRef->[ $i ][ $j++ ];
     }
     $j = 0;
@@ -764,8 +725,7 @@ sub _arrayToHash
 =cut
 
 ##-------------------------------------------------------------------------##
-sub matrixToString
-{
+sub matrixToString {
   my $object     = shift;
   my $name       = shift;
   my $compressed = shift;
@@ -782,8 +742,7 @@ sub matrixToString
 =cut
 
 ##-------------------------------------------------------------------------##
-sub triStandardDeviation
-{
+sub triStandardDeviation {
   my $object = shift;
   my $outStr = "";
 
@@ -805,20 +764,17 @@ sub triStandardDeviation
   $outStr .= "Tripplet Position Standard Deviation\n";
   $outStr .= "====================================\n";
   $outStr .= "\t";
-  foreach my $tripplet ( ( "A", "C", "G", "T" ) )
-  {
+  foreach my $tripplet ( ( "A", "C", "G", "T" ) ) {
     $outStr .= "$tripplet\t";
   }
   $outStr .= "\n";
-  foreach my $tripplet ( @sortedAlphabet )
-  {
+  foreach my $tripplet ( @sortedAlphabet ) {
     next if ( ( $tripplet =~ /N/ ) );
     my %triBaseTotals        = ();
     my $numOfPositionsInSeq  = 0;
     my %meanBaseCount        = ();
     my %sumOfSquaredDistance = ();
-    foreach my $pos ( keys( %{ $object->{triSubPosCounts}{$tripplet} } ) )
-    {
+    foreach my $pos ( keys( %{ $object->{triSubPosCounts}{$tripplet} } ) ) {
       $numOfPositionsInSeq++;
       foreach
           my $sub ( keys( %{ $object->{triSubPosCounts}{$tripplet}{$pos} } ) )
@@ -829,8 +785,7 @@ sub triStandardDeviation
         $meanBaseCount{$sub} = $triBaseTotals{$sub} / $numOfPositionsInSeq++;
       }
     }
-    foreach my $pos ( keys( %{ $object->{triSubPosCounts}{$tripplet} } ) )
-    {
+    foreach my $pos ( keys( %{ $object->{triSubPosCounts}{$tripplet} } ) ) {
       foreach
           my $sub ( keys( %{ $object->{triSubPosCounts}{$tripplet}{$pos} } ) )
       {
@@ -841,8 +796,7 @@ sub triStandardDeviation
       }
     }
     $outStr .= "$tripplet\t";
-    foreach my $sub ( sort keys( %sumOfSquaredDistance ) )
-    {
+    foreach my $sub ( sort keys( %sumOfSquaredDistance ) ) {
       $object->{sdTriBaseCounts}{$tripplet}{$sub} +=
           sqrt(
            ( 1 / ( $numOfPositionsInSeq - 1 ) ) * $sumOfSquaredDistance{$sub} );
@@ -861,8 +815,7 @@ sub triStandardDeviation
 ##
 ##
 ##-------------------------------------------------------------------------##
-sub _matrixHashToString
-{
+sub _matrixHashToString {
   my $matrixHashRef = shift;
   my $compressed    = shift;
   my $excludeNs     = shift;
@@ -876,20 +829,18 @@ sub _matrixHashToString
   my @alphabet          = ();
   my %seen              = ();
   my $keyLen            = length( ( keys( %{$matrixHashRef} ) )[ 0 ] );
-  if ( $excludeNs )
-  {
+  if ( $excludeNs ) {
     @alphabet = grep { !$seen{$_}++ && !/N/; }
         map { ( substr( $_, 0, $keyLen / 2 ), substr( $_, $keyLen / 2 ) ); }
         keys( %{$matrixHashRef} );
-  } else
-  {
+  }
+  else {
     @alphabet = grep { !$seen{$_}++; }
         map { ( substr( $_, 0, $keyLen / 2 ), substr( $_, $keyLen / 2 ) ); }
         keys( %{$matrixHashRef} );
   }
 
-  if ( $keyLen == 6 )
-  {
+  if ( $keyLen == 6 ) {
     my %seen = ();
     @sortedMidAlphabet =
         ( sort grep { !$seen{$_}++; }
@@ -901,8 +852,8 @@ sub _matrixHashToString
             || substr( $a, 2, 1 ) cmp substr( $b, 2, 1 )
           } @alphabet
     );
-  } else
-  {
+  }
+  else {
     @sortedAlphabet = ( sort( @alphabet ) );
   }
 
@@ -914,16 +865,13 @@ sub _matrixHashToString
   my %colTot   = ();
 
   # Generate the column headings
-  if ( $compressed )
-  {
-    foreach $colIndex ( @sortedMidAlphabet )
-    {
+  if ( $compressed ) {
+    foreach $colIndex ( @sortedMidAlphabet ) {
       $outStr .= "$colIndex\t";
     }
-  } else
-  {
-    foreach $colIndex ( @sortedAlphabet )
-    {
+  }
+  else {
+    foreach $colIndex ( @sortedAlphabet ) {
       $outStr .= "$colIndex\t";
     }
   }
@@ -931,24 +879,20 @@ sub _matrixHashToString
 
   # Generate the rows
   my $rowIndex = "";
-  foreach $rowIndex ( @sortedAlphabet )
-  {
+  foreach $rowIndex ( @sortedAlphabet ) {
     $outStr .= "$rowIndex\t";
-    foreach $colIndex ( @sortedAlphabet )
-    {
-      if ( $compressed )
-      {
+    foreach $colIndex ( @sortedAlphabet ) {
+      if ( $compressed ) {
         $colTot{ substr( $colIndex, 1, 1 ) } +=
             $matrixHashRef->{ $rowIndex . $colIndex };
-      } else
-      {
+      }
+      else {
         $outStr .= ""
             . sprintf( "%.6g", $matrixHashRef->{ $rowIndex . $colIndex } )
             . "\t";
       }
     }
-    if ( $compressed )
-    {
+    if ( $compressed ) {
       map { $outStr .= sprintf( "%.6g", $colTot{$_} ) . "\t"; }
           @sortedMidAlphabet;
       %colTot = undef;
@@ -969,8 +913,7 @@ sub _matrixHashToString
 =cut
 
 ##-------------------------------------------------------------------------##
-sub calculateLLRMatrices
-{
+sub calculateLLRMatrices {
   my $object       = shift;
   my $backgroundGC = shift;
   my $scale        = shift;
@@ -987,106 +930,99 @@ sub calculateLLRMatrices
   #
   my @cBaseArray = ();
   my @sBaseArray = ();
-  foreach my $cBase ( "A", "R", "G", "C", "Y", "T", "K", "M", "S", "W" )
-  {
-    if ( $cBase eq "A" || $cBase eq "T" || $cBase eq "G" || $cBase eq "C" )
-    {
+  foreach my $cBase ( "A", "R", "G", "C", "Y", "T", "K", "M", "S", "W" ) {
+    if ( $cBase eq "A" || $cBase eq "T" || $cBase eq "G" || $cBase eq "C" ) {
       @cBaseArray = ( $cBase );
-    } elsif ( $cBase eq "R" )
-    {
+    }
+    elsif ( $cBase eq "R" ) {
 
       # A or G (Purines)
       @cBaseArray = ( "A", "G" );
-    } elsif ( $cBase eq "Y" )
-    {
+    }
+    elsif ( $cBase eq "Y" ) {
 
       # C or T (Pyrimidines)
       @cBaseArray = ( "C", "T" );
-    } elsif ( $cBase eq "K" )
-    {
+    }
+    elsif ( $cBase eq "K" ) {
 
       # G or T (Keto)
       @cBaseArray = ( "G", "T" );
-    } elsif ( $cBase eq "M" )
-    {
+    }
+    elsif ( $cBase eq "M" ) {
 
       # A or C (Amino)
       @cBaseArray = ( "A", "C" );
-    } elsif ( $cBase eq "S" )
-    {
+    }
+    elsif ( $cBase eq "S" ) {
 
       # G or C (Strong 3H bonds)
       @cBaseArray = ( "G", "C" );
-    } elsif ( $cBase eq "W" )
-    {
+    }
+    elsif ( $cBase eq "W" ) {
 
       # A or T (Weak 2H bonds)
       @cBaseArray = ( "A", "T" );
-    } elsif ( $cBase eq "N" )
-    {
+    }
+    elsif ( $cBase eq "N" ) {
 
       # Any Base
-    } elsif ( $cBase eq "X" )
-    {
+    }
+    elsif ( $cBase eq "X" ) {
 
       # Mask Character
     }
-    foreach my $sBase ( "A", "R", "G", "C", "Y", "T", "K", "M", "S", "W" )
-    {
-      if ( $sBase eq "A" || $sBase eq "T" || $sBase eq "G" || $sBase eq "C" )
-      {
+    foreach my $sBase ( "A", "R", "G", "C", "Y", "T", "K", "M", "S", "W" ) {
+      if ( $sBase eq "A" || $sBase eq "T" || $sBase eq "G" || $sBase eq "C" ) {
         @sBaseArray = ( $sBase );
-      } elsif ( $sBase eq "R" )
-      {
+      }
+      elsif ( $sBase eq "R" ) {
 
         # A or G (Purines)
         @sBaseArray = ( "A", "G" );
-      } elsif ( $sBase eq "Y" )
-      {
+      }
+      elsif ( $sBase eq "Y" ) {
 
         # C or T (Pyrimidines)
         @sBaseArray = ( "C", "T" );
-      } elsif ( $sBase eq "K" )
-      {
+      }
+      elsif ( $sBase eq "K" ) {
 
         # G or T (Keto)
         @sBaseArray = ( "G", "T" );
-      } elsif ( $sBase eq "M" )
-      {
+      }
+      elsif ( $sBase eq "M" ) {
 
         # A or C (Amino)
         @sBaseArray = ( "A", "C" );
-      } elsif ( $sBase eq "S" )
-      {
+      }
+      elsif ( $sBase eq "S" ) {
 
         # G or C (Strong 3H bonds)
         @sBaseArray = ( "G", "C" );
-      } elsif ( $sBase eq "W" )
-      {
+      }
+      elsif ( $sBase eq "W" ) {
 
         # A or T (Weak 2H bonds)
         @sBaseArray = ( "A", "T" );
-      } elsif ( $sBase eq "N" )
-      {
+      }
+      elsif ( $sBase eq "N" ) {
 
         # Any Base
-      } elsif ( $sBase eq "X" )
-      {
+      }
+      elsif ( $sBase eq "X" ) {
 
         # Mask Character
       }
       my $foregroundProb = 0;
       my $backgroundProb = 0;
-      foreach my $firstBase ( @cBaseArray )
-      {
-        foreach my $secondBase ( @sBaseArray )
-        {
+      foreach my $firstBase ( @cBaseArray ) {
+        foreach my $secondBase ( @sBaseArray ) {
           $foregroundProb += $object->{monoSubHash}{ $firstBase . $secondBase };
-          if ( $secondBase eq "A" || $secondBase eq "T" )
-          {
+          if ( $secondBase eq "A" || $secondBase eq "T" ) {
             $backgroundProb += ( 1 - $backgroundGC ) / 2;
-          } else
-          {
+          }
+          else {
             $backgroundProb += $backgroundGC / 2;
           }
         }
@@ -1115,27 +1051,22 @@ sub calculateLLRMatrices
 # TODO: Also...do we really need to store the ..SubTotals in the
 #       datastructure?
 #
-sub calculateProbMatrix
-{
+sub calculateProbMatrix {
   my $object = shift;
 
   #
   #
   #
-  foreach my $cBase ( keys( %{ $object->{monoAlphabetHash} } ) )
-  {
+  foreach my $cBase ( keys( %{ $object->{monoAlphabetHash} } ) ) {
     next if ( $cBase eq "N" );
-    foreach my $sBase ( keys( %{ $object->{monoAlphabetHash} } ) )
-    {
+    foreach my $sBase ( keys( %{ $object->{monoAlphabetHash} } ) ) {
       next if ( $sBase eq "N" );
       $object->{monoSubTotals}{$cBase} +=
           $object->{monoSubCounts}{ $cBase . $sBase };
     }
-    foreach my $sBase ( keys( %{ $object->{monoAlphabetHash} } ) )
-    {
+    foreach my $sBase ( keys( %{ $object->{monoAlphabetHash} } ) ) {
       next if ( $sBase eq "N" );
-      if ( $object->{monoSubTotals}{$cBase} > 0 )
-      {
+      if ( $object->{monoSubTotals}{$cBase} > 0 ) {
         $object->{monoSubProb}{ $cBase . $sBase } =
             $object->{monoSubCounts}{ $cBase . $sBase } /
             $object->{monoSubTotals}{$cBase};
@@ -1149,21 +1080,17 @@ sub calculateProbMatrix
   # TODO: Remove trippleSubTotals from the data structure
   #       since we don't need it.
   my $totalTripplets = 0;
-  foreach my $cTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) )
-  {
+  foreach my $cTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
     next if ( index( $cTripplet, "N" ) >= 0 );
-    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) )
-    {
+    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
       next if ( index( $sTripplet, "N" ) >= 0 );
       $object->{trippleSubTotals}{$cTripplet} +=
           $object->{trippleSubCounts}{ $cTripplet . $sTripplet } + 1;
     }
     $totalTripplets += $object->{trippleSubTotals}{$cTripplet};
-    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) )
-    {
+    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
       next if ( index( $sTripplet, "N" ) >= 0 );
-      if ( $object->{trippleSubTotals}{$cTripplet} > 0 )
-      {
+      if ( $object->{trippleSubTotals}{$cTripplet} > 0 ) {
         $object->{triSubProb}{ $cTripplet . $sTripplet } =
             ( $object->{trippleSubCounts}{ $cTripplet . $sTripplet } + 1 ) /
             $object->{trippleSubTotals}{$cTripplet};
@@ -1182,8 +1109,7 @@ sub calculateProbMatrix
 =cut
 
 ##-------------------------------------------------------------------------##
-sub printMatrixReport
-{
+sub printMatrixReport {
   my $object          = shift;
   my $compressTriData = shift;
   my $outStr          = "";
@@ -1250,8 +1176,7 @@ sub printMatrixReport
 =cut
 
 ##-------------------------------------------------------------------------##
-sub generateFlankingBaseGraphData
-{
+sub generateFlankingBaseGraphData {
   my $object              = shift;
   my $subBase             = shift;    # Base to consider substitions on
   my $fixed               = shift;    # Fixed or loose flanking bases
@@ -1260,8 +1185,7 @@ sub generateFlankingBaseGraphData
   my $optTrippletArrayRef = shift;    # Set order for data
 
   my @trippletAlphabet = keys( %{ $object->{trippleAlphabetHash} } );
-  if ( defined $optTrippletArrayRef )
-  {
+  if ( defined $optTrippletArrayRef ) {
     @trippletAlphabet = @$optTrippletArrayRef;
   }
 
@@ -1273,21 +1197,18 @@ sub generateFlankingBaseGraphData
   #
   my %outArr = ();
   my $outStr = "\t";
-  foreach my $sBase ( "A", "G", "C", "T" )
-  {
+  foreach my $sBase ( "A", "G", "C", "T" ) {
     next if ( $sBase eq $subBase );
     $outStr .= $sBase . "\t";
   }
   $outStr .= "\t\tTotal Datapoints\n";
-  foreach my $cTripplet ( @trippletAlphabet )
-  {
+  foreach my $cTripplet ( @trippletAlphabet ) {
     next
         if ( index( $cTripplet, "N" ) >= 0
              || substr( $cTripplet, 1, 1 ) ne $subBase );
     my %sTrippletCounts = ();
     my $sTrippletTotal  = 0;
-    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) )
-    {
+    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
       next if ( index( $sTripplet, "N" ) >= 0 );
       next
           if (
@@ -1296,14 +1217,13 @@ sub generateFlankingBaseGraphData
                    || substr( $sTripplet, 2, 1 ) ne substr( $cTripplet, 2, 1 ) )
           );
       my $sBase = substr( $sTripplet, 1, 1 );
-      if ( $singleStrand )
-      {
+      if ( $singleStrand ) {
         $sTrippletCounts{$sBase} +=
             $object->{trippleSubSingleCounts}{ $cTripplet . $sTripplet };
         $sTrippletTotal +=
             $object->{trippleSubSingleCounts}{ $cTripplet . $sTripplet };
-      } else
-      {
+      }
+      else {
         $sTrippletCounts{$sBase} +=
             $object->{trippleSubCounts}{ $cTripplet . $sTripplet };
         $sTrippletTotal +=
@@ -1311,8 +1231,7 @@ sub generateFlankingBaseGraphData
       }
     }
     $outStr .= "$cTripplet\t";
-    foreach my $sBase ( "A", "G", "C", "T" )
-    {
+    foreach my $sBase ( "A", "G", "C", "T" ) {
       next if ( $sBase eq $subBase );
       $outStr .= ""
           . ( ( $sTrippletCounts{$sBase} + 1 ) / ( $sTrippletTotal + 1 ) )
@@ -1328,11 +1247,10 @@ sub generateFlankingBaseGraphData
   }
 
   # Return the results
-  if ( $toString )
-  {
+  if ( $toString ) {
     return $outStr;
-  } else
-  {
+  }
+  else {
     return \%outArr;
   }
 }
@@ -1353,16 +1271,14 @@ sub generateFlankingBaseGraphData
 =cut
 
 ##-------------------------------------------------------------------------##
-sub generateFlankingBaseConsistencyGraphData
-{
+sub generateFlankingBaseConsistencyGraphData {
   my $object              = shift;
   my $subBase             = shift;    # Base to consider substitions on
   my $toString            = shift;    # Create a string or struct output
   my $optTrippletArrayRef = shift;    # Set order for data
 
   my @trippletAlphabet = keys( %{ $object->{trippleAlphabetHash} } );
-  if ( defined $optTrippletArrayRef )
-  {
+  if ( defined $optTrippletArrayRef ) {
     @trippletAlphabet = @$optTrippletArrayRef;
   }
 
@@ -1374,28 +1290,24 @@ sub generateFlankingBaseConsistencyGraphData
   #
   my %outArr = ();
   my $outStr = "\t";
-  foreach my $sBase ( "A", "G", "C", "T" )
-  {
+  foreach my $sBase ( "A", "G", "C", "T" ) {
     next if ( $sBase eq $subBase );
     $outStr .= $sBase . "\t";
   }
   $outStr .= "\n";
-  foreach my $cTripplet ( @trippletAlphabet )
-  {
+  foreach my $cTripplet ( @trippletAlphabet ) {
     next
         if ( index( $cTripplet, "N" ) >= 0
              || substr( $cTripplet, 1, 1 ) ne $subBase );
     my %sTrippletCounts = ();
-    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) )
-    {
+    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
       next if ( index( $sTripplet, "N" ) >= 0 );
       my $sBase = substr( $sTripplet, 1, 1 );
       $sTrippletCounts{$sBase} +=
           $object->{triSubHash}{ $cTripplet . $sTripplet };
     }
     $outStr .= "$cTripplet\t";
-    foreach my $sBase ( "A", "G", "C", "T" )
-    {
+    foreach my $sBase ( "A", "G", "C", "T" ) {
       next if ( $sBase eq $subBase );
       $outStr .= "" . $sTrippletCounts{$sBase} . "\t";
       push( @{ $outArr{$cTripplet} }, $sTrippletCounts{$sBase} );
@@ -1404,11 +1316,10 @@ sub generateFlankingBaseConsistencyGraphData
   }
 
   # Return the results
-  if ( $toString )
-  {
+  if ( $toString ) {
     return $outStr;
-  } else
-  {
+  }
+  else {
     return \%outArr;
   }
 }
@@ -1422,14 +1333,12 @@ sub generateFlankingBaseConsistencyGraphData
 =cut
 
 ##-------------------------------------------------------------------------##
-sub generateTriPosGraphData
-{
+sub generateTriPosGraphData {
   my $object   = shift;
   my $tripplet = shift;
 
   my $outStr = "ACGT\n";
-  foreach my $triPos ( keys( %{ $object->{'triSubPosCounts'}{$tripplet} } ) )
-  {
+  foreach my $triPos ( keys( %{ $object->{'triSubPosCounts'}{$tripplet} } ) ) {
     $outStr .= $triPos . "\t";
     $outStr .= $object->{'triSubPosCounts'}{$tripplet}{$triPos}{'A'} . "\t";
     $outStr .= $object->{'triSubPosCounts'}{$tripplet}{$triPos}{'C'} . "\t";
@@ -1456,20 +1365,17 @@ sub generateTriPosGraphData
 =cut
 
 ##-------------------------------------------------------------------------##
-sub generateMonoFromTriDeleteMe
-{
+sub generateMonoFromTriDeleteMe {
   my $object     = shift;
   my $excludeCpG = shift;
 
   my %monoSubProb   = ();
   my %monoSubCounts = ();
   my %monoSubTotals = ();
-  foreach my $cTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) )
-  {
+  foreach my $cTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
     next if ( index( $cTripplet, "N" ) >= 0 );
     next if ( $excludeCpG == 1 && index( $cTripplet, "CG" ) >= 0 );
-    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) )
-    {
+    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
       next if ( index( $sTripplet, "N" ) >= 0 );
       $monoSubCounts{ substr( $cTripplet, 1, 1 )
             . substr( $sTripplet, 1, 1 ) } +=
@@ -1478,8 +1384,7 @@ sub generateMonoFromTriDeleteMe
           $object->{trippleSubCounts}{ $cTripplet . $sTripplet };
     }
   }
-  foreach my $sBase ( "GA", "AG", "GT", "AC", "AT", "GC" )
-  {
+  foreach my $sBase ( "GA", "AG", "GT", "AC", "AT", "GC" ) {
     my $cplBase = $sBase;
     $cplBase =~ tr/ACGTRYKMSWBDHV/TGCAYRMKWSVHDB/;
     $monoSubProb{ $sBase . " "
@@ -1511,8 +1416,7 @@ sub generateMonoFromTriDeleteMe
 =cut
 
 ##-------------------------------------------------------------------------##
-sub generateMonoFromTri
-{
+sub generateMonoFromTri {
   my $object           = shift;
   my $excludeCpG       = shift;
   my $thisTrippletOnly = shift;
@@ -1521,16 +1425,13 @@ sub generateMonoFromTri
   my %monoSubProb   = ();
   my %monoSubCounts = ();
   my %monoSubTotals = ();
-  foreach my $cTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) )
-  {
+  foreach my $cTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
     next if ( index( $cTripplet, "N" ) >= 0 );
     next if ( $excludeCpG == 1 && index( $cTripplet, "CG" ) >= 0 );
     next if ( $thisTrippletOnly ne "" && $cTripplet ne $thisTrippletOnly );
-    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) )
-    {
+    foreach my $sTripplet ( keys( %{ $object->{trippleAlphabetHash} } ) ) {
       next if ( index( $sTripplet, "N" ) >= 0 );
-      if ( defined $triFreqRef )
-      {
+      if ( defined $triFreqRef ) {
         $monoSubCounts{ substr( $cTripplet, 1, 1 )
               . substr( $sTripplet, 1, 1 ) } +=
             ( $object->{trippleSubCounts}{ $cTripplet . $sTripplet } *
@@ -1538,8 +1439,8 @@ sub generateMonoFromTri
         $monoSubTotals{ substr( $cTripplet, 1, 1 ) } +=
             ( $object->{trippleSubCounts}{ $cTripplet . $sTripplet } *
               $triFreqRef->{$cTripplet} );
-      } else
-      {
+      }
+      else {
         $monoSubCounts{ substr( $cTripplet, 1, 1 )
               . substr( $sTripplet, 1, 1 ) } +=
             $object->{trippleSubCounts}{ $cTripplet . $sTripplet };
@@ -1548,8 +1449,7 @@ sub generateMonoFromTri
       }
     }
   }
-  foreach my $sBase ( "GA", "AG", "GT", "AC", "AT", "GC" )
-  {
+  foreach my $sBase ( "GA", "AG", "GT", "AC", "AT", "GC" ) {
     my $cplBase = $sBase;
     $cplBase =~ tr/ACGTRYKMSWBDHV/TGCAYRMKWSVHDB/;
     $monoSubTotals{ substr( $sBase, 0, 1 ) } = 1

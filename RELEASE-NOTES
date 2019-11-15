@@ -1,3 +1,32 @@
+RepeatModeler 2.0
+=================
+  - Many RepeatModeler seed alignments and consensus sequences contained 
+    stretch of N’s due masking performed by TRF.  Instead of using the masked 
+    sequences in the final seed alignment the original genomic sequences 
+    are used, preserving low-complexity regions in the final consensus called.
+  - The batching system was refactored to improve handling of short input 
+    sequences often found in early assemblies or low-coverage genome projects.
+  - The interface to TRF was inefficient and a major bottleneck in the 
+    RepeatModeler pipeline.  The simple/tandem repeat masking step was 
+    refactored to improve performance.
+  - Added code to remove excess temporary files from the RM_ directory
+    after they are no longer needed.
+  - Container releases ( Docker and Singularity )
+  - Minor Bugfixes:
+      - Stockholm sequence coordinates did not consistently show
+        strandedness using coordinate reversal.
+      - Temporary file generation in BuildDatabase did not use
+        a unique filename.  This could cause race conditions in
+        environments where two BuildDatabase processes ran in the
+        same directory at the same time.
+  - Classification improvements:
+      o Fixed a bug that caused some TE families to be labeled with the 
+        RepeatMasker internal-use label “buffer”.
+      o Fixed problem with TRF masking the input sequences that caused some 
+        low-complexity sequences incorrectly match TE library sequences.
+      o Fixed problem with conflict resolution that often let a lower scoring 
+        match define the class for the family.
+
 RepeatModeler 1.0.11
 ====================
   - Bugfix release. Avoid bailing if Refiner could not produce a consensus 

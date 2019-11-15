@@ -74,7 +74,7 @@ use File::Basename;
 
 # RepeatMasker Libraries
 use RepModelConfig;
-use lib $RepModelConfig::REPEATMASKER_DIR;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use WUBlastSearchEngine;
 use SeqDBI;
 use SearchResultCollection;
@@ -94,6 +94,10 @@ require Exporter;
 
 my $CLASS = "RepeatUtil";
 my $DEBUG = 0;
+$DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
+my $config        = $RepModelConfig::configuration;
+my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
+my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
 
 ##---------------------------------------------------------------------##
 
@@ -109,8 +113,7 @@ my $DEBUG = 0;
 =cut
 
 ##---------------------------------------------------------------------##
-sub ncbiMaskDatabase
-{
+sub ncbiMaskDatabase {
   my %parameters = @_;
 
   # Parameter checking
@@ -163,8 +166,7 @@ sub ncbiMaskDatabase
   # Setup the temporary database
   my $index  = 1;
   my $dbName = "tmpMaskDB-$index";
-  while ( -s "$workingDir/$dbName.nhr" )
-  {
+  while ( -s "$workingDir/$dbName.nhr" ) {
     $index++;
     $dbName = "tmpMaskDB-$index";
   }
@@ -175,16 +177,13 @@ sub ncbiMaskDatabase
   my $dbNumSeqs   = 0;
   my $dbMaxSeqLen = 0;
 
-  foreach my $line ( split /[\n\r]+/, $tmpDBStats )
-  {
-    if ( $line =~ /\s+([\d\,]+)\s+sequences;\s+([\d\,]+)\s+total bases.*$/ )
-    {
+  foreach my $line ( split /[\n\r]+/, $tmpDBStats ) {
+    if ( $line =~ /\s+([\d\,]+)\s+sequences;\s+([\d\,]+)\s+total bases.*$/ ) {
       $dbNumSeqs = $1;
       $dbNumSeqs =~ s/,//g;
       next;
     }
-    if ( $line =~ /Longest sequence:\s*([\d,]+)/ )
-    {
+    if ( $line =~ /Longest sequence:\s*([\d,]+)/ ) {
       $dbMaxSeqLen = $1;
       $dbMaxSeqLen =~ s/,//g;
       last;
@@ -207,8 +206,7 @@ sub ncbiMaskDatabase
   $searchEngine->setTempDir( $workingDir );
 
   my $INST;
-  if ( defined $parameters{'instSeqFile'} )
-  {
+  if ( defined $parameters{'instSeqFile'} ) {
     open $INST, ">$parameters{'instSeqFile'}";
   }
 
@@ -220,8 +218,7 @@ sub ncbiMaskDatabase
 
   my $repeatsMasked = 0;
   my %idsSeen       = ();
-  for ( my $i = 1 ; $i <= $dbNumSeqs ; $i += $batchSize )
-  {
+  for ( my $i = 1 ; $i <= $dbNumSeqs ; $i += $batchSize ) {
     my $dbEnd = $i + $batchSize - 1;
     $dbEnd = $dbNumSeqs if ( $dbEnd > $dbNumSeqs );
     print "  - Masking $i - $dbEnd of $dbNumSeqs\n";
@@ -241,14 +238,12 @@ sub ncbiMaskDatabase
                      " $additionalParams -gilist $workingDir/$dbName-gilist " );
 
     my ( $status, $resultCollection ) = $searchEngine->search();
-    if ( $status )
-    {
+    if ( $status ) {
       print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
-    } elsif ( $resultCollection->size() > 0 )
-    {
+    }
+    elsif ( $resultCollection->size() > 0 ) {
 
-      if ( $resultCollection->size() < 500000 )
-      {
+      if ( $resultCollection->size() < 500000 ) {
         $batchSize += 10;
         $batchSize = $maxBatchSize if ( $batchSize > $maxBatchSize );
 
@@ -261,8 +256,7 @@ sub ncbiMaskDatabase
       my %maskRanges = ();
       my $seqID;
 
-      for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ )
-      {
+      for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
 
         $seqID = $resultCollection->get( $k )->getSubjName();
         my $startIncr   = 0;
@@ -270,8 +264,7 @@ sub ncbiMaskDatabase
         my $globalSeqID = $seqID;
 
         # TODO....fix this!!!!
-        if ( $seqID =~ /(\S+)_(\d+)-\d+$/ )
-        {
+        if ( $seqID =~ /(\S+)_(\d+)-\d+$/ ) {
           $globalSeqID = $1;
           $startIncr   = $2;
           $endIncr     = $2;
@@ -290,15 +283,13 @@ sub ncbiMaskDatabase
         $end   += $endIncr;
 
         # Store the minus strand hits with reverse index notation
-        if ( $result->getOrientation() eq "C" )
-        {
+        if ( $result->getOrientation() eq "C" ) {
           my $tmp = $start;
           $start = $end;
           $end   = $tmp;
         }
 
-        if ( defined $INST )
-        {
+        if ( defined $INST ) {
           print $INST ""
               . $result->getScore . " "
               . $result->getQueryName() . " "
@@ -311,13 +302,11 @@ sub ncbiMaskDatabase
         $repeatsMasked++;
       }
 
-      foreach my $idKey ( keys( %maskRanges ) )
-      {
+      foreach my $idKey ( keys( %maskRanges ) ) {
         $idsSeen{$idKey} = 1;
         print OUT ">" . $idKey . " " . $maskDB->getDescription( $idKey ) . "\n";
         my $seq = $maskDB->getSequence( $idKey );
-        foreach my $range ( @{ $maskRanges{$idKey} } )
-        {
+        foreach my $range ( @{ $maskRanges{$idKey} } ) {
           print "      - Masking $idKey, $range->[0] - " . "$range->[1]\n"
               if ( $DEBUG );
           substr( $seq, $range->[ 0 ], $range->[ 1 ] ) = "N" x $range->[ 1 ];
@@ -333,8 +322,7 @@ sub ncbiMaskDatabase
   }    # for
 
   # Write out any records which didn't have any masking
-  foreach my $idKey ( $maskDB->getIDs() )
-  {
+  foreach my $idKey ( $maskDB->getIDs() ) {
     next if ( exists $idsSeen{$idKey} );
     print OUT ">" . $idKey . " " . $maskDB->getDescription( $idKey ) . "\n";
     my $seq = $maskDB->getSequence( $idKey );
@@ -345,8 +333,7 @@ sub ncbiMaskDatabase
   close $INST if ( defined $INST );
   undef $maskDB;
 
-  if ( $repeatsMasked == 0 )
-  {
+  if ( $repeatsMasked == 0 ) {
     unlink( "$fastaFile.masked" );
     unlink( "$parameters{'instSeqFile'}" )
         if ( defined $parameters{'instSeqFile'}
@@ -374,8 +361,7 @@ sub ncbiMaskDatabase
 =cut
 
 ##---------------------------------------------------------------------##
-sub wublastMaskDatabase
-{
+sub wublastMaskDatabase {
   my %parameters = @_;
 
   # Parameter checking
@@ -408,24 +394,20 @@ sub wublastMaskDatabase
   # Setup the temporary database
   my $index     = 1;
   my $xdfDBName = "tmpMaskDB-$index";
-  while ( -s "$xdfDBName.xns" )
-  {
+  while ( -s "$xdfDBName.xns" ) {
     $index++;
     $xdfDBName = "tmpMaskDB-$index";
   }
   my $tmpDBStats  = `$xdformatPath -n -I -o $xdfDBName $fastaFile 2>&1`;
   my $dbNumSeqs   = 0;
   my $dbMaxSeqLen = 0;
-  foreach my $line ( split /[\n\r]+/, $tmpDBStats )
-  {
-    if ( $line =~ /No. of sequences \(letters\) written:\s*([\d,]+)/ )
-    {
+  foreach my $line ( split /[\n\r]+/, $tmpDBStats ) {
+    if ( $line =~ /No. of sequences \(letters\) written:\s*([\d,]+)/ ) {
       $dbNumSeqs = $1;
       $dbNumSeqs =~ s/,//g;
       next;
     }
-    if ( $line =~ /Longest sequence written \(in database\):\s*([\d,]+)/ )
-    {
+    if ( $line =~ /Longest sequence written \(in database\):\s*([\d,]+)/ ) {
       $dbMaxSeqLen = $1;
       $dbMaxSeqLen =~ s/,//g;
       last;
@@ -449,8 +431,7 @@ sub wublastMaskDatabase
   $searchEngine->setTempDir( $tempDir );
 
   my $INST;
-  if ( defined $parameters{'instSeqFile'} )
-  {
+  if ( defined $parameters{'instSeqFile'} ) {
     open $INST, ">$parameters{'instSeqFile'}";
   }
 
@@ -462,8 +443,7 @@ sub wublastMaskDatabase
 
   my $repeatsMasked = 0;
   my %idsSeen       = ();
-  for ( my $i = 1 ; $i <= $dbNumSeqs ; $i += $batchSize )
-  {
+  for ( my $i = 1 ; $i <= $dbNumSeqs ; $i += $batchSize ) {
     my $dbEnd = $i + $batchSize - 1;
     $dbEnd = $dbNumSeqs if ( $dbEnd > $dbNumSeqs );
     print "  - Masking $i - $dbEnd of $dbNumSeqs\n";
@@ -472,14 +452,12 @@ sub wublastMaskDatabase
                      "$additionalParams dbslice=" . $i . "-$dbEnd/$dbNumSeqs" );
 
     my ( $status, $resultCollection ) = $searchEngine->search();
-    if ( $status )
-    {
+    if ( $status ) {
       print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
-    } elsif ( $resultCollection->size() > 0 )
-    {
+    }
+    elsif ( $resultCollection->size() > 0 ) {
 
-      if ( $resultCollection->size() < 500000 )
-      {
+      if ( $resultCollection->size() < 500000 ) {
         $batchSize += 10;
         $batchSize = $maxBatchSize if ( $batchSize > $maxBatchSize );
 
@@ -492,15 +470,13 @@ sub wublastMaskDatabase
       my %maskRanges = ();
       my $seqID;
 
-      for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ )
-      {
+      for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
 
         $seqID = $resultCollection->get( $k )->getSubjName();
         my $startIncr   = 0;
         my $endIncr     = 0;
         my $globalSeqID = $seqID;
-        if ( $seqID =~ /(\S+)_(\d+)-\d+$/ )
-        {
+        if ( $seqID =~ /(\S+)_(\d+)-\d+$/ ) {
           $globalSeqID = $1;
           $startIncr   = $2;
           $endIncr     = $2;
@@ -518,15 +494,13 @@ sub wublastMaskDatabase
         $end   += $endIncr;
 
         # Store the minus strand hits with reverse index notation
-        if ( $result->getOrientation() eq "C" )
-        {
+        if ( $result->getOrientation() eq "C" ) {
           my $tmp = $start;
           $start = $end;
           $end   = $tmp;
         }
 
-        if ( defined $INST )
-        {
+        if ( defined $INST ) {
           print $INST ""
               . $result->getScore . " "
               . $result->getQueryName() . " "
@@ -539,13 +513,11 @@ sub wublastMaskDatabase
         $repeatsMasked++;
       }
 
-      foreach my $idKey ( keys( %maskRanges ) )
-      {
+      foreach my $idKey ( keys( %maskRanges ) ) {
         $idsSeen{$idKey} = 1;
         print OUT ">" . $idKey . " " . $maskDB->getDescription( $idKey ) . "\n";
         my $seq = $maskDB->getSequence( $idKey );
-        foreach my $range ( @{ $maskRanges{$idKey} } )
-        {
+        foreach my $range ( @{ $maskRanges{$idKey} } ) {
           print "      - Masking $seqID, $range->[0] - " . "$range->[1]\n"
               if ( $DEBUG );
           substr( $seq, $range->[ 0 ], $range->[ 1 ] ) = "N" x $range->[ 1 ];
@@ -561,8 +533,7 @@ sub wublastMaskDatabase
   }    # for
 
   # Write out any records which didn't have any masking
-  foreach my $idKey ( $maskDB->getIDs() )
-  {
+  foreach my $idKey ( $maskDB->getIDs() ) {
     next if ( exists $idsSeen{$idKey} );
     print OUT ">" . $idKey . " " . $maskDB->getDescription( $idKey ) . "\n";
     my $seq = $maskDB->getSequence( $idKey );
@@ -573,8 +544,7 @@ sub wublastMaskDatabase
   close $INST if ( defined $INST );
   undef $maskDB;
 
-  if ( $repeatsMasked == 0 )
-  {
+  if ( $repeatsMasked == 0 ) {
     unlink( "$fastaFile.masked" );
     unlink( "$parameters{'instSeqFile'}" )
         if ( defined $parameters{'instSeqFile'}
@@ -605,8 +575,7 @@ sub wublastMaskDatabase
 =cut
 
 ##---------------------------------------------------------------------##
-sub gatherInstances
-{
+sub gatherInstances {
   my %parameters = @_;
 
   # Parameter checking
@@ -628,13 +597,11 @@ sub gatherInstances
                           openMode => SeqDBI::ReadOnly );
 
   my $searchEngineN =
-      WUBlastSearchEngine->new(
-                               pathToEngine => $RepModelConfig::WUBLASTN_PRGM );
+      WUBlastSearchEngine->new( pathToEngine => $WUBLASTN_PRGM );
   $searchEngineN->setMatrix(
-      "$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix"
-  );
+                    "$FindBin::RealBin/Matrices/wublast/nt/comparison.matrix" );
   print
-"Setting matrix to : $RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix\n";
+"Setting matrix to : $FindBin::RealBin/Matrices/wublast/nt/comparison.matrix\n";
   $searchEngineN->setMinScore( 250 );
   $searchEngineN->setMaskLevel( 80 );
   $searchEngineN->setGenerateAlignments( 0 );
@@ -650,35 +617,29 @@ sub gatherInstances
 
   my %instances  = ();
   my %removeHash = ();
-  for ( my $i = 1 ; $i <= $fdbBatcher->getBatchCount ; $i++ )
-  {
+  for ( my $i = 1 ; $i <= $fdbBatcher->getBatchCount ; $i++ ) {
     print "Writing $tempDir/inst-db-$i.fa\n";
     $fdbBatcher->writeBatchFile( $i, "$tempDir/inst-db.fa" );
 
-    system(   "$RepModelConfig::XDFORMAT_PRGM -n -I "
-            . "$tmpCons >> "
-            . "$tempDir/xdformat.log 2>&1" );
+    system(
+      "$XDFORMAT_PRGM -n -I " . "$tmpCons >> " . "$tempDir/xdformat.log 2>&1" );
 
     $searchEngineN->setQuery( "$tempDir/inst-db.fa" );
     $searchEngineN->setSubject( "$tmpCons" );
 
     print "Searching..\n";
     my ( $status, $resultCollection ) = $searchEngineN->search();
-    if ( $status )
-    {
+    if ( $status ) {
       print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
-    } else
-    {
-      for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ )
-      {
+    }
+    else {
+      for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
         my $resultRef = $resultCollection->get( $k );
         my $consID    = $resultRef->getSubjName();
-        if ( defined $instances{$consID} )
-        {
+        if ( defined $instances{$consID} ) {
 
          #print "Instances for $consID = " . $#{ $instances{ $consID } } . "\n";
-          if ( $#{ $instances{$consID} } < 1000 )
-          {
+          if ( $#{ $instances{$consID} } < 1000 ) {
             push @{ $instances{$consID} },
                 {
                   'score'   => $resultRef->getScore(),
@@ -686,12 +647,12 @@ sub gatherInstances
                   'start'   => $resultRef->getQueryStart(),
                   'end'     => $resultRef->getQueryEnd()
                 };
-          } else
-          {
+          }
+          else {
             $removeHash{$consID} = 1;
           }
-        } else
-        {
+        }
+        else {
           push @{ $instances{$consID} },
               {
                 'score'   => $resultRef->getScore(),
@@ -701,12 +662,10 @@ sub gatherInstances
               };
         }
       }
-      if ( keys( %removeHash ) )
-      {
+      if ( keys( %removeHash ) ) {
         open OUT, ">$tmpCons";
         my $numSeqs = 0;
-        foreach my $seqID ( $cdb->getIDs() )
-        {
+        foreach my $seqID ( $cdb->getIDs() ) {
           next if ( defined $removeHash{$seqID} );
           print OUT ">$seqID\n";
           print OUT "" . $cdb->getSequence( $seqID ) . "\n";

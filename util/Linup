@@ -118,7 +118,7 @@ use Data::Dumper;
 use lib $FindBin::RealBin;
 use lib "$FindBin::RealBin/..";
 use RepModelConfig;
-use lib $RepModelConfig::REPEATMASKER_DIR;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use MultAln;
 use SeedAlignment;
 
@@ -129,30 +129,14 @@ use WUBlastSearchEngine;
 use NCBIBlastSearchEngine;
 use CrossmatchSearchEngine;
 
-#
-# Version
-#
-#  This is a neat trick.  CVS allows you to tag
-#  files in a repository ( i.e. cvs tag "2003/12/03" ).
-#  If you check out that release into a new
-#  directory with "cvs co -r "2003/12/03" it will
-#  place this string into the $Name:  $ space below
-#  automatically.  This will help us keep track
-#  of which release we are using.  If we simply
-#  check out the code as "cvs co Program" the
-#  $Name:  $ macro will be blank so we should default
-#  to what the ID tag for this file contains.
-#
-my $CVSNameTag = '$Name:  $';
-my $CVSIdTag   = '$Id: Linup,v 1.12 2017/04/05 00:03:32 rhubley Exp $';
-my $Version    = $CVSNameTag;
-$Version = $CVSIdTag if ( $Version eq "" );
+my $Version    = $RepModelConfig::VERSION;
 
 #
 # Magic numbers/constants here
 #  ie. my $PI = 3.14159;
 #
 my $DEBUG = 0;
+$DEBUG = 1 if ( $RepModelConfig::DEBUG == 1 );
 
 #
 # Option processing
@@ -263,7 +247,7 @@ while ( <IN> )
     last;
   }
   $foundFastaHdr = 1 if ( /^>\S+.*/ );
-  if ( $foundFastaHdr && /^\s*[ACGTUMRWSYKVHDBNacgtumrwsykvhdbn\-\.]+\s*$/ && /[\-\.]/ )
+  if ( $foundFastaHdr && /^\s*[ACGTUMRWSYKVHDBNacgtumrwsykvhdbn\-\.]+\s*$/ )
   {
     $fileType = "msa-fasta";
     last;
@@ -334,21 +318,32 @@ if ( $fileType eq "crossmatch" )
   my $id;
   open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
   # Simple FASTA reader
+  my %idHash = ();
   while (<$IN>) {
     if ( /^>(\S+)/ ) 
     {
       my $tmpID = $1;
+      if ( defined $idHash{$tmpID} ) {
+        my $ver = 1;
+        while ( defined $idHash{$tmpID . "_$ver"} ) 
+        {
+          $ver++;
+        }
+        warn "WARN File contains a duplicate identifier \"$tmpID\".  A suffix of \"_$ver\"\n" .
+             "     will be appended to this occurence.\n";
+        $tmpID = $tmpID . "_$ver";
+      }
+      $idHash{$tmpID}++;
       if ( $seq )
       {
         $seq = uc($seq);
-        #### TEST
+        # Convert prefix/suffix "-"s to spacers
         if ( $seq =~ /^(\-+)/ ){
           substr($seq,0,length($1)) = " "x(length($1));
         }
         if ( $seq =~ /(\-+)$/ ) {
           substr($seq,length($seq)-length($1)-1) = " "x(length($1));
         }
-        ####
         push @seqs, [ $id, $seq ];
       }
       $seq = "";
@@ -360,14 +355,13 @@ if ( $fileType eq "crossmatch" )
   }
   if ( $seq )
   {
-        #### TEST
-        if ( $seq =~ /^(\-+)/ ){
-          substr($seq,0,length($1)) = " "x(length($1));
-        }
-        if ( $seq =~ /(\-+)$/ ) {
-          substr($seq,length($seq)-length($1)-1) = " "x(length($1));
-        }
-        ####
+    # Convert prefix/suffix "-"s to spacers
+    if ( $seq =~ /^(\-+)/ ){
+      substr($seq,0,length($1)) = " "x(length($1));
+    }
+    if ( $seq =~ /(\-+)$/ ) {
+      substr($seq,length($seq)-length($1)-1) = " "x(length($1));
+    }
  
     $seq = uc($seq);
     push @seqs, [ $id, $seq ];
@@ -412,7 +406,7 @@ if ( $options{'stockholm'} )
   if ( $options{'name'} ) { 
     $mAlign->setReferenceName( $options{'name'} );
   }
-  $mAlign->toSTK();
+  $mAlign->toSTK( includeTemplate => 1, nuclRF => 1 );
 } elsif ( $options{'msf'} )
 {
   $mAlign->toMSF( includeReference => 1 );

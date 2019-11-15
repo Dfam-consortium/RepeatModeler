@@ -1,4 +1,4 @@
-#!/u1/local/bin/perl
+#!/usr/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) BuildDatabase.pl
@@ -17,37 +17,6 @@
 #* of this license, visit http://www.opensource.org/licenses/osl-2.1.php or
 #* see the license.txt file contained in this distribution.
 #*
-###############################################################################
-#  ChangeLog:
-#
-#    $Log: BuildDatabase,v $
-#    Revision 1.6  2017/03/31 17:25:39  rhubley
-#      - Lots-o-improvements.  Starting preparation for release.
-#
-#    Revision 1.5  2012/08/22 18:46:24  rhubley
-#     -- a refresh checkin and adding a new utility
-#
-#    Revision 1.4  2010/06/10 18:15:44  rhubley
-#     - Fixed a bug that Arian found with RepeatScout models refined by the
-#       RMBLAST engine.  The problem had to do with a rev/compl operation
-#       in BuildRSConsensi
-#
-#     - Readying RepeatModeler for release with RMBLAST
-#
-#    Revision 1.3  2010/06/04 22:55:18  rhubley
-#      - Some bug fixes.
-#      - Changes to support rmblast package
-#
-#    Revision 1.2  2010/04/21 17:46:20  rhubley
-#      -- working toward a RMBlast version of RepeatModeler
-#
-#    Revision 1.1  2010/04/20 23:33:28  rhubley
-#      - Replacement for BuildXDFDatabase
-#
-#    Revision 1.12  2008/05/01 23:03:00  rhubley
-#    Cleanup before a distribution
-#
-#
 ###############################################################################
 #
 # To Do:
@@ -103,7 +72,7 @@ The name of the database to create.
 =item -engine <engine name>
 
 The name of the search engine we are using.  I.e abblast/wublast or
-ncbi (rmblast version).
+rmblast.
 
 =item -dir <directory>
 
@@ -122,13 +91,13 @@ The files names are listed one per line and should be fully qualified.
 
 =over 4
 
-RepeatModeler, ABBlast, NCBIBlast
+RepeatModeler, RMBlast
 
 =back
 
 =head1 COPYRIGHT
 
-Copyright 2004-2017 Institute for Systems Biology
+Copyright 2004-2019 Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -143,11 +112,13 @@ use strict;
 use FindBin;
 use lib $FindBin::RealBin;
 use Getopt::Long;
+use Pod::Text;
+use File::Temp qw/ tempfile tempdir /;
 use Cwd;
 
 # RepeatModeler Libraries
 use RepModelConfig;
-use lib $RepModelConfig::REPEATMASKER_DIR;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 
 #
 # Class Globals & Constants
@@ -155,6 +126,7 @@ use lib $RepModelConfig::REPEATMASKER_DIR;
 my $CLASS = "BuildDatabase";
 my $DEBUG = 0;
 $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
+my $version = $RepModelConfig::VERSION;
 
 #
 # Option processing
@@ -165,13 +137,45 @@ $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 #
 my @opts = qw( help dir=s engine=s batch=s name=s );
 
+# Add configuration parameters as additional command-line options
+push @opts, RepModelConfig::getCommandLineOptions();
+
+#
+# Provide the POD text from this file and
+# from the config file by merging them
+# together.  The heading "CONFIGURATION
+# OVERRIDES" provides the insertion point
+# for the configuration POD.
+#
+sub usage {
+  my $p = Pod::Text->new();
+  $p->output_fh( *STDOUT );
+  my $pod_str;
+  open IN, "<$0"
+      or die "Could not open self ($0) for generating documentation!";
+  while ( <IN> ) {
+    if ( /^=head1\s+CONFIGURATION OVERRIDES\s*$/ ) {
+      my $c_pod = RepModelConfig::getPOD();
+      if ( $c_pod ) {
+        $pod_str .= $_ . $c_pod;
+      }
+    }
+    else {
+      $pod_str .= $_;
+    }
+  }
+  close IN;
+  print "$0 - $version\n";
+  $p->parse_string_document( $pod_str );
+  exit( 1 );
+}
+
 #
 # Get the supplied command line options, and set flags
 #
 my %options = ();
 unless ( &GetOptions( \%options, @opts ) ) {
-  exec "pod2text $0";
-  exit( 1 );
+  usage();
 }
 
 # Print the internal POD documentation if something is missing
@@ -179,36 +183,39 @@ if ( ( $#ARGV == -1 && !$options{'batch'} && !$options{'dir'} )
      || $options{'help'} )
 {
   print "No query sequence file indicated\n\n";
-
-  # This is a nifty trick so we don't have to have
-  # a duplicate "USAGE()" subroutine.  Instead we
-  # just recycle our POD docs.  See PERL POD for more
-  # details.
-  exec "pod2text $0";
-  die;
+  usage();
 }
 
-my $engine = $RepModelConfig::DEFAULT_SEARCH_ENGINE;
-if ( $options{'engine'} )
-{
-  if ( $options{'engine'} =~ /wublast/i || $options{'engine'} =~ /abblast/i )
-  {
-    die "RepeatModeler doesn't appear to be configured to use the " 
-      . "$options{'engine'} search engine.  Please re-run configure before "
-      . "using this or other RepeatModeler programs.\n"
-         if ( ! -x $RepModelConfig::XDFORMAT_PRGM );
+#
+# Resolve configuration settings using the following precedence:
+# command line first, then environment, followed by config
+# file.
+#
+RepModelConfig::resolveConfiguration( \%options );
+my $config           = $RepModelConfig::configuration;
+my $XDFORMAT_PRGM    = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
+my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
+my $NCBIDBCMD_PRGM   = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
+
+my $engine = "rmblast";
+if ( $options{'engine'} ) {
+  if ( $options{'engine'} =~ /wublast|abblast/i ) {
+    die "RepeatModeler doesn't appear to be configured to use the "
+        . "$options{'engine'} search engine.  Please re-run configure before "
+        . "using this or other RepeatModeler programs.\n"
+        if ( !-x $XDFORMAT_PRGM );
     $engine = "abblast";
-  }elsif ( $options{'engine'} =~ /ncbi/i )
-  {
-    die "RepeatModeler doesn't appear to be configured to use the " 
-      . "$options{'engine'} search engine.  Please re-run configure before "
-      . "using this or other RepeatModeler programs.\n"
-         if ( ! -x $RepModelConfig::NCBIBLASTDB_PRGM );
-    $engine = "ncbi";
-  }else {
+  }
+  elsif ( $options{'engine'} =~ /rmblast|ncbi/i ) {
+    die "RepeatModeler doesn't appear to be configured to use the "
+        . "$options{'engine'} search engine.  Please re-run configure before "
+        . "using this or other RepeatModeler programs.\n"
+        if ( !-x $NCBIBLASTDB_PRGM );
+    $engine = "rmblast";
+  }
+  else {
     print "I don't understand -engine $options{'engine'}\n";
-    exec "pod2text $0";
-    die;
+    usage();
   }
 }
 
@@ -284,47 +291,55 @@ my $dbSeqs  = 0;
 my $dbSize  = 0;
 print "Building database $options{'name'}:\n";
 
-
 # Sanitizing the names of all input databases and placing
 # in one big tempfile
-open SEQ, ">tmpSeqData.fa" or die $CLASS . ": Cannot open file tmpSeqData.fa for writing!\n";
+#   $fh = tempfile();
+my ( $SEQ, $seqFilename ) = tempfile( DIR => "." );
 my $file;
 for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
   $file = $fileList[ $i ];
 
   print "  Reading $file...\n";
-  open IN, "<$file" or die $CLASS . ": Cannot open file $file\n";
+  if ( $file =~ /^.*\.gz$/ ) {
+    open IN, "gunzip -c $file|"
+        or die $CLASS . ": Cannot open file using gunzip $file\n";
+  }
+  else {
+    open IN, "<$file" or die $CLASS . ": Cannot open file $file\n";
+  }
   while ( <IN> ) {
     if ( /^\>\s*(\S+)\s+(.*)/ ) {
-      print SEQ ">gi|$index\n";
+      print $SEQ ">gi|$index\n";
       print $IDX "$1\t$index\n";
       $index++;
     }
     else {
-      print SEQ $_;
+      print $SEQ $_;
     }
   }
   close IN;
 }
-close SEQ;
-$file = "tmpSeqData.fa";
+close $SEQ;
+$file = $seqFilename;
 
-if ( $engine eq "ncbi" )
-{
-    print "Running: $RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1\n" if ( $DEBUG );
-    $results =
-        `$RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1`;
-    if ( ! -s "$options{'name'}.nsq" )
-    {
-      print "Something went wrong parsing input file! $RepModelConfig::NCBIBLASTDB_PRGM returned: $results\n";  
-      print "The command used was: $RepModelConfig::NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file\n";
-      die;
-    }
-}else 
-{
+if ( $engine eq "rmblast" ) {
+  print
+"Running: $NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1\n"
+      if ( $DEBUG );
   $results =
-      `$RepModelConfig::XDFORMAT_PRGM -n -o $options{'name'} $file 2>&1`;
-  while ( $results =~ /sequences\s*\(letters\)\s*(?:written|appended):\s*([\d,]+)\s+\(([\d,]+)\).*$/mg
+`$NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1`;
+  if ( !-s "$options{'name'}.nsq" ) {
+    print
+"The makeblastdb program did not generate the\nfile $options{'name'}.nsq.  Please check your input file(s) for potential formating errors.\n$NCBIBLASTDB_PRGM returned: $results\n";
+    print
+"The command used was: $NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file\n";
+    die;
+  }
+}
+else {
+  $results = `$XDFORMAT_PRGM -n -o $options{'name'} $file 2>&1`;
+  while ( $results =~
+/sequences\s*\(letters\)\s*(?:written|appended):\s*([\d,]+)\s+\(([\d,]+)\).*$/mg
       )
   {
     my $size = $2;
@@ -337,15 +352,13 @@ if ( $engine eq "ncbi" )
   }
 }
 
-
-if ( $engine eq "abblast" )
-{
-  $results = `$RepModelConfig::XDFORMAT_PRGM -n -X $options{'name'} 2>&1`;
-}else 
-{
-  $results =
-          `$RepModelConfig::NCBIDBCMD_PRGM -db $options{'name'} -info 2>&1`;
-  while ( $results =~ /\s+([\d\,]+)\s+sequences;\s+([\d\,]+)\s+total bases.*$/mg )
+if ( $engine eq "abblast" ) {
+  $results = `$XDFORMAT_PRGM -n -X $options{'name'} 2>&1`;
+}
+else {
+  $results = `$NCBIDBCMD_PRGM -db $options{'name'} -info 2>&1`;
+  while (
+        $results =~ /\s+([\d\,]+)\s+sequences;\s+([\d\,]+)\s+total bases.*$/mg )
   {
     my $size = $2;
     my $seqs = $1;
@@ -356,11 +369,10 @@ if ( $engine eq "abblast" )
     last;
   }
 }
-  print "Number of sequences (bp) added to database: $dbSeqs ( $dbSize bp )\n";
-
+print "Number of sequences (bp) added to database: $dbSeqs ( $dbSize bp )\n";
 
 close $IDX;
 
-unlink( "tmpSeqData.fa" ) if ( -s "tmpSeqData.fa" );
+unlink( $seqFilename ) if ( -e $seqFilename );
 
 1;
