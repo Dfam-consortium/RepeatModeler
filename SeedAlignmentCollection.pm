@@ -90,8 +90,7 @@ my $DEBUG = 0;
 ##-------------------------------------------------------------------------##
 ## Constructor
 ##-------------------------------------------------------------------------##
-sub new
-{
+sub new {
   my $class = shift;
 
   my $this = $class->SUPER::new( @_ );
@@ -132,10 +131,10 @@ sub new
   colStr1:KK551537:690782-691123  .GCT.GGGAT.G...CTGCG
   colStr1:KK551537:1038-2834      AGCTTGGG.TTGTACC.G.G
   //
-  
+
   Complex Example
   ===============
-  
+
   # STOCKHOLM 1.0
   #=GF ID    Jumbo1
   #=GF DE    A very common DNA transposon with two deletion products Jumbo1A
@@ -154,14 +153,14 @@ sub new
   hg38:chr12:690782-691123        .GCT.GGGAT.G...CTGCG
   hg38:chr2:38282-38399           AGCTTGGG.TTGTACC.G.G
   //
-  
-  
-  
+
+
+
   Recommended features
   ====================
-  
+
   #=GF
-  
+
   Compulsory fields:
   ------------------
      ID   Identification:             One word name for family.
@@ -175,8 +174,8 @@ sub new
      OC   Clade:                      Organism (clade, etc.) Multiple OC records are
                                       allowed.
      SQ   Sequence:                   Number of sequences in alignment.
-  
-  
+
+
   Optional fields:
   ----------------
      RN   Reference Number:           Reference Number.
@@ -185,49 +184,43 @@ sub new
      RA   Reference Author:           Reference Author
      RL   Reference Location:         Journal location. 
      DR   Database Reference:         Reference to external database. 
-     
-     
+
+
   #=GC
-  
+
   Optional fields:
   ----------------
      RF        Reference annotation   Often the consensus DNA is used as a reference
                                       or simple "x" for match columns and "." for 
                                       insert columns.
-  
+
 =cut
 
 ##-------------------------------------------------------------------------##
-sub read_stockholm
-{
+sub read_stockholm {
   my $this = shift;
   my $in   = shift;
   my $input;
 
-  if ( ref $in eq "GLOB" )
-  {
+  if ( ref $in eq "GLOB" ) {
     $input = [ <$in> ];
-  } else
-  {
+  }
+  else {
     $input = $in;
   }
 
   my @data;
   my $inSection = 0;
-  foreach ( @$input )
-  {
-    if ( /^\#\s+STOCKHOLM/ )
-    {
-      if ( $inSection )
-      {
+  foreach ( @$input ) {
+    if ( /^\#\s+STOCKHOLM/ ) {
+      if ( $inSection ) {
         croak $CLASS
             . "::read_stockholm: Two headings found without an intervening '//' line.";
       }
       $inSection = 1;
     }
 
-    if ( /^\/\// && $inSection && @data )
-    {
+    if ( /^\/\// && $inSection && @data ) {
 
       # Process it
       push @data, $_;
@@ -241,8 +234,7 @@ sub read_stockholm
     push @data, $_
         if ( $inSection );
   }
-  if ( @data )
-  {
+  if ( @data ) {
     croak $CLASS
         . "::read_stockholm: Incomplete Stockholm section at the end of the file.";
   }
@@ -259,8 +251,7 @@ sub read_stockholm
 =cut
 
 ##-------------------------------------------------------------------------##
-sub write
-{
+sub write {
   my $this     = shift;
   my $filename = shift;
 
@@ -269,8 +260,7 @@ sub write
       . "Error...could not open file $filename "
       . "for writing!\n";
 
-  for ( my $i = 0 ; $i < $this->size() ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $this->size() ; $i++ ) {
     print OUT $this->get( $i )->toString();
   }
   close OUT;
@@ -288,14 +278,12 @@ sub write
 =cut
 
 ##-------------------------------------------------------------------------##
-sub toString()
-{
+sub toString() {
   my $this          = shift;
   my $alignmentMode = shift;
 
   my $str = "";
-  for ( my $i = 0 ; $i < $this->size() ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $this->size() ; $i++ ) {
     $str .= $this->get( $i )->toString();
   }
   return $str;

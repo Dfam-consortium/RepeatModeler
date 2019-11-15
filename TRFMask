@@ -91,7 +91,7 @@ use SimpleBatcher;
 my $CLASS = "TRFMask";
 my $DEBUG = 0;
 $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
-my $config = $RepModelConfig::configuration;
+my $config   = $RepModelConfig::configuration;
 my $TRF_PRGM = $config->{'TRF_PRGM'}->{'value'};
 
 #
@@ -107,15 +107,13 @@ my @opts = qw( help );
 # Get the supplied command line options, and set flags
 #
 my %options = ();
-unless ( &GetOptions( \%options, @opts ) )
-{
+unless ( &GetOptions( \%options, @opts ) ) {
   exec "pod2text $0";
   exit( 1 );
 }
 
 # Print the internal POD documentation if something is missing
-if ( $options{'help'} )
-{
+if ( $options{'help'} ) {
 
   # This is a nifty trick so we don't have to have
   # a duplicate "USAGE()" subroutine.  Instead we
@@ -129,7 +127,7 @@ die $CLASS . ": Missing fasta file!\n"
     if ( !defined $ARGV[ 0 ] || -z $ARGV[ 0 ] );
 my $fastaFile = $ARGV[ 0 ];
 my $wrkDir    = ( File::Spec->splitpath( $fastaFile ) )[ 1 ];
-$fastaFile    = ( File::Spec->splitpath( $fastaFile ) )[ 2 ];
+$fastaFile = ( File::Spec->splitpath( $fastaFile ) )[ 2 ];
 $wrkDir = "." if ( $wrkDir eq "" );
 print "Working directory = $wrkDir\n" if ( $DEBUG );
 
@@ -145,51 +143,57 @@ if ( $ver < 4.09 ) {
 print "Running: $TRF_PRGM  ( version = $ver )\n" if ( $DEBUG );
 
 my $cmd = "$TRF_PRGM $wrkDir/$fastaFile 2 7 7 80 10 50 500 -ngs -h";
-open IN,"$cmd |" or die "TRFMask: Could not run command $cmd\n";
+open IN, "$cmd |" or die "TRFMask: Could not run command $cmd\n";
 print "Running $cmd\n" if ( $DEBUG );
 my %results;
 my $id = "";
-while ( <IN> ){
-  # @gi|521 gi|579970:1-422
-  # 224 268 22 2.0 22 87 8 65 13 20 37 28 1.90 TCAGTAGTCGTGCTGCATGGGC TCAGTAGCTGTGCTGCATGGGCTCAGTAGTCGTGGTGCATGGGCT ATTGTGGTGGCTTCTCTTATTGCTGAACATAGGCTCGAGGCACCCAGACT TATGTGCCCCAGCATGCGGGATCTTCCTAGACAGGGATTGAAAGAACCCA
+while ( <IN> ) {
+
+# @gi|521 gi|579970:1-422
+# 224 268 22 2.0 22 87 8 65 13 20 37 28 1.90 TCAGTAGTCGTGCTGCATGGGC TCAGTAGCTGTGCTGCATGGGCTCAGTAGTCGTGGTGCATGGGCT ATTGTGGTGGCTTCTCTTATTGCTGAACATAGGCTCGAGGCACCCAGACT TATGTGCCCCAGCATGCGGGATCTTCCTAGACAGGGATTGAAAGAACCCA
   if ( /^@(\S+)/ ) {
     $id = $1;
-  }elsif ( /^(\d+)\s+(\d+)\s+(\d+)\s+([\d\.]+)/ ) {  
+  }
+  elsif ( /^(\d+)\s+(\d+)\s+(\d+)\s+([\d\.]+)/ ) {
+
     # $1 startPos
     # $2 endPos
     # $3 period
     # $4 copies
     if ( $3 > 1 && $4 > 4 ) {
-      push @{$results{$id}},[ $1, $2 ]
+      push @{ $results{$id} }, [ $1, $2 ];
     }
   }
 }
 close IN;
 
-open IN,"<$wrkDir/$fastaFile" or die "TRFMask: Could not open $fastaFile for reading!\n";
-open OUT,">$wrkDir/$fastaFile.masked" or die "TRFMask: Could not open $wrkDir/$fastaFile.masked for writing!\n";
+open IN, "<$wrkDir/$fastaFile"
+    or die "TRFMask: Could not open $fastaFile for reading!\n";
+open OUT, ">$wrkDir/$fastaFile.masked"
+    or die "TRFMask: Could not open $wrkDir/$fastaFile.masked for writing!\n";
 my $seq;
 my $id;
 my $fullHDR;
 my $repeatsMasked = 0;
 while ( <IN> ) {
+
   if ( /^>(\S+)/ ) {
-    my $tmpID = $1;
+    my $tmpID  = $1;
     my $tmpHDR = $_;
     if ( $seq ) {
       if ( exists $results{$id} ) {
-        foreach my $result ( @{$results{$id}} ) {
-          my $len = $result->[1] - $result->[0] + 1;
-          substr($seq, $result->[0] - 1, $len) = "N"x$len;
+        foreach my $result ( @{ $results{$id} } ) {
+          my $len = $result->[ 1 ] - $result->[ 0 ] + 1;
+          substr( $seq, $result->[ 0 ] - 1, $len ) = "N" x $len;
           $repeatsMasked++;
         }
-      }  
+      }
       $seq =~ s/(.{50})/$1\n/g;
       print OUT "$fullHDR$seq\n";
     }
-    $id = $tmpID;
+    $id      = $tmpID;
     $fullHDR = $tmpHDR;
-    $seq = "";
+    $seq     = "";
     next;
   }
   s/[\n\r\s]+//g;
@@ -197,11 +201,11 @@ while ( <IN> ) {
 }
 if ( $seq ) {
   if ( exists $results{$id} ) {
-    foreach my $result ( @{$results{$id}} ) {
-      my $len = $result->[1] - $result->[0] + 1;
-      substr($seq, $result->[0] - 1, $len) = "N"x$len;
+    foreach my $result ( @{ $results{$id} } ) {
+      my $len = $result->[ 1 ] - $result->[ 0 ] + 1;
+      substr( $seq, $result->[ 0 ] - 1, $len ) = "N" x $len;
     }
-  }  
+  }
   $seq =~ s/(.{50})/$1\n/g;
   print OUT "$fullHDR$seq\n";
   $repeatsMasked++;

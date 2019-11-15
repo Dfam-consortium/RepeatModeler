@@ -115,7 +115,7 @@ Usage:
   or 
    my $mAlign = MultAln->new( sequences => [ [ id0, seq0 ], [ id1, seq1 ],
                                ... ] );
-   
+
 
 =head1 DESCRIPTION
 
@@ -197,8 +197,7 @@ my $DEBUG   = 0;
 ##---------------------------------------------------------------------##
 ## Constructor
 ##---------------------------------------------------------------------##
-sub new
-{
+sub new {
   my $class          = shift;
   my %nameValuePairs = @_;
 
@@ -208,14 +207,13 @@ sub new
   # Bless this hash in the name of the father, the son...
   bless $this, $class;
 
-  if ( defined $nameValuePairs{'searchCollection'} )
-  {
+  if ( defined $nameValuePairs{'searchCollection'} ) {
     $this->_alignFromSearchResultCollection( %nameValuePairs );
-  } elsif ( defined $nameValuePairs{'seedAlignment'} )
-  {
+  }
+  elsif ( defined $nameValuePairs{'seedAlignment'} ) {
     $this->_alignFromSeedAlignment( %nameValuePairs );
-  }elsif ( defined $nameValuePairs{'sequences'} )
-  {
+  }
+  elsif ( defined $nameValuePairs{'sequences'} ) {
     $this->_importAlignedSeqs( %nameValuePairs );
   }
 
@@ -240,16 +238,14 @@ sub new
 =cut
 
 ##---------------------------------------------------------------------##
-sub getLeftFlankingSequence
-{
+sub getLeftFlankingSequence {
   my $this   = shift;
   my $seqNum = shift;
 
   return $this->{'alignCol'}->[ $seqNum ]->{'lfSeq'};
 }
 
-sub setLeftFlankingSequence
-{
+sub setLeftFlankingSequence {
   my $this   = shift;
   my $seqNum = shift;
   my $value  = shift;
@@ -274,16 +270,14 @@ sub setLeftFlankingSequence
 =cut
 
 ##---------------------------------------------------------------------##
-sub getRightFlankingSequence
-{
+sub getRightFlankingSequence {
   my $this   = shift;
   my $seqNum = shift;
 
   return $this->{'alignCol'}->[ $seqNum ]->{'rfSeq'};
 }
 
-sub setRightFlankingSequence
-{
+sub setRightFlankingSequence {
   my $this   = shift;
   my $seqNum = shift;
   my $value  = shift;
@@ -309,16 +303,14 @@ sub setRightFlankingSequence
 =cut
 
 ##---------------------------------------------------------------------##
-sub getAlignedOrientation
-{
+sub getAlignedOrientation {
   my $this   = shift;
   my $seqNum = shift;
 
   return $this->{'alignCol'}->[ $seqNum ]->{'orient'};
 }
 
-sub setAlignedOrientation
-{
+sub setAlignedOrientation {
   my $this   = shift;
   my $seqNum = shift;
   my $value  = shift;
@@ -346,19 +338,16 @@ sub setAlignedOrientation
 =cut
 
 ##---------------------------------------------------------------------##
-sub getGappedReferenceLength
-{
+sub getGappedReferenceLength {
   my $this = shift;
 
-  if ( !defined $this->{'length'} )
-  {
+  if ( !defined $this->{'length'} ) {
     $this->resetGappedReferenceLength;
   }
   return $this->{'length'};
 }
 
-sub resetGappedReferenceLength
-{
+sub resetGappedReferenceLength {
   my $this = shift;
   $this->{'length'} = length( $this->getReferenceSeq() );
   return $this->{'length'};
@@ -382,8 +371,7 @@ sub resetGappedReferenceLength
 =cut
 
 ##---------------------------------------------------------------------##
-sub getAlignedSeq
-{
+sub getAlignedSeq {
   my $this   = shift();
   my $seqNum = shift();
 
@@ -393,8 +381,7 @@ sub getAlignedSeq
   return ( $this->{'alignCol'}[ $seqNum + 1 ]{'seq'} );
 }
 
-sub setAlignedSeq
-{
+sub setAlignedSeq {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -426,15 +413,13 @@ sub setAlignedSeq
 =cut
 
 ##---------------------------------------------------------------------##
-sub getReferenceSeq
-{
+sub getReferenceSeq {
   my $this = shift();
 
   return ( $this->{'alignCol'}[ 0 ]{'seq'} );
 }
 
-sub setReferenceSeq
-{
+sub setReferenceSeq {
   my $this  = shift();
   my $value = shift();
 
@@ -452,8 +437,7 @@ sub setReferenceSeq
 ##
 ## Deprecated!
 ##
-sub seq
-{
+sub seq {
   my $object = shift;
   my $i      = shift;
   @_
@@ -480,8 +464,7 @@ sub seq
 =cut
 
 ##---------------------------------------------------------------------##
-sub getAlignedStart
-{
+sub getAlignedStart {
   my $this   = shift();
   my $seqNum = shift();
 
@@ -491,8 +474,7 @@ sub getAlignedStart
   return ( $this->{'alignCol'}[ $seqNum + 1 ]{'start'} );
 }
 
-sub setAlignedStart
-{
+sub setAlignedStart {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -528,8 +510,7 @@ sub setAlignedStart
 =cut
 
 ##---------------------------------------------------------------------##
-sub getAlignedEnd
-{
+sub getAlignedEnd {
   my $this   = shift();
   my $seqNum = shift();
 
@@ -539,8 +520,7 @@ sub getAlignedEnd
   return ( $this->{'alignCol'}[ $seqNum + 1 ]{'end'} );
 }
 
-sub setAlignedEnd
-{
+sub setAlignedEnd {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -577,8 +557,7 @@ sub setAlignedEnd
 =cut
 
 ##---------------------------------------------------------------------##
-sub getAlignedSeqStart
-{
+sub getAlignedSeqStart {
   my $this   = shift();
   my $seqNum = shift();
 
@@ -588,8 +567,7 @@ sub getAlignedSeqStart
   return ( $this->{'alignCol'}[ $seqNum + 1 ]{'seqStart'} );
 }
 
-sub setAlignedSeqStart
-{
+sub setAlignedSeqStart {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -622,8 +600,7 @@ sub setAlignedSeqStart
 =cut
 
 ##---------------------------------------------------------------------##
-sub getAlignedSeqEnd
-{
+sub getAlignedSeqEnd {
   my $this   = shift();
   my $seqNum = shift();
 
@@ -633,8 +610,7 @@ sub getAlignedSeqEnd
   return ( $this->{'alignCol'}[ $seqNum + 1 ]{'seqEnd'} );
 }
 
-sub setAlignedSeqEnd
-{
+sub setAlignedSeqEnd {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -669,15 +645,13 @@ sub setAlignedSeqEnd
 =cut
 
 ##---------------------------------------------------------------------##
-sub getReferenceSeqStart
-{
+sub getReferenceSeqStart {
   my $this = shift();
 
   return ( $this->{'alignCol'}[ 0 ]{'seqStart'} );
 }
 
-sub setReferenceSeqStart
-{
+sub setReferenceSeqStart {
   my $this  = shift();
   my $value = shift();
 
@@ -708,15 +682,13 @@ sub setReferenceSeqStart
 =cut
 
 ##---------------------------------------------------------------------##
-sub getReferenceName
-{
+sub getReferenceName {
   my $this = shift();
 
   return ( $this->{'alignCol'}[ 0 ]{'name'} );
 }
 
-sub setReferenceName
-{
+sub setReferenceName {
   my $this  = shift();
   my $value = shift();
 
@@ -748,8 +720,7 @@ sub setReferenceName
 =cut
 
 ##---------------------------------------------------------------------##
-sub getAlignedName
-{
+sub getAlignedName {
   my $this   = shift();
   my $seqNum = shift();
 
@@ -759,8 +730,7 @@ sub getAlignedName
   return ( $this->{'alignCol'}[ $seqNum + 1 ]{'name'} );
 }
 
-sub setAlignedName
-{
+sub setAlignedName {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -793,8 +763,7 @@ sub setAlignedName
 =cut
 
 ##---------------------------------------------------------------------##
-sub setAlignedDiv
-{
+sub setAlignedDiv {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -810,8 +779,7 @@ sub setAlignedDiv
   return $oldValue;
 }
 
-sub getAlignedDiv
-{
+sub getAlignedDiv {
   my $this   = shift;
   my $seqNum = shift;
 
@@ -838,8 +806,7 @@ sub getAlignedDiv
 =cut
 
 ##---------------------------------------------------------------------##
-sub setAlignedGCBackground
-{
+sub setAlignedGCBackground {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -855,8 +822,7 @@ sub setAlignedGCBackground
   return $oldValue;
 }
 
-sub getAlignedGCBackground
-{
+sub getAlignedGCBackground {
   my $this   = shift;
   my $seqNum = shift;
 
@@ -884,8 +850,7 @@ sub getAlignedGCBackground
 =cut
 
 ##---------------------------------------------------------------------##
-sub setAlignedTransI
-{
+sub setAlignedTransI {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -901,8 +866,7 @@ sub setAlignedTransI
   return $oldValue;
 }
 
-sub getAlignedTransI
-{
+sub getAlignedTransI {
   my $this   = shift;
   my $seqNum = shift;
 
@@ -929,8 +893,7 @@ sub getAlignedTransI
 =cut
 
 ##---------------------------------------------------------------------##
-sub setAlignedTransV
-{
+sub setAlignedTransV {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -946,8 +909,7 @@ sub setAlignedTransV
   return $oldValue;
 }
 
-sub getAlignedTransV
-{
+sub getAlignedTransV {
   my $this   = shift;
   my $seqNum = shift;
 
@@ -974,8 +936,7 @@ sub getAlignedTransV
 =cut
 
 ##---------------------------------------------------------------------##
-sub setAlignedSrcDiv
-{
+sub setAlignedSrcDiv {
   my $this   = shift();
   my $seqNum = shift();
   my $value  = shift();
@@ -991,8 +952,7 @@ sub setAlignedSrcDiv
   return $oldValue;
 }
 
-sub getAlignedSrcDiv
-{
+sub getAlignedSrcDiv {
   my $this   = shift;
   my $seqNum = shift;
 
@@ -1005,8 +965,7 @@ sub getAlignedSrcDiv
 ##
 ## TODO: DEPRECATE
 ##
-sub getAlignColArray
-{
+sub getAlignColArray {
   my $this = shift();
   return $this->{'alignCol'};
 }
@@ -1015,8 +974,7 @@ sub getAlignColArray
 ## TODO: DEPRECATED
 ##   -- used internally
 ##
-sub list
-{
+sub list {
   my $object = shift;
   return $object->{'alignCol'};
 }
@@ -1044,8 +1002,7 @@ sub list
 =cut
 
 ##---------------------------------------------------------------------##
-sub getNumAlignedSeqs
-{
+sub getNumAlignedSeqs {
   my $this = shift();
 
   # sequence 0 is always the reference -- don't count
@@ -1059,8 +1016,7 @@ sub getNumAlignedSeqs
 #       So old code will need to be updated to
 #       index starting from 0 rather than 1.
 #
-sub instRefStart
-{
+sub instRefStart {
   my $object = shift;
   my $n      = shift;
 
@@ -1085,8 +1041,7 @@ sub instRefStart
 # NOTE: Update...this now excludes the reference seq.
 #       So old code will need to be updated to
 #       index starting from 0 rather than 1.
-sub instRefEnd
-{
+sub instRefEnd {
   my $object = shift;
   my $n      = shift;
 
@@ -1105,16 +1060,14 @@ sub instRefEnd
 }
 
 ## KEEP!
-sub getAlignPosFromBPPos
-{
+sub getAlignPosFromBPPos {
   my $object = shift;
   my $pos    = shift;
 
   my $bpPos    = $object->getReferenceSeqStart();
   my $alignPos = 0;
   my $seqStr   = $object->getReferenceSeq();
-  while ( $bpPos < $pos )
-  {
+  while ( $bpPos < $pos ) {
     $bpPos++ if ( substr( $seqStr, $alignPos++, 1 ) ne "-" );
   }
 
@@ -1138,8 +1091,7 @@ sub getAlignPosFromBPPos
 ##---------------------------------------------------------------------##
 ## TODO: This could be moved into a generic object class.
 ##       or placed in perlhelpers module.
-sub toString
-{
+sub toString {
   my $object = shift;
   my $data_dumper = new Data::Dumper( [ $object ] );
   $data_dumper->Purity( 1 )->Terse( 1 )->Deepcopy( 1 );
@@ -1158,8 +1110,7 @@ sub toString
 ##      read back into an object of this type.
 ##
 ##---------------------------------------------------------------------##
-sub serializeOUT
-{
+sub serializeOUT {
   my $object   = shift;
   my $fileName = shift;
 
@@ -1181,8 +1132,7 @@ sub serializeOUT
 ##      from a serialized PERL object or data structure.
 ##
 ##---------------------------------------------------------------------##
-sub serializeIN
-{
+sub serializeIN {
   my $object       = shift;
   my $fileName     = shift;
   my $fileContents = "";
@@ -1215,8 +1165,7 @@ sub serializeIN
 =cut
 
 ##---------------------------------------------------------------------##
-sub kimuraDivergence
-{
+sub kimuraDivergence {
   my $object           = shift;
   my $consensus        = shift;
   my $n                = 0;
@@ -1224,14 +1173,12 @@ sub kimuraDivergence
   my $hits             = 0;
   my $sumDiv           = 0;
 
-  if ( $consensus eq "" )
-  {
+  if ( $consensus eq "" ) {
     $consensus = $object->getReferenceSeq();
   }
 
   my $totDiv = 0;
-  foreach $n ( 0 .. $object->getNumAlignedSeqs() - 1 )
-  {
+  foreach $n ( 0 .. $object->getNumAlignedSeqs() - 1 ) {
     my $alignedBases = 0;
     my $transI       = 0;
     my $transV       = 0;
@@ -1268,19 +1215,18 @@ sub kimuraDivergence
     $hits++;
     my $p;
     my $q;
-    if ( $alignedBases == 0 )
-    {
+    if ( $alignedBases == 0 ) {
       $p = 0;
       $q = 0;
-    }else {
+    }
+    else {
       $p = $transI / $alignedBases;
       $q = $transV / $alignedBases;
     }
-    if ( ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 ) <= 0 )
-    {
+    if ( ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 ) <= 0 ) {
       $object->setAlignedDiv( $n, 1 );
-    } else
-    {
+    }
+    else {
       $object->setAlignedDiv(
                               $n,
                               abs(
@@ -1313,15 +1259,13 @@ sub kimuraDivergence
 =cut
 
 ##---------------------------------------------------------------------##
-sub divergence
-{
+sub divergence {
   my $object    = shift;
   my $consensus = shift;
   my $n         = 0;
 
   # No longer includes the reference sequence
-  foreach $n ( 0 .. $object->getNumAlignedSeqs() - 1 )
-  {
+  foreach $n ( 0 .. $object->getNumAlignedSeqs() - 1 ) {
     my $total  = 0;
     my $change = 0;
     my $j      = 0;
@@ -1364,8 +1308,7 @@ sub divergence
 ##         which fall outside the GC range.
 ##
 ##---------------------------------------------------------------------##
-sub filterOnGC
-{
+sub filterOnGC {
   my $this        = shift;
   my $gcLowRange  = shift;
   my $gcHighRange = shift;
@@ -1376,13 +1319,11 @@ sub filterOnGC
   my @removalList = ();
 
   my $hitIndex = 0;
-  foreach $hit ( @{ $this->{'alignCol'} } )
-  {
+  foreach $hit ( @{ $this->{'alignCol'} } ) {
 
     # The first sequence is the consensus so we don't want
     # to filter this out.
-    if ( $hitIndex == 0 )
-    {
+    if ( $hitIndex == 0 ) {
       $hitIndex++;
       next;
     }
@@ -1401,8 +1342,7 @@ sub filterOnGC
     }
     $hitIndex++;
   }
-  foreach $deleteIndex ( @removalList )
-  {
+  foreach $deleteIndex ( @removalList ) {
     splice @{ $this->{'alignCol'} }, $deleteIndex, 1;
   }
   @removalList = ();
@@ -1430,8 +1370,7 @@ sub filterOnGC
 ##	   new consensus.
 ##
 ##---------------------------------------------------------------------##
-sub filterOnSrcDiv
-{
+sub filterOnSrcDiv {
   my $this         = shift;
   my $divLowRange  = shift;
   my $divHighRange = shift;
@@ -1442,13 +1381,11 @@ sub filterOnSrcDiv
   my @removalList = ();
 
   my $hitIndex = 0;
-  foreach $hit ( @{ $this->{'alignCol'} } )
-  {
+  foreach $hit ( @{ $this->{'alignCol'} } ) {
 
     # The first sequence is the reference so we don't want
     # to filter this out.
-    if ( $hitIndex == 0 )
-    {
+    if ( $hitIndex == 0 ) {
       $hitIndex++;
       next;
     }
@@ -1470,8 +1407,7 @@ sub filterOnSrcDiv
     }
     $hitIndex++;
   }
-  foreach $deleteIndex ( @removalList )
-  {
+  foreach $deleteIndex ( @removalList ) {
     splice @{ $this->{'alignCol'} }, $deleteIndex, 1;
   }
   @removalList = ();
@@ -1502,8 +1438,7 @@ sub filterOnSrcDiv
 ##	   or the derived consensus.
 ##
 ##---------------------------------------------------------------------##
-sub filterOnDiv
-{
+sub filterOnDiv {
   my $this         = shift;
   my $divLowRange  = shift;
   my $divHighRange = shift;
@@ -1514,13 +1449,11 @@ sub filterOnDiv
   my @removalList = ();
 
   my $hitIndex = 0;
-  foreach $hit ( @{ $this->{'alignCol'} } )
-  {
+  foreach $hit ( @{ $this->{'alignCol'} } ) {
 
     # The first sequence is the consensus so we don't want
     # to filter this out.
-    if ( $hitIndex == 0 )
-    {
+    if ( $hitIndex == 0 ) {
       $hitIndex++;
       next;
     }
@@ -1542,8 +1475,7 @@ sub filterOnDiv
     }
     $hitIndex++;
   }
-  foreach $deleteIndex ( @removalList )
-  {
+  foreach $deleteIndex ( @removalList ) {
     splice @{ $this->{'alignCol'} }, $deleteIndex, 1;
   }
   @removalList = ();
@@ -1560,8 +1492,7 @@ sub filterOnDiv
 ## instantiate this object with a SearchResultCollection.pm
 ##
 ##---------------------------------------------------------------------##
-sub alignFromCrossMatchFile
-{
+sub alignFromCrossMatchFile {
   my $object                    = shift;
   my $file                      = shift;
   my $searchCollectionReference = shift;
@@ -1582,15 +1513,14 @@ sub alignFromCrossMatchFile
       . "is obsolete.  You should switch to using search result "
       . "collections.\n"
       if ( $serialized );
-  if ( uc( $searchCollectionReference ) eq "QUERY" )
-  {
+  if ( uc( $searchCollectionReference ) eq "QUERY" ) {
     alignFromSearchResultCollection(
                                      searchCollection  => $searchResultCol,
                                      referenceSequence => "",
                                      searchCollectionReference => MultAln::Query
     );
-  } else
-  {
+  }
+  else {
     alignFromSearchResultCollection(
                                    searchCollection  => $searchResultCol,
                                    referenceSequence => "",
@@ -1598,7 +1528,6 @@ sub alignFromCrossMatchFile
     );
   }
 }
-
 
 ##---------------------------------------------------------------------##
 ## Use: _importAlignedSeqs( $this,
@@ -1610,8 +1539,7 @@ sub alignFromCrossMatchFile
 ## "-" or "." alignment spacing symbols.
 ##
 ##---------------------------------------------------------------------##
-sub _importAlignedSeqs
-{
+sub _importAlignedSeqs {
   my $object     = shift;
   my %parameters = @_;
 
@@ -1623,39 +1551,38 @@ sub _importAlignedSeqs
       if ( ref( $parameters{'sequences'} ) ne "ARRAY" );
   my $sequences = $parameters{'sequences'};
 
-  for ( my $l = 0; $l <= $#{$sequences}; $l++ )
-  {
-    my $sequence = $sequences->[$l]->[1];
-    my $tmpSeq = $sequence;
+  for ( my $l = 0 ; $l <= $#{$sequences} ; $l++ ) {
+    my $sequence = $sequences->[ $l ]->[ 1 ];
+    my $tmpSeq   = $sequence;
     $tmpSeq =~ s/[\.\-\s]//g;
     my $orient = "+";
 
-    my $assemblyName = "Unknown";
-    my $sequenceName = $sequences->[$l]->[0];
-    my $alignedBaseLen= length($tmpSeq);
-    my $startPos = 1;
-    my $endPos = 0;
+    my $assemblyName   = "Unknown";
+    my $sequenceName   = $sequences->[ $l ]->[ 0 ];
+    my $alignedBaseLen = length( $tmpSeq );
+    my $startPos       = 1;
+    my $endPos         = 0;
     if ( $sequenceName =~ /(\S+)\:(\d+)-(\d+)/ )
-# Hack...deletme
-#         || $sequenceName =~ /(\S+)\_[\-]?(\d+)-(\d+)/ )
+
+        # Hack...deletme
+        #         || $sequenceName =~ /(\S+)\_[\-]?(\d+)-(\d+)/ )
     {
       $sequenceName = $1;
-      $startPos = $2;
-      $endPos = $3;
-    }else {
+      $startPos     = $2;
+      $endPos       = $3;
+    }
+    else {
       $startPos = 1;
-      $endPos = $alignedBaseLen
+      $endPos   = $alignedBaseLen;
     }
 
     my $refStart = 0;
-    if ( $sequence =~ /^(\.+)/ )
-    {
+    if ( $sequence =~ /^(\.+)/ ) {
       $refStart = length( $1 );
       $sequence = substr( $sequence, $refStart );
     }
 
-    if ( $sequence =~ /([^\.])(\.+)$/ )
-    {
+    if ( $sequence =~ /([^\.])(\.+)$/ ) {
       $sequence = substr( $sequence, 0, length( $sequence ) - length( $2 ) );
     }
     my $refEnd = length( $sequence ) + $refStart - 1;
@@ -1674,11 +1601,10 @@ sub _importAlignedSeqs
     my $ID = "";
     $ID .= "$assemblyName:" if ( $assemblyName );
     $ID .= "$sequenceName:";
-    if ( $orient eq "+" )
-    {
+    if ( $orient eq "+" ) {
       $ID .= "$startPos-$endPos";
-    } else
-    {
+    }
+    else {
       $ID .= "$endPos-$startPos";
     }
     $object->setAlignedName( $l, $ID );
@@ -1692,7 +1618,6 @@ sub _importAlignedSeqs
   $object->setReferenceSeq( $object->consensus() );
 }
 
-
 ##---------------------------------------------------------------------##
 ## Use: _alignFromSeedAlignment( $this,
 ##                               seedAlignment => ref );
@@ -1702,8 +1627,7 @@ sub _importAlignedSeqs
 ## should be refactored when we have time to clean up MultAln.
 ##
 ##---------------------------------------------------------------------##
-sub _alignFromSeedAlignment
-{
+sub _alignFromSeedAlignment {
   my $object     = shift;
   my %parameters = @_;
 
@@ -1719,25 +1643,22 @@ sub _alignFromSeedAlignment
   # line indicates which positions within the multiple alignment are
   # determined to be "alignment positions" ( aka match positions ) and
   # which are insertions.  This may be pre-determined if all the sequences
-  # were aligned to the same reference sequence.  Or it may be that a 
+  # were aligned to the same reference sequence.  Or it may be that a
   # consensus/HMM builder determined which positions show enough signal
   # to be called "alignment positions".  If we do not have this information
-  # we need to develop it ourselves so we may set the alignStart/End 
+  # we need to develop it ourselves so we may set the alignStart/End
   # correctly.
-  for ( my $l = 0 ; $l < $seedAlignment->alignmentCount() ; $l++ )
-  {
-    my ( $assemblyName, $sequenceName, $start, $end, $orient, $sequence ) = 
+  for ( my $l = 0 ; $l < $seedAlignment->alignmentCount() ; $l++ ) {
+    my ( $assemblyName, $sequenceName, $start, $end, $orient, $sequence ) =
         $seedAlignment->getAlignment( $l );
 
     my $refStart = 0;
-    if ( $sequence =~ /^([\.\-]+)/ )
-    {
+    if ( $sequence =~ /^([\.\-]+)/ ) {
       $refStart = length( $1 );
       $sequence = substr( $sequence, $refStart );
     }
 
-    if ( $sequence =~ /([^\.\-])([\.\-]+)$/ )
-    {
+    if ( $sequence =~ /([^\.\-])([\.\-]+)$/ ) {
       $sequence = substr( $sequence, 0, length( $sequence ) - length( $2 ) );
     }
     my $refEnd = length( $sequence ) + $refStart - 1;
@@ -1756,11 +1677,10 @@ sub _alignFromSeedAlignment
     my $ID = "";
     $ID .= "$assemblyName:" if ( $assemblyName );
     $ID .= "$sequenceName:";
-    if ( $orient eq "+" )
-    {
+    if ( $orient eq "+" ) {
       $ID .= "$start-$end";
-    } else
-    {
+    }
+    else {
       $ID .= "$end-$start";
     }
     $object->setAlignedName( $l, $ID );
@@ -1788,14 +1708,13 @@ sub _alignFromSeedAlignment
 ## This is a private method for generating a multiple alignment from
 ## a search result collection containing a search of one sequence
 ## against many others.
-## 
+##
 ## TODO: Stress test flanking sequence generation.  I have seen one
-##       strange instance where the right flank was missing 8bp 
+##       strange instance where the right flank was missing 8bp
 ##       at the start.
 ##
 ##---------------------------------------------------------------------##
-sub _alignFromSearchResultCollection
-{
+sub _alignFromSearchResultCollection {
   my $object     = shift;
   my %parameters = @_;
 
@@ -1820,8 +1739,7 @@ sub _alignFromSearchResultCollection
   my $instSeq            = "getSubjString";
   my $instName           = "getSubjName";
   my $instRemaining      = "getSubjRemaining";
-  if ( defined $parameters{'searchCollectionReference'} )
-  {
+  if ( defined $parameters{'searchCollectionReference'} ) {
     croak $CLASS
         . "::alignFromSearchResultCollection() "
         . "searchCollectionReference parameter is not recognized ( "
@@ -1829,8 +1747,7 @@ sub _alignFromSearchResultCollection
         . " should be either MultAln::Query or MultAln::Subject!\n"
         if (    $parameters{'searchCollectionReference'} != MultAln::Query
              && $parameters{'searchCollectionReference'} != MultAln::Subject );
-    if ( $parameters{'searchCollectionReference'} == MultAln::Subject )
-    {
+    if ( $parameters{'searchCollectionReference'} == MultAln::Subject ) {
       $refStart           = "getSubjStart";
       $refEnd             = "getSubjEnd";
       $refSeq             = "getSubjString";
@@ -1860,14 +1777,11 @@ sub _alignFromSearchResultCollection
   #    matching we do not need to correct the sequence before
   #    proceding....but we do save the orientation in case anyone
   #    else wants to know.
-  if ( $orientationMatters )
-  {
+  if ( $orientationMatters ) {
     my $newSearchResultCollection = SearchResultCollection->new();
-    for ( my $i = 0 ; $i < $searchCollection->size() ; $i++ )
-    {
+    for ( my $i = 0 ; $i < $searchCollection->size() ; $i++ ) {
       my $result = $searchCollection->get( $i )->clone();
-      if ( $result->getOrientation eq "C" )
-      {
+      if ( $result->getOrientation eq "C" ) {
         my $str = uc( $result->getSubjString() );
         $str = reverse( $str );
         $str =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
@@ -1900,37 +1814,33 @@ sub _alignFromSearchResultCollection
     #
     $tMin = $searchCollection->get( 0 )->$refStart();
     $tMax = $searchCollection->get( 0 )->$refEnd();
-    for ( my $i = 1 ; $i < $searchCollection->size() ; $i++ )
-    {
+    for ( my $i = 1 ; $i < $searchCollection->size() ; $i++ ) {
       my $start = $searchCollection->get( $i )->$refStart();
       my $end   = $searchCollection->get( $i )->$refEnd();
       $tMin = $start if ( $start < $tMin );
-      if ( $end > $tMax )
-      {
+      if ( $end > $tMax ) {
         $tMax       = $end;
         $tRemaining = $searchCollection->get( $i )->$refRemaining();
       }
     }
     $combRefSeq = ' ' x ( $tMax - $tMin + 1 );
     my $combRefSeqLen = ( $tMax - $tMin + 1 );
-    for ( my $i = 0 ; $i < $searchCollection->size() ; $i++ )
-    {
+    for ( my $i = 0 ; $i < $searchCollection->size() ; $i++ ) {
       my $seq = $searchCollection->get( $i )->$refSeq();
       $seq =~ s/-//g;
       my $len = length $seq;
       my $ts  = $searchCollection->get( $i )->$refStart();
       substr( $combRefSeq, $ts - $tMin, $len ) = $seq;
     }
-    if ( $combRefSeq =~ /\s+/ )
-    {
+    if ( $combRefSeq =~ /\s+/ ) {
       warn $CLASS
           . "::_alignFromSearchResultCollection: Reference "
           . "sequence is incomplete.  No coverage is available for "
           . "at least one subregion of "
           . $searchCollection->get( 0 )->$refName() . ".\n";
     }
-  } else
-  {
+  }
+  else {
 
     #
     # Get reference sequence from parameters
@@ -1962,8 +1872,7 @@ sub _alignFromSearchResultCollection
   #
   my $i          = 0;
   my @gapPattern = ();
-  for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ )
-  {
+  for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ ) {
     my $result = $searchCollection->get( $l );
     my @unGaps = split( /[^-]/, $result->$refSeq() );
 
@@ -1985,11 +1894,9 @@ sub _alignFromSearchResultCollection
   my $len           = length( $combRefSeq );
   my $j             = 0;
   my @refGapPattern = ();
-  foreach $j ( 0 .. $len )
-  {
+  foreach $j ( 0 .. $len ) {
     $refGapPattern[ $j ] = 0;
-    foreach $i ( 0 .. $searchCollection->size() - 1 )
-    {
+    foreach $i ( 0 .. $searchCollection->size() - 1 ) {
       next if ( !defined $gapPattern[ $i ][ $j ] );
       $refGapPattern[ $j ] = $gapPattern[ $i ][ $j ]
           if ( $gapPattern[ $i ][ $j ] > $refGapPattern[ $j ] );
@@ -2001,8 +1908,7 @@ sub _alignFromSearchResultCollection
   # sequence
   #
   my $seq = '';
-  foreach $j ( 0 .. $len - 1 )
-  {
+  foreach $j ( 0 .. $len - 1 ) {
 
     # Reversed the order of these
     $seq .= '-' x $refGapPattern[ $j ];
@@ -2036,13 +1942,11 @@ sub _alignFromSearchResultCollection
   #
   my @totalGaps;
   $totalGaps[ 0 ] = 0;
-  foreach $j ( 1 .. $len )
-  {
+  foreach $j ( 1 .. $len ) {
     $totalGaps[ $j ] = $totalGaps[ $j - 1 ] + $refGapPattern[ $j - 1 ];
   }
 
-  for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ )
-  {
+  for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ ) {
     my $result = $searchCollection->get( $l );
     my $start  = $result->$refStart() - $tMin;
     $start += $totalGaps[ $start ];
@@ -2050,12 +1954,10 @@ sub _alignFromSearchResultCollection
     my $seq = '';
     my $len = length( $result->$instSeq() );
     my $k   = $result->$refStart() - $tMin;    # position in ungapped ref
-    foreach $j ( 0 .. $len )
-    {
+    foreach $j ( 0 .. $len ) {
       my $n = substr( $result->$instSeq(), $j, 1 );
       my $a = substr( $result->$refSeq(),  $j, 1 );
-      if ( $a ne '-' )
-      {
+      if ( $a ne '-' ) {
         my $numgaps = $refGapPattern[ $k ];
         $numgaps -= $gapPattern[ $l ][ $k ]
             if ( defined $gapPattern[ $l ][ $k ] );
@@ -2072,8 +1974,7 @@ sub _alignFromSearchResultCollection
     $object->setAlignedSeqEnd( $l, $result->$instEnd() );
     $object->setAlignedSrcDiv( $l, $result->getPctDiverge() );
 
-    if ( $parameters{'searchCollectionReference'} == MultAln::Subject )
-    {
+    if ( $parameters{'searchCollectionReference'} == MultAln::Subject ) {
 
       # The reference orientation is variable if it's source
       # is the subject side of a SearchResultCollection.  Thus
@@ -2084,23 +1985,21 @@ sub _alignFromSearchResultCollection
       ## of the SearchResultCollection we can assume it's always
       ## forward strand.
       #$object->setAlignedOrientation( $l, "+" );
-      if ( $result->getOrientation() eq "C" )
-      {
+      if ( $result->getOrientation() eq "C" ) {
         $object->setAlignedOrientation( $l, "-" );
-      } else
-      {
+      }
+      else {
         $object->setAlignedOrientation( $l, "+" );
       }
 
-    } else
-    {
+    }
+    else {
 
       # TODO: Set the Reference Orientation ( constant forward ).
-      if ( $result->getOrientation() eq "C" )
-      {
+      if ( $result->getOrientation() eq "C" ) {
         $object->setAlignedOrientation( $l, "-" );
-      } else
-      {
+      }
+      else {
         $object->setAlignedOrientation( $l, "+" );
       }
     }
@@ -2108,19 +2007,16 @@ sub _alignFromSearchResultCollection
 
   # Lastly lets load in the flanking sequences if we are given
   # the chance.
-  if ( defined $parameters{'flankingSequenceDatabase'} )
-  {
+  if ( defined $parameters{'flankingSequenceDatabase'} ) {
     my $seqDB = $parameters{'flankingSequenceDatabase'};
 
     # Set the max flanking length
     my $maxLen = MaxFlankingSeqLen;
-    if ( defined $parameters{'maxFlankingSequenceLen'} )
-    {
-      if ( $parameters{'maxFlankingSequenceLen'} > 0 )
-      {
+    if ( defined $parameters{'maxFlankingSequenceLen'} ) {
+      if ( $parameters{'maxFlankingSequenceLen'} > 0 ) {
         $maxLen = $parameters{'maxFlankingSequenceLen'};
-      } else
-      {
+      }
+      else {
         $maxLen = -1;
       }
     }
@@ -2130,14 +2026,12 @@ sub _alignFromSearchResultCollection
     my $seqStart     = $tMin;
     my $seqEnd       = $tMax;
     my $seqRemaining = $tRemaining;
-    if ( $seqDB->getSeqLength( $seqID ) > 0 )
-    {
+    if ( $seqDB->getSeqLength( $seqID ) > 0 ) {
 
       # Determine the left boundaries
       my $end   = $seqStart - 1;
       my $start = 0;
-      if ( $maxLen > -1 )
-      {
+      if ( $maxLen > -1 ) {
         $start = $seqStart - $maxLen if ( $seqStart > $maxLen );
       }
       $object->setLeftFlankingSequence(
@@ -2150,8 +2044,7 @@ sub _alignFromSearchResultCollection
       # Determine the right boundaries
       $start = $seqEnd + 1;
       $end   = $seqEnd + $seqRemaining;
-      if ( $maxLen > -1 )
-      {
+      if ( $maxLen > -1 ) {
         $end = $end - $maxLen if ( $seqRemaining > $maxLen );
       }
       $object->setRightFlankingSequence( 0,
@@ -2159,21 +2052,18 @@ sub _alignFromSearchResultCollection
     }
 
     # Grab the instance flanking sequence
-    for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ )
-    {
+    for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ ) {
       my $result = $searchCollection->get( $l );
       $seqID        = $result->$instName();
       $seqStart     = $result->$instStart();
       $seqEnd       = $result->$instEnd();
       $seqRemaining = $result->$instRemaining();
-      if ( $seqDB->getSeqLength( $seqID ) > 0 )
-      {
+      if ( $seqDB->getSeqLength( $seqID ) > 0 ) {
 
         # Determine the left boundaries
         my $end   = $seqStart - 1;
         my $start = 0;
-        if ( $maxLen > -1 )
-        {
+        if ( $maxLen > -1 ) {
           $start = $seqStart - $maxLen if ( $seqStart > $maxLen );
         }
         $object->setLeftFlankingSequence( $l + 1,
@@ -2182,8 +2072,7 @@ sub _alignFromSearchResultCollection
         # Determine the right boundaries
         $start = $seqEnd;
         $end   = $seqEnd + $seqRemaining;
-        if ( $maxLen > -1 )
-        {
+        if ( $maxLen > -1 ) {
           $end = $end - $maxLen if ( $seqRemaining > $maxLen );
         }
         $object->setRightFlankingSequence( $l + 1,
@@ -2234,25 +2123,21 @@ sub _alignFromSearchResultCollection
 =cut
 
 ##---------------------------------------------------------------------##
-sub getLowScoringAlignmentColumns
-{
+sub getLowScoringAlignmentColumns {
   my $this           = shift;
   my %nameValuePairs = @_;
 
   my @columns        = ();
   my $gapOpenPenalty = -40;
-  if ( defined $nameValuePairs{'gapInitiationPenalty'} )
-  {
+  if ( defined $nameValuePairs{'gapInitiationPenalty'} ) {
     $gapOpenPenalty = $nameValuePairs{'gapInitiationPenalty'};
   }
   my $gapExtPenalty = -15;
-  if ( defined $nameValuePairs{'gapExtensionPenalty'} )
-  {
+  if ( defined $nameValuePairs{'gapExtensionPenalty'} ) {
     $gapExtPenalty = $nameValuePairs{'gapExtensionPenalty'};
   }
   my $threshold = 1;
-  if ( defined $nameValuePairs{'threshold'} )
-  {
+  if ( defined $nameValuePairs{'threshold'} ) {
     $threshold = $nameValuePairs{'threshold'};
   }
   my $matrix_r;
@@ -2261,8 +2146,8 @@ sub getLowScoringAlignmentColumns
   {
     my $matrix = $nameValuePairs{'matrix'};
     $matrix_r = $matrix->{'matrixHash'};
-  } else
-  {
+  }
+  else {
     ## Reasonable defaults
     ## TODO: Encode these default matrices somewhere centrally -- perhaps in matrix.pm
     # Comparison Matrix
@@ -2287,10 +2172,8 @@ sub getLowScoringAlignmentColumns
 
     my $alphabet_r = [ qw( A R G C Y T K M S W N V H D B ) ];
     $matrix_r = {};
-    for ( my $i = 0 ; $i < scalar( @{$alphabet_r} ) ; $i++ )
-    {
-      for ( my $j = 0 ; $j < scalar( @{$alphabet_r} ) ; $j++ )
-      {
+    for ( my $i = 0 ; $i < scalar( @{$alphabet_r} ) ; $i++ ) {
+      for ( my $j = 0 ; $j < scalar( @{$alphabet_r} ) ; $j++ ) {
         $matrix_r->{ $alphabet_r->[ $i ], $alphabet_r->[ $j ] } =
             $alphaArray[ ( $i * scalar( @{$alphabet_r} ) ) + $j ];
       }
@@ -2299,8 +2182,7 @@ sub getLowScoringAlignmentColumns
 
   my @profile   = ();
   my @posCounts = ();
-  for ( my $seqNum = 0 ; $seqNum < $this->getNumAlignedSeqs ; $seqNum++ )
-  {
+  for ( my $seqNum = 0 ; $seqNum < $this->getNumAlignedSeqs ; $seqNum++ ) {
 
     #my $subjSeq  = $this->seq( $seqNum );
     my $subjSeq = $this->getAlignedSeq( $seqNum );
@@ -2311,28 +2193,26 @@ sub getLowScoringAlignmentColumns
                            $this->getAlignedStart( $seqNum ),
                            length( $subjSeq ) );
     my $inGap = 0;
-    for ( my $j = 0 ; $j < length( $querySeq ) ; $j++ )
-    {
+    for ( my $j = 0 ; $j < length( $querySeq ) ; $j++ ) {
       my $trgBase = substr( $subjSeq,  $j, 1 );
       my $refBase = substr( $querySeq, $j, 1 );
       if (    ( $refBase eq "-" && $trgBase ne "-" )
            || ( $refBase ne "-" && $trgBase eq "-" ) )
       {
-        if ( $inGap )
-        {
+        if ( $inGap ) {
           $profile[ $j + $this->getAlignedStart( $seqNum ) ] += $gapExtPenalty;
           $posCounts[ $j + $this->getAlignedStart( $seqNum ) ]++;
-        } else
-        {
+        }
+        else {
           $profile[ $j + $this->getAlignedStart( $seqNum ) ] += $gapOpenPenalty;
           $posCounts[ $j + $this->getAlignedStart( $seqNum ) ]++;
           $inGap = 1;
         }
-      } elsif ( $refBase eq "-" && $trgBase eq "-" )
-      {
+      }
+      elsif ( $refBase eq "-" && $trgBase eq "-" ) {
         $posCounts[ $j + $this->getAlignedStart( $seqNum ) ]++;
-      } else
-      {
+      }
+      else {
         $profile[ $j + $this->getAlignedStart( $seqNum ) ] +=
             $matrix_r->{ $refBase, $trgBase };
         $posCounts[ $j + $this->getAlignedStart( $seqNum ) ]++;
@@ -2341,10 +2221,8 @@ sub getLowScoringAlignmentColumns
     }
   }
 
-  for ( my $j = 0 ; $j <= $#posCounts ; $j++ )
-  {
-    if ( $posCounts[ $j ] > 0 )
-    {
+  for ( my $j = 0 ; $j <= $#posCounts ; $j++ ) {
+    if ( $posCounts[ $j ] > 0 ) {
       $profile[ $j ] = $profile[ $j ] / $posCounts[ $j ];
     }
   }
@@ -2353,8 +2231,7 @@ sub getLowScoringAlignmentColumns
   # To search for worst scoring regions we first must
   # calculate the inverse of the profile signs.
   #
-  foreach my $index ( 0 .. $#profile )
-  {
+  foreach my $index ( 0 .. $#profile ) {
     $profile[ $index ] *= -1;
   }
 
@@ -2366,24 +2243,20 @@ sub getLowScoringAlignmentColumns
   # Find low quality columns
   my $inCol    = 0;
   my $colStart = -1;
-  for ( my $i = 0 ; $i <= $#seqPosAvg ; $i++ )
-  {
-    if ( $seqPosAvg[ $i ] >= $threshold )
-    {
-      if ( $colStart == -1 )
-      {
+  for ( my $i = 0 ; $i <= $#seqPosAvg ; $i++ ) {
+    if ( $seqPosAvg[ $i ] >= $threshold ) {
+      if ( $colStart == -1 ) {
         $inCol    = 1;
         $colStart = $i;
       }
-    } elsif ( $inCol == 1 )
-    {
+    }
+    elsif ( $inCol == 1 ) {
       $inCol = 0;
       push @columns, [ $colStart, $i - 1 ];
       $colStart = -1;
     }
   }
-  if ( $inCol == 1 )
-  {
+  if ( $inCol == 1 ) {
     push @columns, [ $colStart, $#seqPosAvg ];
   }
 
@@ -2400,13 +2273,13 @@ sub getLowScoringAlignmentColumns
   Trim the entire multiple alignment on the left and/or 
   right side by a specific number of consensus bp.  If
   the left side of the multiple alignment looks like:
-     
+
         Cons:  T-AA--CTG...
         Seq1:  TAAA--CAG...
         Seq2:  T-CA--CTG...
         Seq3:  T-AAC-CTG...
         Seq4:  T-AA-TCTG...
-         
+
   Then trimAlignments( left => 2 ) would trim:
 
         Cons:  A--CTG...
@@ -2414,14 +2287,13 @@ sub getLowScoringAlignmentColumns
         Seq2:  A--CTG...
         Seq3:  AC-CTG...
         Seq4:  A-TCTG...
- 
+
   NOTE: This currently does not include the reference in this operation.
 
 =cut
 
 ##---------------------------------------------------------------------##
-sub trimAlignments
-{
+sub trimAlignments {
   my $this       = shift;
   my %parameters = @_;
 
@@ -2430,104 +2302,114 @@ sub trimAlignments
 
   my $consensus = $this->consensus( inclRef => 0 );
 
-  my $leftCols = 0;
+  my $leftCols  = 0;
   my $rightCols = 0;
 
   my $maLen = $this->getGappedReferenceLength();
- 
-  if ( defined $parameters{'left'} )
-  {
-    while ( $leftCols <= $maLen ) 
-    {
-      my $str = substr($consensus,0,$leftCols);
+
+  if ( defined $parameters{'left'} ) {
+    while ( $leftCols <= $maLen ) {
+      my $str = substr( $consensus, 0, $leftCols );
       $str =~ s/-//g;
-      last if ( length($str) == $parameters{'left'} + 1 );
+      last if ( length( $str ) == $parameters{'left'} + 1 );
       $leftCols++;
     }
     $leftCols--;
   }
-  if ( defined $parameters{'right'} )
-  {
-    while ( $rightCols <= $maLen )
-    {
-      my $str = substr($consensus,$maLen-$rightCols,$rightCols);
+  if ( defined $parameters{'right'} ) {
+    while ( $rightCols <= $maLen ) {
+      my $str = substr( $consensus, $maLen - $rightCols, $rightCols );
       $str =~ s/-//g;
-      last if ( length($str) == $parameters{'right'} + 1 );
+      last if ( length( $str ) == $parameters{'right'} + 1 );
       $rightCols++;
     }
     $rightCols--;
   }
 
-  for ( my $i = 0; $i < $this->getNumAlignedSeqs(); $i++ )
-  {
-    my $relStart = $this->getAlignedStart($i);
-    my $relEnd = $this->getAlignedEnd($i);
-    my $seq = $this->getAlignedSeq($i);  
+  for ( my $i = 0 ; $i < $this->getNumAlignedSeqs() ; $i++ ) {
+    my $relStart = $this->getAlignedStart( $i );
+    my $relEnd   = $this->getAlignedEnd( $i );
+    my $seq      = $this->getAlignedSeq( $i );
 
     # Do the suffix first
     if ( $relEnd >= ( $maLen - $rightCols ) ) {
       my $pos = $relEnd - ( $maLen - $rightCols ) + 1;
-      my $trimSeq = substr($seq,length($seq)-$pos,$pos);
-      substr($seq,length($seq)-$pos,$pos) = "";
+      my $trimSeq = substr( $seq, length( $seq ) - $pos, $pos );
+      substr( $seq, length( $seq ) - $pos, $pos ) = "";
+
       #$this->setAlignedEnd( $i, $relEnd - length($trimSeq) );
-      $this->setAlignedEnd( $i, $relEnd - length($trimSeq) - $leftCols );
+      $this->setAlignedEnd( $i, $relEnd - length( $trimSeq ) - $leftCols );
       $trimSeq =~ s/-//g;
-      $this->setAlignedSeqEnd( $i, $this->getAlignedSeqEnd($i) - length($trimSeq) );
-    }else {
+      $this->setAlignedSeqEnd( $i,
+                           $this->getAlignedSeqEnd( $i ) - length( $trimSeq ) );
+    }
+    else {
       $this->setAlignedEnd( $i, $relEnd - $leftCols );
     }
 
     if ( $relStart < $leftCols ) {
       my $pos = $leftCols - $relStart;
-      my $trimSeq = substr($seq,0,$pos);
-      substr($seq,0,$pos) = "";
+      my $trimSeq = substr( $seq, 0, $pos );
+      substr( $seq, 0, $pos ) = "";
+
       #$this->setAlignedStart( $i, $relStart + length($trimSeq) );
-      $this->setAlignedStart($i, 0);
+      $this->setAlignedStart( $i, 0 );
       $trimSeq =~ s/-//g;
-      $this->setAlignedSeqStart( $i, $this->getAlignedSeqStart($i) + length($trimSeq) );
-    }else {
+      $this->setAlignedSeqStart( $i,
+                         $this->getAlignedSeqStart( $i ) + length( $trimSeq ) );
+    }
+    else {
       $this->setAlignedStart( $i, $relStart - $leftCols );
     }
-    $this->setAlignedSeq($i,$seq);
+    $this->setAlignedSeq( $i, $seq );
   }
-  $this->setReferenceSeq( substr($this->getReferenceSeq(), $leftCols, length($this->getReferenceSeq()) - ($leftCols + $rightCols)) );
+  $this->setReferenceSeq(
+         substr(
+                 $this->getReferenceSeq(),
+                 $leftCols,
+                 length( $this->getReferenceSeq() ) - ( $leftCols + $rightCols )
+         )
+  );
   $this->resetGappedReferenceLength();
 }
 
-sub normalizeSeqRefs
-{
+sub normalizeSeqRefs {
   my $this       = shift;
   my %parameters = @_;
 
-  for ( my $i = 0; $i < $this->getNumAlignedSeqs(); $i++ )
-  {
-    my $id = $this->getAlignedName($i);
+  for ( my $i = 0 ; $i < $this->getNumAlignedSeqs() ; $i++ ) {
+    my $id = $this->getAlignedName( $i );
+
     # ie. chrUn_KK085329v1_11857_12355_R
     if ( $id =~ /^(\S+)_(\d+)_(\d+)(_R)?/ ) {
       my $namePrefix = $1;
-      my $start = $2;
-      my $end = $3;
-      my $curOrient = $this->getAlignedOrientation($i);
-      my $curStart = $this->getAlignedSeqStart($i);
-      my $curEnd = $this->getAlignedSeqEnd($i);
+      my $start      = $2;
+      my $end        = $3;
+      my $curOrient  = $this->getAlignedOrientation( $i );
+      my $curStart   = $this->getAlignedSeqStart( $i );
+      my $curEnd     = $this->getAlignedSeqEnd( $i );
       if ( $4 ne "" ) {
         $this->setAlignedSeqEnd( $i, $end - $curStart + 1 );
         $this->setAlignedSeqStart( $i, $end - $curEnd + 1 );
+
         # Original sequence is reverse
-        if ( $curOrient eq "+" )
-        {
+        if ( $curOrient eq "+" ) {
+
           # Alignment is forward
-          $this->getAlignedOrientation("-");
-        }else  {
+          $this->getAlignedOrientation( "-" );
+        }
+        else {
+
           # Alignment is reverse
           # two wrongs make a right
-          $this->getAlignedOrientation("+");
+          $this->getAlignedOrientation( "+" );
         }
-      }else {
+      }
+      else {
         $this->setAlignedSeqStart( $i, $start + $curStart - 1 );
         $this->setAlignedSeqEnd( $i, $start + $curEnd - 1 );
       }
-      $this->setAlignedName($i, $namePrefix);
+      $this->setAlignedName( $i, $namePrefix );
     }
   }
 }
@@ -2550,8 +2432,7 @@ sub normalizeSeqRefs
 =cut
 
 ##---------------------------------------------------------------------##
-sub getAlignmentBlock
-{
+sub getAlignmentBlock {
   my $this       = shift;
   my %parameters = @_;
 
@@ -2564,13 +2445,11 @@ sub getAlignmentBlock
   my $end = $parameters{'end'};
 
   my @results = ();
-  for ( my $j = 0 ; $j < $this->getNumAlignedSeqs() ; $j++ )
-  {
+  for ( my $j = 0 ; $j < $this->getNumAlignedSeqs() ; $j++ ) {
     if (    $start >= $this->getAlignedStart( $j )
          && $end <= $this->getAlignedEnd( $j ) )
     {
-      if ( defined $parameters{'rawSequences'} )
-      {
+      if ( defined $parameters{'rawSequences'} ) {
 
         #my $seq = substr( $this->seq( $j ),
         #                  $start - $this->start( $j ),
@@ -2580,8 +2459,8 @@ sub getAlignmentBlock
                           $end - $start + 1 );
         $seq =~ s/-//g;
         push @results, $seq;
-      } else
-      {
+      }
+      else {
         push @results,
 
             #substr( $this->seq( $j ),
@@ -2623,8 +2502,7 @@ sub getAlignmentBlock
 ##          Other       :   Contains the number zero.
 ##
 ##---------------------------------------------------------------------##
-sub _ruzzoTompaFindAllMaximalScoringSubsequences
-{
+sub _ruzzoTompaFindAllMaximalScoringSubsequences {
   my @b = @{ shift() };
 
   #
@@ -2645,28 +2523,24 @@ sub _ruzzoTompaFindAllMaximalScoringSubsequences
   #
   # Maximal scoring subsequences
   #
-  while ( $i <= $#b )
-  {
+  while ( $i <= $#b ) {
 
     # Cumulative Scores Array
-    if ( $i > 0 )
-    {
+    if ( $i > 0 ) {
       $S[ $i ] = $S[ $i - 1 ] + $b[ $i ];
-    } else
-    {
+    }
+    else {
       $S[ $i ] = $b[ $i ];
     }
 
     # Only consider positive scores
-    if ( $b[ $i ] > 0 )
-    {
+    if ( $b[ $i ] > 0 ) {
 
       # Subsequence start pointer
       $subStart = $i if ( $subStart == -1 );
 
       # Step 1: Find the maximal j for which Lj < Lk
-      for ( $j = $#L ; $j >= 0 ; $j-- )
-      {
+      for ( $j = $#L ; $j >= 0 ; $j-- ) {
         last if ( $L[ $j ] < $S[ $subStart - 1 ] );
       }
 
@@ -2682,8 +2556,8 @@ sub _ruzzoTompaFindAllMaximalScoringSubsequences
         push @R, $S[ $i ];
         $subStart = -1;
         $i++;
-      } else
-      {
+      }
+      else {
 
         # Step 4:
         $subStart = $I[ $j ][ 0 ];
@@ -2691,8 +2565,8 @@ sub _ruzzoTompaFindAllMaximalScoringSubsequences
 
       }
 
-    } else
-    {
+    }
+    else {
       $i++;
     }
   }
@@ -2702,10 +2576,8 @@ sub _ruzzoTompaFindAllMaximalScoringSubsequences
   #
   my @results = ( 0 ) x ( $#b + 1 );
 
-  foreach $i ( 0 .. $#I )
-  {
-    foreach $j ( $I[ $i ][ 0 ] .. $I[ $i ][ 1 ] )
-    {
+  foreach $i ( 0 .. $#I ) {
+    foreach $j ( $I[ $i ][ 0 ] .. $I[ $i ][ 1 ] ) {
       $results[ $j ] = ( $R[ $i ] - $L[ $i ] );
     }
   }
@@ -2720,24 +2592,20 @@ sub _ruzzoTompaFindAllMaximalScoringSubsequences
 ## Private method
 ##
 ##---------------------------------------------------------------------##
-sub _getSequenceDuplicates
-{
+sub _getSequenceDuplicates {
   my $this = shift;
 
   print "_getSequenceDuplicates\n" if ( $DEBUG );
 
   # Collect similar names into a hash pointing to arrays of index
   my %nameHash = ();
-  for ( my $i = 0 ; $i < $this->getNumAlignedSeqs ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $this->getNumAlignedSeqs ; $i++ ) {
     push @{ $nameHash{ $this->getAlignedName( $i ) } }, $i;
   }
 
   # Find all multiply occuring names
-  foreach my $name ( keys( %nameHash ) )
-  {
-    if ( $#{ $nameHash{$name} } == 0 )
-    {
+  foreach my $name ( keys( %nameHash ) ) {
+    if ( $#{ $nameHash{$name} } == 0 ) {
       delete $nameHash{$name};
     }
   }
@@ -2747,8 +2615,7 @@ sub _getSequenceDuplicates
   return ( \%nameHash );
 }
 
-sub _pickHistogramPeak
-{
+sub _pickHistogramPeak {
   my %parameters = @_;
 
   my $histoArray = $parameters{'histogram'};
@@ -2765,50 +2632,42 @@ sub _pickHistogramPeak
   my $highScoreStart     = -1;
   my $highScoreEnd       = -1;
   my $windowFlankingSize = ( ( $windowSize - 1 ) / 2 );
-  for ( my $i = 0 ; $i <= $windowFlankingSize ; $i++ )
-  {
+  for ( my $i = 0 ; $i <= $windowFlankingSize ; $i++ ) {
     print "Histo:  $i -> " . $histoArray->[ $i ] . "\n"
         if ( $histoArray->[ $i ] > 0 && $DEBUG );
     $score += $histoArray->[ $i ];
   }
   my $i;
-  for ( $i = $windowFlankingSize + 1 ; $i <= $#{$histoArray} ; $i++ )
-  {
+  for ( $i = $windowFlankingSize + 1 ; $i <= $#{$histoArray} ; $i++ ) {
     print "Histo: $i -> " . $histoArray->[ $i ] . "\n"
         if ( $histoArray->[ $i ] > 0 && $DEBUG );
     $score += $histoArray->[ $i ];
-    if ( $i - $windowSize >= 0 )
-    {
+    if ( $i - $windowSize >= 0 ) {
       $score -= $histoArray->[ $i - $windowSize ];
     }
-    if ( $score > $highScore )
-    {
+    if ( $score > $highScore ) {
       $highScoreStart = $i - $windowFlankingSize - 1;
       $highScore      = $score;
     }
-    if ( $score < $prevScore && $prevScore == $highScore )
-    {
+    if ( $score < $prevScore && $prevScore == $highScore ) {
       $highScoreEnd = $i - 1;
     }
     $prevScore = $score;
   }
   $highScoreEnd = $i - 1 if ( $highScoreEnd < $highScoreStart );
-  if ( $useHighestInWindow == 1 )
-  {
+  if ( $useHighestInWindow == 1 ) {
     my $maxPos = 0;
     my $maxVal = 0;
     print "About to call $highScoreStart to $highScoreEnd\n";
-    for ( my $i = $highScoreStart ; $i <= $highScoreEnd ; $i++ )
-    {
-      if ( $histoArray->[ $i ] > $maxVal )
-      {
+    for ( my $i = $highScoreStart ; $i <= $highScoreEnd ; $i++ ) {
+      if ( $histoArray->[ $i ] > $maxVal ) {
         $maxVal = $histoArray->[ $i ];
         $maxPos = $i;
       }
     }
     return ( $highScore, $maxPos );
-  } else
-  {
+  }
+  else {
     return (
              $highScore,
              $highScoreStart + (
@@ -2825,8 +2684,7 @@ sub _pickHistogramPeak
 ## Private method.
 ##
 ##---------------------------------------------------------------------##
-sub _pickHistogramPeaks
-{
+sub _pickHistogramPeaks {
   my $this       = shift;
   my %parameters = @_;
 
@@ -2849,15 +2707,12 @@ sub _pickHistogramPeaks
   my $windowFlankingSize = ( ( $windowSize - 1 ) / 2 );
 
   my %windowNameHash = ();
-  for ( my $i = 0 ; $i < $windowFlankingSize ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $windowFlankingSize ; $i++ ) {
     print "Histo:  $i -> " . $histoArray->[ $i ] . "\n"
         if ( $histoArray->[ $i ] > 0 && $DEBUG );
     $score += $histoArray->[ $i ];
-    for ( my $j = 0 ; $j < $this->getNumAlignedSeqs() ; $j++ )
-    {
-      if ( $this->instRefStart( $j ) == $i )
-      {
+    for ( my $j = 0 ; $j < $this->getNumAlignedSeqs() ; $j++ ) {
+      if ( $this->instRefStart( $j ) == $i ) {
         $windowNameHash{ $this->getAlignedName( $j ) }++;
       }
     }
@@ -2867,45 +2722,38 @@ sub _pickHistogramPeaks
   my $numUniqSequences  = -1;
   my $sig               = -1;
   my $distSinceLastCall = $windowFlankingSize;
-  for ( $i = 0 ; $i <= $#{$histoArray} ; $i++ )
-  {
+  for ( $i = 0 ; $i <= $#{$histoArray} ; $i++ ) {
     my $windowStart = $i - $windowFlankingSize;
     my $windowEnd   = $i + $windowFlankingSize;
     $distSinceLastCall++;
 
     # Slide Score Window
-    if ( $windowEnd <= $#{$histoArray} )
-    {
+    if ( $windowEnd <= $#{$histoArray} ) {
 
       # Add new column
       $score += $histoArray->[ $windowEnd ];
     }
-    if ( ( $windowStart - 1 ) >= 0 )
-    {
+    if ( ( $windowStart - 1 ) >= 0 ) {
 
       # Remove old column
       $score -= $histoArray->[ $windowStart - 1 ];
     }
 
     # Slide Uniq Sequence Window
-    for ( my $j = 0 ; $j < $this->getNumAlignedSeqs ; $j++ )
-    {
-      if ( $this->instRefStart( $j ) == $windowEnd )
-      {
+    for ( my $j = 0 ; $j < $this->getNumAlignedSeqs ; $j++ ) {
+      if ( $this->instRefStart( $j ) == $windowEnd ) {
         $windowNameHash{ $this->getAlignedName( $j ) }++;
-      } elsif ( $this->instRefEnd( $j ) == ( $windowStart - 1 ) )
-      {
+      }
+      elsif ( $this->instRefEnd( $j ) == ( $windowStart - 1 ) ) {
         $windowNameHash{ $this->getAlignedName( $j ) }--;
-        if ( $windowNameHash{ $this->getAlignedName( $j ) } == 0 )
-        {
+        if ( $windowNameHash{ $this->getAlignedName( $j ) } == 0 ) {
           delete $windowNameHash{ $this->getAlignedName( $j ) };
         }
       }
     }
     $numUniqSequences = scalar( keys( %windowNameHash ) );
     $sig              = 0;
-    if ( $numUniqSequences >= 3 )
-    {
+    if ( $numUniqSequences >= 3 ) {
       $sig = sprintf( "%0.2f", $score / $numUniqSequences );
     }
 
@@ -2928,8 +2776,7 @@ sub _pickHistogramPeaks
       $inPeak          = 1;
     }
 
-    if ( $inPeak == 1 && $sig <= 0.5 )
-    {
+    if ( $inPeak == 1 && $sig <= 0.5 ) {
       print "Leaving Peak score = $score aligns\@pos = $numUniqSequences "
           . " sig = $sig\n"
           if ( $DEBUG );
@@ -2939,10 +2786,8 @@ sub _pickHistogramPeaks
       my $maxPos = -1;
       print "Calculating high score from $peakWindowStart to $i\n"
           if ( $DEBUG );
-      for ( my $j = $peakWindowStart ; $j <= $i ; $j++ )
-      {
-        if ( $max < $histoArray->[ $j ] )
-        {
+      for ( my $j = $peakWindowStart ; $j <= $i ; $j++ ) {
+        if ( $max < $histoArray->[ $j ] ) {
           $max    = $histoArray->[ $j ];
           $maxPos = $j;
         }
@@ -2956,15 +2801,13 @@ sub _pickHistogramPeaks
       $distSinceLastCall = 0;
       $peakHighScore     = -1;
     }
-    if ( $inPeak == 1 && $peakHighScore < $score )
-    {
+    if ( $inPeak == 1 && $peakHighScore < $score ) {
       $peakHighScore = $score;
     }
   }
 
   # Trailing case
-  if ( $inPeak == 1 )
-  {
+  if ( $inPeak == 1 ) {
     print "Leaving Peak score = $score aligns\@pos = $numUniqSequences "
         . " sig = $sig\n"
         if ( $DEBUG );
@@ -2973,10 +2816,8 @@ sub _pickHistogramPeaks
     my $max    = 0;
     my $maxPos = -1;
     print "Calculating high score from $peakWindowStart to $i\n" if ( $DEBUG );
-    for ( my $j = $peakWindowStart ; $j <= $i ; $j++ )
-    {
-      if ( $max < $histoArray->[ $j ] )
-      {
+    for ( my $j = $peakWindowStart ; $j <= $i ; $j++ ) {
+      if ( $max < $histoArray->[ $j ] ) {
         $max    = $histoArray->[ $j ];
         $maxPos = $j;
       }
@@ -3090,8 +2931,7 @@ sub _pickHistogramPeaks
 =cut
 
 ##---------------------------------------------------------------------##
-sub _getEndStartPairs
-{
+sub _getEndStartPairs {
   my $this = shift;
 
   my @endStartPairs = ();
@@ -3104,8 +2944,7 @@ sub _getEndStartPairs
   my @startHisto = ();
   my @endHisto   = ();
 
-  for ( my $i = 0 ; $i < $this->getNumAlignedSeqs() ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $this->getNumAlignedSeqs() ; $i++ ) {
     $nameHash{ $this->getAlignedName( $i ) }++;
     $startHisto[ $this->instRefStart( $i ) ]++;
     $endHisto[ $this->instRefEnd( $i ) ]++;
@@ -3118,11 +2957,9 @@ sub _getEndStartPairs
   my $startList = $this->_pickHistogramPeaks( histogram  => \@startHisto,
                                               windowSize => 11, );
 
-  if ( $DEBUG )
-  {
+  if ( $DEBUG ) {
     print "Final calls:\n";
-    foreach my $posRec ( @{$startList} )
-    {
+    foreach my $posRec ( @{$startList} ) {
       print " pos = "
           . $posRec->{'pos'}
           . " score = "
@@ -3134,11 +2971,9 @@ sub _getEndStartPairs
   my $endList = $this->_pickHistogramPeaks( histogram  => \@endHisto,
                                             windowSize => 11, );
 
-  if ( $DEBUG )
-  {
+  if ( $DEBUG ) {
     print "Final calls:\n";
-    foreach my $posRec ( @{$endList} )
-    {
+    foreach my $posRec ( @{$endList} ) {
       print " pos = "
           . $posRec->{'pos'}
           . " score = "
@@ -3155,11 +2990,9 @@ sub _getEndStartPairs
   my %endNames    = ();
   my %startIdxs   = ();
   my %endIdxs     = ();
-  foreach my $key ( keys( %{$duplicateSeqRef} ) )
-  {
+  foreach my $key ( keys( %{$duplicateSeqRef} ) ) {
 
-    foreach my $index ( @{ $duplicateSeqRef->{$key} } )
-    {
+    foreach my $index ( @{ $duplicateSeqRef->{$key} } ) {
 
       print "Considering sequence start: "
           . $this->instRefStart( $index ) . "\n"
@@ -3167,11 +3000,9 @@ sub _getEndStartPairs
 
       # Find start
       my $startRec;
-      foreach my $start ( @{$startList} )
-      {
+      foreach my $start ( @{$startList} ) {
         last if ( ( $start->{'pos'} - 11 ) > $this->instRefStart( $index ) );
-        if ( ( $start->{'pos'} + 11 ) >= $this->instRefStart( $index ) )
-        {
+        if ( ( $start->{'pos'} + 11 ) >= $this->instRefStart( $index ) ) {
 
           # Found a match from this index to a start
           $startRec = $start;
@@ -3185,11 +3016,9 @@ sub _getEndStartPairs
 
       # Find end
       my $endRec;
-      foreach my $end ( @{$endList} )
-      {
+      foreach my $end ( @{$endList} ) {
         last if ( ( $end->{'pos'} - 11 ) > $this->instRefEnd( $index ) );
-        if ( ( $end->{'pos'} + 11 ) >= $this->instRefEnd( $index ) )
-        {
+        if ( ( $end->{'pos'} + 11 ) >= $this->instRefEnd( $index ) ) {
 
           # Found a match from this index to a start
           $endRec = $end;
@@ -3209,16 +3038,13 @@ sub _getEndStartPairs
   }
 
   my %startEndPairs = ();
-  foreach my $start ( keys( %startNames ) )
-  {
+  foreach my $start ( keys( %startNames ) ) {
     my @results = ();
-    foreach my $end ( keys( %endNames ) )
-    {
+    foreach my $end ( keys( %endNames ) ) {
 
       # Find shared indexes
       my @this_not_that = ();
-      foreach ( keys %{ $startIdxs{$start} } )
-      {
+      foreach ( keys %{ $startIdxs{$start} } ) {
         push( @this_not_that, $_ ) if ( exists $endIdxs{$end}->{$_} );
       }
       print " This not that = " . scalar( @this_not_that ) . "\n" if ( $DEBUG );
@@ -3226,12 +3052,10 @@ sub _getEndStartPairs
 
       # Find common keys
       my @common = ();
-      foreach ( keys %{ $startNames{$start} } )
-      {
+      foreach ( keys %{ $startNames{$start} } ) {
         push( @common, $_ ) if ( exists $endNames{$end}->{$_} );
       }
-      if ( @common > 1 )
-      {
+      if ( @common > 1 ) {
         push @results,
             {
               'endPos' => $end,
@@ -3251,11 +3075,9 @@ sub _getEndStartPairs
                                                 'shared' => $result->{'shared'}
       };
     }
-    if ( $DEBUG )
-    {
+    if ( $DEBUG ) {
       print "Start: $start\n";
-      foreach my $result ( @sortedResults )
-      {
+      foreach my $result ( @sortedResults ) {
         print "   EndMatch: "
             . $result->{'endPos'}
             . " dist: "
@@ -3268,16 +3090,13 @@ sub _getEndStartPairs
   }
 
   print "----------Final calls---------------\n" if ( $DEBUG );
-  foreach my $endPos ( keys( %startEndPairs ) )
-  {
+  foreach my $endPos ( keys( %startEndPairs ) ) {
     my $startPos = $startEndPairs{$endPos}->{'start'};
     print "EndPos = $endPos  StartPos = $startPos " if ( $DEBUG );
     my $avgGap      = 0;
     my $avgGapCount = 0;
-    foreach my $startName ( keys %{ $startNames{$startPos} } )
-    {
-      if ( exists $endNames{$endPos}->{$startName} )
-      {
+    foreach my $startName ( keys %{ $startNames{$startPos} } ) {
+      if ( exists $endNames{$endPos}->{$startName} ) {
         my $startIdx = $startNames{$startPos}->{$startName};
         my $endIdx   = $endNames{$endPos}->{$startName};
 
@@ -3289,8 +3108,7 @@ sub _getEndStartPairs
         $avgGapCount++;
       }
     }
-    if ( $avgGapCount > 0 )
-    {
+    if ( $avgGapCount > 0 ) {
       $avgGap /= $avgGapCount;
     }
     print "avgGap = $avgGap avgGapCount = $avgGapCount\n" if ( $DEBUG );
@@ -3336,20 +3154,16 @@ sub _getEndStartPairs
   #}
 
   ## END TESTING
-  if ( 0 )
-  {
+  if ( 0 ) {
 
     ## Cluster APPROACH
     my @clusters = ();
-    foreach my $name ( keys( %{$duplicateSeqRef} ) )
-    {
-      foreach my $index ( @{ $duplicateSeqRef->{$name} } )
-      {
+    foreach my $name ( keys( %{$duplicateSeqRef} ) ) {
+      foreach my $index ( @{ $duplicateSeqRef->{$name} } ) {
         my $i;
         my $consStart = $this->instRefStart( $index );
         my $consEnd   = $this->instRefEnd( $index );
-        for ( $i = 0 ; $i <= $#clusters ; $i++ )
-        {
+        for ( $i = 0 ; $i <= $#clusters ; $i++ ) {
           my $cluster = $clusters[ $i ];
           next
               if (    $cluster->{'start'} > $consEnd
@@ -3364,8 +3178,7 @@ sub _getEndStartPairs
              || ( $overlap / ( $cluster->{'end'} - $cluster->{'start'} + 1 ) ) >
              0.8 );
         }
-        if ( $i <= $#clusters )
-        {
+        if ( $i <= $#clusters ) {
 
           # Add to existing cluster
           my $left = $consStart;
@@ -3380,8 +3193,8 @@ sub _getEndStartPairs
           print "   -- consstart = $consStart consend = $consEnd\n";
           $clusters[ $i ]->{'leftHisto'}->[ $consStart ]++;
           $clusters[ $i ]->{'rightHisto'}->[ $consEnd ]++;
-        } else
-        {
+        }
+        else {
 
           # Make a new cluster
           my @lHistogram = ();
@@ -3403,17 +3216,14 @@ sub _getEndStartPairs
 
     # Remove small clusters and clusters where coverage is not
     # significant
-    for ( my $i = $#clusters ; $i >= 0 ; $i-- )
-    {
-      if ( $#{ $clusters[ $i ]->{'indices'} } < 1 )
-      {
+    for ( my $i = $#clusters ; $i >= 0 ; $i-- ) {
+      if ( $#{ $clusters[ $i ]->{'indices'} } < 1 ) {
         print "Removing a small cluster\n";
         splice( @clusters, $i, 1 );
         next;
       }
       my $clusterOverlapSeqs = 0;
-      for ( my $j = 0 ; $j < $this->getNumAlignedSeqs() ; $j++ )
-      {
+      for ( my $j = 0 ; $j < $this->getNumAlignedSeqs() ; $j++ ) {
         my $instStart = $this->instRefStart( $j );
         my $instEnd   = $this->instRefEnd( $j );
         next
@@ -3442,8 +3252,7 @@ sub _getEndStartPairs
       }
     }
     print "Clusters Left: " . ( $#clusters + 1 ) . "\n";
-    for ( my $i = 0 ; $i <= $#clusters ; $i++ )
-    {
+    for ( my $i = 0 ; $i <= $#clusters ; $i++ ) {
       print "Cluster #$i: " . ( $#{ $clusters[ $i ]->{'indices'} } + 1 ) . "\n";
       print "  "
           . $clusters[ $i ]->{'start'} . "-"
@@ -3451,8 +3260,7 @@ sub _getEndStartPairs
     }
 
     # Print out our accomplishments
-    for ( my $i = 1 ; $i <= $#clusters ; $i++ )
-    {
+    for ( my $i = 1 ; $i <= $#clusters ; $i++ ) {
       my $refStartScore = 0;
       my $refEndScore   = 0;
       my $refStart      = -1;
@@ -3478,11 +3286,9 @@ sub _getEndStartPairs
       my $negGapCount = ();
       my @gapHisto    = ();
       my $gapCount    = 0;
-      foreach my $index1 ( @{ $clusters[ $i - 1 ]->{'indices'} } )
-      {
+      foreach my $index1 ( @{ $clusters[ $i - 1 ]->{'indices'} } ) {
         my $name1 = $this->getAlignedName( $index1 );
-        foreach my $index2 ( @{ $clusters[ $i ]->{'indices'} } )
-        {
+        foreach my $index2 ( @{ $clusters[ $i ]->{'indices'} } ) {
           my $name2 = $this->getAlignedName( $index2 );
           next if ( $name1 ne $name2 );
 
@@ -3495,11 +3301,10 @@ sub _getEndStartPairs
               . " to average\n";
           my $gap = $this->getAlignedSeqStart( $index2 ) -
               ( $this->getAlignedSeqStart( $index1 ) + length( $lftSeq ) );
-          if ( $gap >= 0 )
-          {
+          if ( $gap >= 0 ) {
             $gapHisto[ $gap ]++;
-          } else
-          {
+          }
+          else {
             $negGapCount++;
             $gapHisto[ abs( $gap ) ]++;
           }
@@ -3513,8 +3318,7 @@ sub _getEndStartPairs
                                                       useHighestInWindow => 1
       );
 
-      if ( $negGapCount / $gapCount > 0.5 )
-      {
+      if ( $negGapCount / $gapCount > 0.5 ) {
         $avgGap = -$avgGap;
       }
 
@@ -3534,8 +3338,7 @@ sub _getEndStartPairs
           ( $refEndScore / ( $#{ $clusters[ $i - 1 ]->{'indices'} } + 1 ) );
       print "           refStartPct = $refStartPct refEndPct=$refEndPct\n";
 
-      if ( $refEndPct > .5 && $refStartPct > .5 )
-      {
+      if ( $refEndPct > .5 && $refStartPct > .5 ) {
         print "         **** ...Saved!\n";
         push @endStartPairs,
             {
@@ -3543,8 +3346,8 @@ sub _getEndStartPairs
               'refStart'    => $refStart,
               'avgGapWidth' => $avgGap
             };
-      } else
-      {
+      }
+      else {
         print "         **** ...Deleted!\n";
       }
 
@@ -3585,8 +3388,7 @@ sub _getEndStartPairs
 =cut
 
 ##---------------------------------------------------------------------##
-sub toSTK
-{
+sub toSTK {
   my $object     = shift;
   my %parameters = @_;
 
@@ -3594,14 +3396,13 @@ sub toSTK
   $id = $parameters{'id'} if ( defined $parameters{'id'} );
 
   my $OUT;
-  if ( $parameters{'filename'} )
-  {
+  if ( $parameters{'filename'} ) {
     open $OUT, ">$parameters{'filename'}"
         or die $CLASS
         . "::toSTK: Unable to open "
         . "results file: $parameters{'filename'} for writing : $!";
-  } else
-  {
+  }
+  else {
     $OUT = *STDOUT;
   }
 
@@ -3609,6 +3410,7 @@ sub toSTK
   print $OUT "# STOCKHOLM 1.0\n";
   print $OUT "#=GF ID $id\n";
   if ( $parameters{'includeTemplate'} ) {
+
     # Print Dfam variant
     print $OUT "#=GF DE My favorite ERVL ~:Title\n";
     print $OUT "#=GF AU Foobar Jones ~:Author\n";
@@ -3623,10 +3425,13 @@ sub toSTK
     print $OUT "#=GF CC ~:Public description with more details of the family\n";
     print $OUT "#=GF ** ~:Curation details and metdata go in the ** field\n";
     print $OUT "#=GF **\n";
-    print $OUT "#=GF ** SearchStages: 3, 5, 10  ~: stages, separated by commas\n";
-    print $OUT "#=GF ** BufferStages: 3[1-2], 5[3-6], 1020 ~: 'stage'[start-end] or just 'stage'\n";
+    print $OUT
+        "#=GF ** SearchStages: 3, 5, 10  ~: stages, separated by commas\n";
+    print $OUT
+"#=GF ** BufferStages: 3[1-2], 5[3-6], 1020 ~: 'stage'[start-end] or just 'stage'\n";
     print $OUT "#=GF ** HC: CACTACCCCC ~: Handbuilt consensus\n";
-  }else {
+  }
+  else {
     print $OUT "#=GF CC refLength="
         . $object->getGappedReferenceLength()
         . " refName="
@@ -3638,8 +3443,7 @@ sub toSTK
   $numSeqs += 1 if ( defined $parameters{'includeReference'} );
   print $OUT "#=GF SQ $numSeqs\n";
 
-  if ( $parameters{'header'} )
-  {
+  if ( $parameters{'header'} ) {
     print $OUT "$parameters{'header'}";
     print $OUT "\n" if ( $parameters{'header'} !~ /.*[\n\r]$/ );
   }
@@ -3649,11 +3453,9 @@ sub toSTK
 
   # NOTE: -1 is a special case
   my $maxNameLen = 0;
-  for ( my $i = -1 ; $i < $object->getNumAlignedSeqs() ; $i++ )
-  {
+  for ( my $i = -1 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
     my ( $name, $start, $end, $orient );
-    if ( $i == -1 )
-    {
+    if ( $i == -1 ) {
       if (    defined $parameters{'includeReference'}
            || defined $parameters{'includeReferenceNoPrefix'} )
       {
@@ -3663,22 +3465,21 @@ sub toSTK
         $tmpSeq =~ s/-//g;
         $end    = $start + length( $tmpSeq );
         $orient = "+";                          # Is this always the case?
-      } else
-      {
+      }
+      else {
         next;
       }
-    } else
-    {
+    }
+    else {
       $name   = $object->getAlignedName( $i );
       $start  = $object->getAlignedSeqStart( $i );
       $end    = $object->getAlignedSeqEnd( $i );
       $orient = $object->getAlignedOrientation( $i );
     }
-    if ( $orient eq "+" )
-    {
+    if ( $orient eq "+" ) {
       $name .= ":$start-$end";
-    } else
-    {
+    }
+    else {
       $name .= ":$end-$start";
     }
     $maxNameLen = length( $name ) if ( length( $name ) > $maxNameLen );
@@ -3686,8 +3487,7 @@ sub toSTK
   }
 
   # Spec indicates id shouldn't be longer than 255
-  if ( $maxNameLen > 255 )
-  {
+  if ( $maxNameLen > 255 ) {
     warn $CLASS
         . "::toSTK(): Truncating id's because at least one is longer "
         . "than allowed length ( 255 ).\n";
@@ -3704,18 +3504,18 @@ sub toSTK
   #       sequence.  Treat these spaces as consensus positions in the
   #       RF line. 8/21/2015
   $seq =~ s/-/./g;
-  if ( $parameters{'nuclRF'} ){
-    $seq = uc($seq);
-  }else {
+  if ( $parameters{'nuclRF'} ) {
+    $seq = uc( $seq );
+  }
+  else {
     $seq =~ s/ /x/g;
     $seq =~ s/[ACGTBDHVRYKMSWN]/x/ig;
   }
   my $name = "#=GC RF ";
-  if ( length( $name ) <= $maxNameLen )
-  {
+  if ( length( $name ) <= $maxNameLen ) {
     $name = $name . " " x ( $maxNameLen - length( $name ) );
-  } else
-  {
+  }
+  else {
     $name = substr( $name, 0, $maxNameLen );
   }
   print $OUT "$name  $seq\n";
@@ -3727,11 +3527,10 @@ sub toSTK
     $seq =~ s/-/./g;
 
     my $name = shift @ids;
-    if ( length( $name ) <= $maxNameLen )
-    {
+    if ( length( $name ) <= $maxNameLen ) {
       $name = $name . " " x ( $maxNameLen - length( $name ) );
-    } else
-    {
+    }
+    else {
       $name = substr( $name, 0, $maxNameLen );
     }
     print $OUT "$name  $seq\n";
@@ -3739,37 +3538,32 @@ sub toSTK
 
   # Now print out the aligned sequences
   my $maxSeqLen = $object->getGappedReferenceLength();
-  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
     my $start = $object->getAlignedStart( $i );
     my $end   = $object->getAlignedEnd( $i );
     my $seq   = '';
-    if ( $start > 0 )
-    {
+    if ( $start > 0 ) {
       $seq = '.' x ( $start );
     }
     $seq .= $object->getAlignedSeq( $i );
     $seq =~ s/-/./g;
 
-    if ( length( $seq ) < $maxSeqLen )
-    {
+    if ( length( $seq ) < $maxSeqLen ) {
       $seq .= '.' x ( $maxSeqLen - length( $seq ) );
     }
 
     my $name = shift @ids;
-    if ( length( $name ) <= $maxNameLen )
-    {
+    if ( length( $name ) <= $maxNameLen ) {
       $name = $name . " " x ( $maxNameLen - length( $name ) );
-    } else
-    {
+    }
+    else {
       $name = substr( $name, 0, $maxNameLen );
     }
 
     print $OUT "$name  $seq\n";
   }
   print $OUT "//\n";
-  if ( $parameters{'filename'} )
-  {
+  if ( $parameters{'filename'} ) {
     close $OUT;
   }
 }
@@ -3786,54 +3580,46 @@ sub toSTK
 =cut
 
 ##---------------------------------------------------------------------##
-sub toFASTA
-{
+sub toFASTA {
   my $object     = shift;
   my %parameters = @_;
 
   my $OUT;
-  if ( $parameters{'filename'} )
-  {
+  if ( $parameters{'filename'} ) {
     open $OUT, ">$parameters{'filename'}";
-  } else
-  {
+  }
+  else {
     $OUT = *STDOUT;
   }
 
   my $malignLen = 0;
-  if ( defined $parameters{'includeReference'} && $object->getReferenceSeq() )
-  {
+  if ( defined $parameters{'includeReference'} && $object->getReferenceSeq() ) {
     my $refSeq = $object->getReferenceSeq();
-    if ( $parameters{'seqOnly'} )
-    {
+    if ( $parameters{'seqOnly'} ) {
       $refSeq =~ s/-//g;
     }
-    print $OUT ">"
-        . $object->getReferenceName() . " - reference sequence\n";
+    print $OUT ">" . $object->getReferenceName() . " - reference sequence\n";
     print $OUT "$refSeq\n";
-    $malignLen = length($refSeq);
+    $malignLen = length( $refSeq );
   }
 
   # Sanity check malignLen and handle noref case
-  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
     my $seq = $object->getAlignedSeq( $i );
-    $malignLen = length($seq) if ( length($seq) > $malignLen );
+    $malignLen = length( $seq ) if ( length( $seq ) > $malignLen );
   }
 
-  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
     my $seq = $object->getAlignedSeq( $i );
-    if ( $parameters{'seqOnly'} )
-    {
+    if ( $parameters{'seqOnly'} ) {
       $seq =~ s/-//g;
-    }else {
+    }
+    else {
       my $start = $object->getAlignedStart( $i );
       my $end   = $object->getAlignedEnd( $i );
-      $seq = "-"x($start) . $seq . "-"x($malignLen - $end);
+      $seq = "-" x ( $start ) . $seq . "-" x ( $malignLen - $end );
     }
-    print $OUT ">"
-        . $object->getAlignedName( $i ) . "\n";
+    print $OUT ">" . $object->getAlignedName( $i ) . "\n";
     print $OUT "$seq\n";
   }
   close $OUT;
@@ -3851,17 +3637,15 @@ sub toFASTA
 =cut
 
 ##---------------------------------------------------------------------##
-sub toMSF
-{
+sub toMSF {
   my $object     = shift;
   my %parameters = @_;
 
   my $OUT;
-  if ( $parameters{'filename'} )
-  {
+  if ( $parameters{'filename'} ) {
     open $OUT, ">$parameters{'filename'}";
-  } else
-  {
+  }
+  else {
     $OUT = *STDOUT;
   }
 
@@ -3873,8 +3657,7 @@ sub toMSF
       . "   Type: N  "
       . localtime( time )
       . " Check: 0 ..\n\n";
-  if ( defined $parameters{'includeReference'} )
-  {
+  if ( defined $parameters{'includeReference'} ) {
     print $OUT " Name: "
         . $object->getReferenceName()
         . "    Len: "
@@ -3883,8 +3666,7 @@ sub toMSF
     $maxNameLen = length( $object->getReferenceName() )
         if ( length( $object->getReferenceName() ) > $maxNameLen );
   }
-  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
     print $OUT " Name: "
         . $object->getAlignedName( $i )
         . "    Len: "
@@ -3901,24 +3683,20 @@ sub toMSF
   my $seq       = "";
   my $lineStart = 0;
   my $lineEnd   = 49;
-  while ( $lineStart < $object->getGappedReferenceLength() )
-  {
+  while ( $lineStart < $object->getGappedReferenceLength() ) {
 
     # Print out the reference first
-    if ( defined $parameters{'includeReference'} )
-    {
+    if ( defined $parameters{'includeReference'} ) {
       $seq = substr( $object->getReferenceSeq(),
                      $lineStart, $lineEnd - $lineStart + 1 );
       $name = "ref:" . $object->getReferenceName();
-      if ( length( $name ) > 16 )
-      {
+      if ( length( $name ) > 16 ) {
         $name = substr( $name, 0, 16 );
       }
-      if ( $lineStart == 0 )
-      {
+      if ( $lineStart == 0 ) {
         $start = $object->getReferenceSeqStart();
-      } else
-      {
+      }
+      else {
         my $priorSeq = substr( $object->getReferenceSeq(), 0, $lineStart );
         my $numLetters = ( $priorSeq =~ tr/A-Za-z/A-Za-z/ );
         $start = $numLetters;
@@ -3926,11 +3704,10 @@ sub toMSF
       my $numLetters = ( $seq =~ tr/A-Za-z/A-Za-z/ );
       $end = $start + $numLetters - 1;
 
-      if ( length( $name ) <= $maxNameLen )
-      {
+      if ( length( $name ) <= $maxNameLen ) {
         $name = $name . " " x ( $maxNameLen - length( $name ) );
-      } else
-      {
+      }
+      else {
         $name = substr( $name, 0, $maxNameLen );
       }
 
@@ -3941,15 +3718,13 @@ sub toMSF
     }
 
     # Now print out the aligned sequences
-    for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ )
-    {
+    for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
       $start = $object->getAlignedStart( $i );
       $end   = $object->getAlignedEnd( $i );
       next if ( $start >= $lineEnd );
       next if ( $end <= $lineStart );
       $seq = '';
-      if ( $start > $lineStart )
-      {
+      if ( $start > $lineStart ) {
         $seq = '-' x ( $start - $lineStart );
       }
       my $seqStart = $lineStart - $start;
@@ -3961,11 +3736,10 @@ sub toMSF
       $name = $object->getAlignedName( $i );
       my $numLetters;
 
-      if ( $seqStart == 0 )
-      {
+      if ( $seqStart == 0 ) {
         $start = $object->getAlignedSeqStart( $i );
-      } else
-      {
+      }
+      else {
         my $priorSeq = substr( $object->getAlignedSeq( $i ), 0, $seqStart );
         $numLetters = ( $priorSeq =~ tr/A-Z/A-Z/ );
         $start = $object->getAlignedSeqStart( $i ) + $numLetters;
@@ -3973,11 +3747,10 @@ sub toMSF
       $numLetters = ( $seq =~ tr/A-Z/A-Z/ );
       $end        = $start + $numLetters - 1;
 
-      if ( length( $name ) <= $maxNameLen )
-      {
+      if ( length( $name ) <= $maxNameLen ) {
         $name = $name . " " x ( $maxNameLen - length( $name ) );
-      } else
-      {
+      }
+      else {
         $name = substr( $name, 0, $maxNameLen );
       }
 
@@ -3990,8 +3763,7 @@ sub toMSF
     $lineStart = $lineEnd + 1;
     $lineEnd   = $lineStart + 49;
   }
-  if ( $parameters{'filename'} )
-  {
+  if ( $parameters{'filename'} ) {
     close $OUT;
   }
 }
@@ -4008,14 +3780,12 @@ sub toMSF
 =cut
 
 ##---------------------------------------------------------------------##
-sub printAlignments
-{
+sub printAlignments {
   my $object     = shift;
   my %parameters = @_;
 
   my $blockSize = 50;
-  if ( $parameters{'blockSize'} )
-  {
+  if ( $parameters{'blockSize'} ) {
     $blockSize = $parameters{'blockSize'};
   }
 
@@ -4026,27 +3796,24 @@ sub printAlignments
   $showScore = 1 if ( $parameters{'showScore'} );
 
   my $consensus = "";
-  if ( $parameters{'showCons'} )
-  {
+  if ( $parameters{'showCons'} ) {
     $consensus = $object->consensus( inclRef => $inclRef );
   }
 
   my @sortedIndexes = ( 0 .. ( $object->getNumAlignedSeqs() - 1 ) );
-  if ( !$parameters{'origOrder'} )
-  {
+  if ( !$parameters{'origOrder'} ) {
     @sortedIndexes = sort {
       $object->getAlignedStart( $a ) <=> $object->getAlignedStart( $b )
     } ( 0 .. ( $object->getNumAlignedSeqs() - 1 ) );
   }
 
-  my $maxIDLen = length( $object->getReferenceName() );
+  my $maxIDLen    = length( $object->getReferenceName() );
   my $maxCoordLen = 0;
-  foreach my $i ( @sortedIndexes )
-  { 
+  foreach my $i ( @sortedIndexes ) {
     my $start = $object->getAlignedSeqStart( $i );
     my $end   = $object->getAlignedSeqEnd( $i );
-    $maxCoordLen = length($start) if ( length($start) > $maxCoordLen );
-    $maxCoordLen = length($end) if ( length($end) > $maxCoordLen );
+    $maxCoordLen = length( $start ) if ( length( $start ) > $maxCoordLen );
+    $maxCoordLen = length( $end )   if ( length( $end ) > $maxCoordLen );
     my $tLen = length( $object->getAlignedName( $i ) );
     $maxIDLen = $tLen if ( $tLen > $maxIDLen );
   }
@@ -4055,15 +3822,13 @@ sub printAlignments
   my $columns;
   my $scoreArray;
   my $maxScoreLen = 0;
-  if ( $showScore )
-  {
+  if ( $showScore ) {
 
     # Use default matrix
     ( $columns, $scoreArray ) = $object->getLowScoringAlignmentColumns();
 
     # Find the largest score
-    for ( my $j = 0 ; $j <= $#{$scoreArray} ; $j++ )
-    {
+    for ( my $j = 0 ; $j <= $#{$scoreArray} ; $j++ ) {
       my $num = sprintf( "%0.1f", $scoreArray->[ $j ] );
       $maxScoreLen = length( $num ) if ( $maxScoreLen < length( $num ) );
       $scoreArray->[ $j ] = $num;
@@ -4076,17 +3841,13 @@ sub printAlignments
   my $lineEnd          = $blockSize - 1;
   my $refBaseStartPos  = $object->getReferenceSeqStart();
   my $consBaseStartPos = 1;
-  while ( $lineStart < $object->getGappedReferenceLength() )
-  {
+  while ( $lineStart < $object->getGappedReferenceLength() ) {
 
     # Show the score if requested
-    if ( $showScore )
-    {
-      for ( my $rows = 0 ; $rows < $maxScoreLen ; $rows++ )
-      {
+    if ( $showScore ) {
+      for ( my $rows = 0 ; $rows < $maxScoreLen ; $rows++ ) {
         print " " x ( $maxIDLen + 6 + 2 );
-        for ( my $cols = 0 ; $cols < $blockSize ; $cols++ )
-        {
+        for ( my $cols = 0 ; $cols < $blockSize ; $cols++ ) {
           my $thisDigits =
               " " x
               ( $maxScoreLen - length( $scoreArray->[ $cols + $lineStart ] ) )
@@ -4098,8 +3859,7 @@ sub printAlignments
     }
 
     # Print out the consensus if requested
-    if ( $consensus ne "" )
-    {
+    if ( $consensus ne "" ) {
       my $seq        = substr( $consensus, $lineStart, $blockSize );
       my $name       = "consensus";
       my $numLetters = ( $seq =~ tr/A-Za-z/A-Za-z/ );
@@ -4133,15 +3893,13 @@ sub printAlignments
     $refBaseStartPos = $end + 1;
 
     # Now print out the aligned sequences
-    foreach my $i ( @sortedIndexes )
-    {
+    foreach my $i ( @sortedIndexes ) {
       my $start = $object->getAlignedStart( $i );
       my $end   = $object->getAlignedEnd( $i );
       next if ( $start >= $lineEnd );
       next if ( $end <= $lineStart );
       $seq = '';
-      if ( $start > $lineStart )
-      {
+      if ( $start > $lineStart ) {
         $seq = ' ' x ( $start - $lineStart );
       }
       my $seqStart = $lineStart - $start;
@@ -4156,11 +3914,10 @@ sub printAlignments
       #{
       #  $name = substr( $name, 0, 16 );
       #}
-      if ( $seqStart == 0 )
-      {
+      if ( $seqStart == 0 ) {
         $start = $object->getAlignedSeqStart( $i );
-      } else
-      {
+      }
+      else {
         my $priorSeq = substr( $object->getAlignedSeq( $i ), 0, $seqStart );
         $numLetters = ( $priorSeq =~ tr/A-Z/A-Z/ );
         $start = $object->getAlignedSeqStart( $i ) + $numLetters;
@@ -4205,8 +3962,7 @@ sub printAlignments
 ##
 ##
 ##---------------------------------------------------------------------##
-sub substFrequency
-{
+sub substFrequency {
   my $object = shift;
 
   #
@@ -4237,8 +3993,7 @@ sub substFrequency
                       #  the consensus
 
   # go from A<here>CC---GCTT-AA<tohere>G"
-  foreach $baseIndex ( 1 .. length( $analysisCons ) - 2 )
-  {
+  foreach $baseIndex ( 1 .. length( $analysisCons ) - 2 ) {
 
     # Get a consensus base to consider it's substitutions
     $conSubstBase = substr( $object->{'alignCol'}[ 0 ]{seq}, $baseIndex, 1 );
@@ -4282,8 +4037,7 @@ sub substFrequency
     #
     # Now lets consider these three positions in all of the hits
     #
-    foreach $seqIndex ( 0 .. $object->getNumAlignedSeqs() - 1 )
-    {
+    foreach $seqIndex ( 0 .. $object->getNumAlignedSeqs() - 1 ) {
 
       # Do not consider hits which do not contain these three bases.
       next
@@ -4331,19 +4085,20 @@ sub substFrequency
         next;
 
         # Check for rightside insertion
-      } elsif ( $rightBasePos > $baseIndex
-                && ( $rightSeqToBase =~ tr/-/-/ ) != length( $rightSeqToBase ) )
+      }
+      elsif ( $rightBasePos > $baseIndex
+              && ( $rightSeqToBase =~ tr/-/-/ ) != length( $rightSeqToBase ) )
       {
         next;
 
         # Check for rightside deletion
-      } elsif ( $rightBase eq "-" || $rightBase eq "*" )
-      {
+      }
+      elsif ( $rightBase eq "-" || $rightBase eq "*" ) {
         next;
 
         # Check for leftside deletion
-      } elsif ( $leftBase eq "-" || $leftBase eq "*" )
-      {
+      }
+      elsif ( $leftBase eq "-" || $leftBase eq "*" ) {
         next;
       }
 
@@ -4414,8 +4169,7 @@ sub substFrequency
 ##     The genetic reverse complement of the DNA sequence.
 ##
 ##---------------------------------------------------------------------##
-sub _compl
-{
+sub _compl {
   my $seq = shift;
   $seq =~ tr/ACGTRYKMSWBDHV/TGCAYRMKWSVHDB/;
   return ( reverse( $seq ) );
@@ -4429,15 +4183,13 @@ sub _compl
 ##
 ##
 ##---------------------------------------------------------------------##
-sub consensusWOInsertions
-{
+sub consensusWOInsertions {
   my $object     = shift;
   my $matrixFile = shift;
   my $origCons   = my $newCons = $object->consensus( $matrixFile );
   my $i          = 0;
   my $reference  = $object->getReferenceSeq();
-  for ( $i = 0 ; $i < length( $newCons ) ; $i++ )
-  {
+  for ( $i = 0 ; $i < length( $newCons ) ; $i++ ) {
     substr( $newCons, $i, 1 ) = "-" if ( substr( $reference, $i, 1 ) eq "-" );
   }
   return ( $origCons, $newCons );
@@ -4451,8 +4203,7 @@ sub consensusWOInsertions
 ##
 ##
 ##---------------------------------------------------------------------##
-sub buildConsensusFromArrayNearlyOrig
-{
+sub buildConsensusFromArrayNearlyOrig {
   my %parameters = @_;
 
   croak $CLASS. "::buildConsensus: Missing matrix parameter!\n"
@@ -4475,8 +4226,7 @@ sub buildConsensusFromArrayNearlyOrig
   my $TAparam = -5;    # TG or CA to TA is -4, so slightly worse than that
                        #   CG -> TA mismatch would have been -8
 
-  foreach $n ( @$alphabet_r )
-  {
+  foreach $n ( @$alphabet_r ) {
     $matrix_r->{ $n, '-' } = $matrix_r->{ '-', $n } = -6;
   }
 
@@ -4486,8 +4236,7 @@ sub buildConsensusFromArrayNearlyOrig
   # TODO: Make sure it exists
   my $sequences = $parameters{'sequences'};
   my @profile   = ();
-  foreach my $seq ( @{$sequences} )
-  {
+  foreach my $seq ( @{$sequences} ) {
     my $i = 0;
     grep $profile[ $i++ ]{$_}++, split( '', $seq );
   }
@@ -4495,22 +4244,18 @@ sub buildConsensusFromArrayNearlyOrig
   my $consensus = '';
   my @cScore    = ();
   my $i         = 0;
-  foreach $i ( 0 .. $#profile )
-  {
+  foreach $i ( 0 .. $#profile ) {
     my $maxScore = -1000000;
     my $n        = '';
 
     # Currently the "*" mask character is ignored.
-    foreach $a ( @$alphabet_r )
-    {
+    foreach $a ( @$alphabet_r ) {
       my $score = 0;
-      foreach $b ( keys %{ $profile[ $i ] } )
-      {
+      foreach $b ( keys %{ $profile[ $i ] } ) {
         next if ( $b eq " " );
         $score += $profile[ $i ]{$b} * $matrix_r->{ $a, $b };
       }
-      if ( $score > $maxScore )
-      {
+      if ( $score > $maxScore ) {
         $n        = $a;
         $maxScore = $score;
       }
@@ -4523,21 +4268,18 @@ sub buildConsensusFromArrayNearlyOrig
   #   go through the consensus and consider changing each dinucleotide
   #   to a 'CG'
   #
-FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 )
-  {
+FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
     next if ( substr( $consensus, $i, 1 ) eq '-' );
     my $CGscore    = 0;
     my $dnScore    = 0;
     my $consDNLeft = substr( $consensus, $i, 1 );
     my $k          = $i + 1;
-    while ( substr( $consensus, $k, 1 ) eq '-' )
-    {
+    while ( substr( $consensus, $k, 1 ) eq '-' ) {
       $k++;
       last FLOOP if ( $k >= length( $consensus ) );
     }
     my $consDNRight = substr( $consensus, $k, 1 );
-    foreach ( @{$sequences} )
-    {
+    foreach ( @{$sequences} ) {
       my $j = $i;
       next if ( $j >= length( $_ ) );
       my $hitDNLeft = substr( $_, $j, 1 );
@@ -4551,32 +4293,30 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 )
       $dnScore += $matrix_r->{ $consDNRight, $hitDNRight }
           if ( defined $hitDNRight && $hitDNRight ne "" );
 
-      if ( $hitDN eq 'CA' || $hitDN eq 'TG' )
-      {
+      if ( $hitDN eq 'CA' || $hitDN eq 'TG' ) {
         $CGscore += $CGparam;
-      } elsif ( $hitDN eq 'TA' )
-      {
+      }
+      elsif ( $hitDN eq 'TA' ) {
         $CGscore += $TAparam;
-      } elsif ( $hitDN =~ /T[CT]/ )
-      {
+      }
+      elsif ( $hitDN =~ /T[CT]/ ) {
 
         # in other words; C->T transition scores +2
         # transversion scored normally
         $CGscore += 2 + ( $matrix_r->{ "G", $hitDNRight } );
-      } elsif ( $hitDN =~ /[AG]A/ )
-      {
+      }
+      elsif ( $hitDN =~ /[AG]A/ ) {
         $CGscore += 2 + ( $matrix_r->{ "C", $hitDNLeft } );
 
         # same as above
-      } else
-      {
+      }
+      else {
         $CGscore += $matrix_r->{ "C", $hitDNLeft };
         $CGscore += $matrix_r->{ "G", $hitDNRight }
             if ( defined $hitDNRight && $hitDNRight ne "" );
       }
     }
-    if ( $CGscore > $dnScore )
-    {
+    if ( $CGscore > $dnScore ) {
       substr( $consensus, $i, 1 ) = 'C';
       substr( $consensus, $k, 1 ) = 'G';
     }
@@ -4615,8 +4355,7 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 )
 =cut
 
 ##---------------------------------------------------------------------##
-sub buildConsensusFromArray
-{
+sub buildConsensusFromArray {
   my %parameters = @_;
 
   my $myMatrix;
@@ -4657,10 +4396,11 @@ sub buildConsensusFromArray
   );
   my $alphabet_r = [ qw( A R G C Y T K M S W N X Z V H D B ) ];
   my $matrix_r   = {};
-  for ( my $i = 0 ; $i < scalar( @{$alphabet_r} ) ; $i++ ) # rows
+  for ( my $i = 0 ; $i < scalar( @{$alphabet_r} ) ; $i++ )    # rows
   {
-    for ( my $j = 0 ; $j < scalar( @{$alphabet_r} ) ; $j++ ) # cols
+    for ( my $j = 0 ; $j < scalar( @{$alphabet_r} ) ; $j++ )    # cols
     {
+
       #  matrix_r->{ row . col }
       $matrix_r->{ $alphabet_r->[ $i ] . $alphabet_r->[ $j ] } =
           $alphaArray[ ( $i * scalar( @{$alphabet_r} ) ) + $j ];
@@ -4669,16 +4409,14 @@ sub buildConsensusFromArray
 
   # Supplement score matrix with additional row/col indicating how
   # to score gap "-" characters.
-  foreach my $n ( @$alphabet_r )
-  {
+  foreach my $n ( @$alphabet_r ) {
     $matrix_r->{ $n . '-' } = $matrix_r->{ '-' . $n } = -6;
   }
   push @$alphabet_r, '-';
   $matrix_r->{ '-' . '-' } = 3;
 
   # Allow the user to override the lineup matrix defaults
-  if ( defined $parameters{'matrix'} )
-  {
+  if ( defined $parameters{'matrix'} ) {
     $myMatrix   = $parameters{'matrix'};
     $alphabet_r = $myMatrix->{'alphabetArray'};
     $matrix_r   = $myMatrix->{'matrixHash'};
@@ -4707,8 +4445,7 @@ sub buildConsensusFromArray
   #
   my $sequences = $parameters{'sequences'};
   my @profile   = ();
-  foreach my $seq ( @{$sequences} )
-  {
+  foreach my $seq ( @{$sequences} ) {
     my $i = 0;
     grep $profile[ $i++ ]{$_}++, split( '', $seq );
   }
@@ -4721,15 +4458,12 @@ sub buildConsensusFromArray
   my @cScore    = ();
   my $nScore    = -1000000;
   my $i         = 0;
-  foreach $i ( 0 .. $#profile )
-  {
+  foreach $i ( 0 .. $#profile ) {
     my $maxScore = -1000000;
     my $n        = '';
-    foreach $a ( @$alphabet_r )
-    {
+    foreach $a ( @$alphabet_r ) {
       my $score = 0;
-      foreach $b ( keys %{ $profile[ $i ] } )
-      {
+      foreach $b ( keys %{ $profile[ $i ] } ) {
         next if ( $b eq " " );
 
         #print "    -- tabulating $b\n" if ( $i == 235 );
@@ -4745,20 +4479,19 @@ sub buildConsensusFromArray
       #{
       #   print "235 : $a = $score\n";
       #}
-      if ( $score > $maxScore )
-      {
+      if ( $score > $maxScore ) {
         $n        = $a;
         $maxScore = $score;
       }
     }
-    if ( $n ne "N" && $nScore == $maxScore )
-    {
+    if ( $n ne "N" && $nScore == $maxScore ) {
 
       #print "Setting $i to N\n";
       $n = "N";
     }
     $consensus .= $n;
-#print "col $i ( $n ): " . Dumper($profile[$i]) . "\n";
+
+    #print "col $i ( $n ): " . Dumper($profile[$i]) . "\n";
     push @cScore, $maxScore;
   }
 
@@ -4766,8 +4499,7 @@ sub buildConsensusFromArray
   #   go through the consensus and consider changing each dinucleotide
   #   to a 'CG'
   #
-FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 )
-  {
+FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
     next if ( substr( $consensus, $i, 1 ) eq '-' );
     my $CGscore = 0;
     my $dnScore = 0;
@@ -4777,14 +4509,12 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 )
     #          CG, C---G, C-G are all considered
     my $consDNLeft = substr( $consensus, $i, 1 );
     my $k = $i + 1;
-    while ( substr( $consensus, $k, 1 ) eq '-' )
-    {
+    while ( substr( $consensus, $k, 1 ) eq '-' ) {
       $k++;
       last FLOOP if ( $k >= length( $consensus ) );
     }
     my $consDNRight = substr( $consensus, $k, 1 );
-    foreach ( @{$sequences} )
-    {
+    foreach ( @{$sequences} ) {
       my $j = $i;
       next if ( $j >= length( $_ ) );
       my $hitDNLeft = substr( $_, $j, 1 );
@@ -4837,31 +4567,29 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 )
       # was way too costly.  Simple conditionals was much faster.
       # On a typical dataset this block when tfrom 2.97s execution
       # time to 554ms.
-      if ( $hitDN eq 'CA' || $hitDN eq 'TG' )
-      {
+      if ( $hitDN eq 'CA' || $hitDN eq 'TG' ) {
         $CGscore += $CGparam;
-      } elsif ( $hitDN eq 'TA' )
-      {
+      }
+      elsif ( $hitDN eq 'TA' ) {
         $CGscore += $TAparam;
-      } elsif ( $hitDN eq "TC" || $hitDN eq "TT" )
-      {
+      }
+      elsif ( $hitDN eq "TC" || $hitDN eq "TT" ) {
 
         # in other words; C->T transition scores +2
         # transversion scored normally
         $CGscore += $CGTransParam + ( $matrix_r->{ "G" . $hitDNRight } );
-      } elsif ( $hitDN eq "AA" || $hitDN eq "GA" )
-      {
+      }
+      elsif ( $hitDN eq "AA" || $hitDN eq "GA" ) {
         $CGscore += $CGTransParam + ( $matrix_r->{ "C" . $hitDNLeft } );
 
         # same as above
-      } else
-      {
+      }
+      else {
         $CGscore += $matrix_r->{ "C" . $hitDNLeft };
         $CGscore += $matrix_r->{ "G" . $hitDNRight };
       }
     }
-    if ( $CGscore > $dnScore )
-    {
+    if ( $CGscore > $dnScore ) {
       substr( $consensus, $i, 1 ) = 'C';
       substr( $consensus, $k, 1 ) = 'G';
     }
@@ -4882,17 +4610,14 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 )
 =cut
 
 ##---------------------------------------------------------------------##
-sub getCoverage
-{
+sub getCoverage {
   my $object = shift;
 
   my @coverage = ();
   my @profile  = $object->profile;
-  foreach my $i ( 0 .. $object->getGappedReferenceLength() - 1 )
-  {
+  foreach my $i ( 0 .. $object->getGappedReferenceLength() - 1 ) {
     my $depth = 0;
-    foreach my $b ( keys %{ $profile[ $i ] } )
-    {
+    foreach my $b ( keys %{ $profile[ $i ] } ) {
       $depth += $profile[ $i ]{$b};
     }
     push @coverage, $depth;
@@ -4916,8 +4641,7 @@ sub getCoverage
 =cut
 
 ##---------------------------------------------------------------------##
-sub consensus
-{
+sub consensus {
   my $object     = shift;
   my %parameters = @_;
 
@@ -4925,12 +4649,10 @@ sub consensus
   $inclRef = 1 if ( $parameters{'inclRef'} );
 
   my @seqs = ();
-  if ( $inclRef )
-  {
+  if ( $inclRef ) {
     push @seqs, $object->getReferenceSeq();
   }
-  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
     my $numShifted = $object->getAlignedStart( $i );
     push @seqs, " " x ( $numShifted ) . $object->getAlignedSeq( $i );
   }
@@ -4948,8 +4670,7 @@ sub consensus
 ##
 ##  NOTE: Written by Arnie Kas
 ##---------------------------------------------------------------------##
-sub profile
-{
+sub profile {
   my $object     = shift;
   my %parameters = @_;
 
@@ -4960,8 +4681,7 @@ sub profile
   shift @list if ( !$inclRef );
   my @profile = ();
   my $seq     = ();
-  foreach $seq ( @list )
-  {
+  foreach $seq ( @list ) {
     my $start = $seq->{start};
     my $i     = 0;
     grep $profile[ $start + $i++ ]{$_}++, split( '', $seq->{seq} );
@@ -4969,13 +4689,11 @@ sub profile
   return @profile;
 }
 
-sub createGreedyTilingPath
-{
+sub createGreedyTilingPath {
   my $object = shift;
 
   my @hitArrayCollection = ();
-  foreach my $n ( 0 .. $object->getNumAlignedSeqs() - 1 )
-  {
+  foreach my $n ( 0 .. $object->getNumAlignedSeqs() - 1 ) {
     $hitArrayCollection[ $n - 1 ] = [
                                       $object->instRefStart( $n ),
                                       $object->instRefEnd( $n ),
@@ -5006,16 +4724,13 @@ sub createGreedyTilingPath
   # any hits already pulled
   #
   my $level = 10000;
-  while ( $#hitArrayCollection > 0 )
-  {
+  while ( $#hitArrayCollection > 0 ) {
     my @newHitArrayCollection = ();    # Final result of this routine is stored
                                        #  here before being returned
-    for ( $i = 0 ; $i <= $#hitArrayCollection ; $i++ )
-    {
+    for ( $i = 0 ; $i <= $#hitArrayCollection ; $i++ ) {
       @queryHitArray = @{ $hitArrayCollection[ $i ] };
 
-      for ( $j = 0 ; $j <= $#newHitArrayCollection ; $j++ )
-      {
+      for ( $j = 0 ; $j <= $#newHitArrayCollection ; $j++ ) {
         @subjectHitArray = @{ $newHitArrayCollection[ $j ] };
         last
             if (
@@ -5029,8 +4744,7 @@ sub createGreedyTilingPath
                       && $subjectHitArray[ 0 ] <= $queryHitArray[ 1 ] )
             );
       }
-      if ( $j == $#newHitArrayCollection + 1 )
-      {
+      if ( $j == $#newHitArrayCollection + 1 ) {
 
         # does not overlap any previous entries
         $newHitArrayCollection[ $j ] = $hitArrayCollection[ $i ];

@@ -75,9 +75,9 @@ renameIDs - Rename identifiers in a Stockholm file
 
   For example, to create id's like: 
     <class_abbreviation>-<index_prefix>#_hum
-    
+
   The format specifier would be: 
-  
+
         renameIDs.pl -format "%t-%i_hum" myfile.stk outfile.stk
 
   Rename all identifiers using a translation table provided in
@@ -86,7 +86,7 @@ renameIDs - Rename identifiers in a Stockholm file
 
     renameIDs.pl -trans <translation.tsv> <input_stockholm_file>
                  <output_stockholm_file>
-  
+
 
 =head1 DESCRIPTION
 
@@ -157,20 +157,17 @@ my @getopt_args = (
 
 my %options = ();
 Getopt::Long::config( "noignorecase", "bundling_override" );
-unless ( GetOptions( \%options, @getopt_args ) )
-{
+unless ( GetOptions( \%options, @getopt_args ) ) {
   usage();
 }
 
-sub usage
-{
+sub usage {
   print "$0 - $Version\n\n";
   exec "pod2text $0";
   exit;
 }
 
-if ( $options{'version'} )
-{
+if ( $options{'version'} ) {
   print "$Version\n";
   exit;
 }
@@ -178,8 +175,7 @@ if ( $options{'version'} )
 #
 # ARGV Processing
 #
-if ( !@ARGV )
-{
+if ( !@ARGV ) {
   usage();
 }
 
@@ -192,17 +188,14 @@ $stockholmFile->read_stockholm( $IN );
 close $IN;
 
 my %translationTable;
-if ( $options{'trans'} )
-{
+if ( $options{'trans'} ) {
   open IN, "<$options{'trans'}"
       or die "Could not open translation table: $options{'trans'}\n";
-  while ( <IN> )
-  {
-    if ( /^\s*(\S+)\s*\t\s*(\S+)\s*$/ )
-    {
+  while ( <IN> ) {
+    if ( /^\s*(\S+)\s*\t\s*(\S+)\s*$/ ) {
       $translationTable{$1} = $2;
-    } else
-    {
+    }
+    else {
       warn "Could not parse translation from: $_\n";
     }
   }
@@ -215,26 +208,22 @@ my $idxPrefix = "";
 $idxPrefix = $options{'idxpre'} if ( $options{'idxpre'} );
 my %idxs   = ();
 my %unique = ();
-for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ )
-{
+for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ ) {
   my $seedAlign = $stockholmFile->get( $i );
   my $id        = $seedAlign->getId();
-  if ( $options{'old'} && $id =~ /$options{'old'}/i )
-  {
+  if ( $options{'old'} && $id =~ /$options{'old'}/i ) {
     $seedAlign->setId( $options{'new'} );
-  } elsif ( $options{'trans'} )
-  {
-    if ( defined $translationTable{$id} )
-    {
+  }
+  elsif ( $options{'trans'} ) {
+    if ( defined $translationTable{$id} ) {
       $seedAlign->setId( $translationTable{$id} );
     }
-  } elsif ( $options{'format'} )
-  {
+  }
+  elsif ( $options{'format'} ) {
     my $format = $options{'format'};
 
     # Sanity check format
-    if ( $format !~ /^[a-zA-Z0-9\-\_\%]+$/ )
-    {
+    if ( $format !~ /^[a-zA-Z0-9\-\_\%]+$/ ) {
       print "\nFormat \"$format\" contains invalid characters.\n\n";
       exit;
     }
@@ -243,8 +232,7 @@ for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ )
 
     my $type    = "Unk";
     my $subtype = "Unk";
-    if ( defined $class && $class ne "" )
-    {
+    if ( defined $class && $class ne "" ) {
       ( $type, $subtype ) = getTypeSubtype( $class );
     }
 
@@ -252,24 +240,20 @@ for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ )
     $newID =~ s/\%t/$type/g;
     $newID =~ s/\%s/$subtype/g;
 
-    if ( $newID =~ /\%i/ )
-    {
-      if ( !exists $idxs{$newID} )
-      {
+    if ( $newID =~ /\%i/ ) {
+      if ( !exists $idxs{$newID} ) {
         $idxs{$newID} = 0;
       }
       $idxs{$newID}++;
       $newID =~ s/\%i/$idxs{$newID}/g;
     }
 
-    if ( $newID =~ /\%/ )
-    {
+    if ( $newID =~ /\%/ ) {
       print "Error in format.  Unmatched \"\%\" specifier.\n";
       exit;
     }
 
-    if ( exists $unique{$newID} )
-    {
+    if ( exists $unique{$newID} ) {
       print "Duplicate identifier \"$newID\"!  Try using a \"\%i\"\n"
           . "in your format string.\n";
       exit;
@@ -285,12 +269,10 @@ for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ )
 }
 close OUT;
 
-sub getTypeSubtype
-{
+sub getTypeSubtype {
   my $class = shift;
 
-  if ( $class !~ /^root;/ )
-  {
+  if ( $class !~ /^root;/ ) {
     $class = "root;" . $class;
   }
   my $cache = {

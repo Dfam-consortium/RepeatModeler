@@ -92,8 +92,7 @@ my $DEBUG = 0;
 ##-------------------------------------------------------------------------##
 ## Constructor
 ##-------------------------------------------------------------------------##
-sub new
-{
+sub new {
   my $class = shift;
 
   # Create ourself as a hash
@@ -136,8 +135,7 @@ sub new
 =cut
 
 ##-------------------------------------------------------------------------##
-sub search
-{
+sub search {
   my %parameters = @_;
 
   croak $CLASS
@@ -210,13 +208,10 @@ sub search
   my @queryArray = split( //, uc( $querySeq ) );
   my @subjArray  = split( //, uc( $subjSeq ) );
 
-  for ( $i = 0 ; $i <= length( $subjSeq ) ; $i++ )
-  {
-    for ( $j = 0 ; $j <= length( $querySeq ) ; $j++ )
-    {
+  for ( $i = 0 ; $i <= length( $subjSeq ) ; $i++ ) {
+    for ( $j = 0 ; $j <= length( $querySeq ) ; $j++ ) {
       next if ( $i == 0 && $j == 0 );
-      if ( $i == 0 )
-      {
+      if ( $i == 0 ) {
         $penalty = $delOpenPenalty + ( ( $j - 1 ) * $delExtPenalty );
         $dynMatrix[ 0 ][ $j ] = {
                                   'sub' => -10000,
@@ -225,8 +220,7 @@ sub search
         };
         next;
       }
-      if ( $j == 0 )
-      {
+      if ( $j == 0 ) {
         $penalty = $insOpenPenalty + ( ( $i - 1 ) * $insExtPenalty );
         $dynMatrix[ $i ][ 0 ] = {
                                   'sub' => -10000,
@@ -248,20 +242,19 @@ sub search
       $subFromIns = $dynMatrix[ $i - 1 ][ $j - 1 ]->{'ins'};
       $subFromDel = $dynMatrix[ $i - 1 ][ $j - 1 ]->{'del'};
 
-      if ( $subFromIns >= $subFromSub && $subFromIns >= $subFromDel )
-      {
+      if ( $subFromIns >= $subFromSub && $subFromIns >= $subFromDel ) {
 
         # Insertion
         $dynMatrix[ $i ][ $j ]->{'sub'}          = $subFromIns + $matrixValue;
         $dynMatrix[ $i ][ $j ]->{'tracebackSub'} = "ins";
-      } elsif ( $subFromSub > $subFromDel && $subFromSub > $subFromIns )
-      {
+      }
+      elsif ( $subFromSub > $subFromDel && $subFromSub > $subFromIns ) {
 
         # Substition
         $dynMatrix[ $i ][ $j ]->{'sub'}          = $subFromSub + $matrixValue;
         $dynMatrix[ $i ][ $j ]->{'tracebackSub'} = "sub";
-      } else
-      {
+      }
+      else {
 
         # Deletion
         $dynMatrix[ $i ][ $j ]->{'sub'}          = $subFromDel + $matrixValue;
@@ -271,14 +264,13 @@ sub search
       # Calculate ins value
       $insFromIns = $dynMatrix[ $i - 1 ][ $j ]->{'ins'} + $insExtPenalty;
       $insFromSub = $dynMatrix[ $i - 1 ][ $j ]->{'sub'} + $insOpenPenalty;
-      if ( $insFromSub >= $insFromIns )
-      {
+      if ( $insFromSub >= $insFromIns ) {
 
         # Substition
         $dynMatrix[ $i ][ $j ]->{'ins'}          = $insFromSub;
         $dynMatrix[ $i ][ $j ]->{'tracebackIns'} = "sub";
-      } else
-      {
+      }
+      else {
 
         # Insertion
         $dynMatrix[ $i ][ $j ]->{'ins'}          = $insFromIns;
@@ -288,14 +280,13 @@ sub search
       # Calculate del value
       $delFromDel = $dynMatrix[ $i ][ $j - 1 ]->{'del'} + $delExtPenalty;
       $delFromSub = $dynMatrix[ $i ][ $j - 1 ]->{'sub'} + $delOpenPenalty;
-      if ( $delFromSub >= $delFromDel )
-      {
+      if ( $delFromSub >= $delFromDel ) {
 
         # Substition
         $dynMatrix[ $i ][ $j ]->{'del'}          = $delFromSub;
         $dynMatrix[ $i ][ $j ]->{'tracebackDel'} = "sub";
-      } else
-      {
+      }
+      else {
 
         # Deletion
         $dynMatrix[ $i ][ $j ]->{'del'}          = $delFromDel;
@@ -304,28 +295,23 @@ sub search
     }
   }
 
-  if ( $DEBUG )
-  {
+  if ( $DEBUG ) {
     print "" . ( $i * $j ) . " cells calculated\n";
     print " i = $i j = $j  first = " . $#dynMatrix . "\n";
     print "dynMatrix = \n$subjSeq\n";
-    for ( my $l = 0 ; $l <= length( $subjSeq ) ; $l++ )
-    {
+    for ( my $l = 0 ; $l <= length( $subjSeq ) ; $l++ ) {
 
-      for ( my $k = 0 ; $k <= length( $querySeq ) ; $k++ )
-      {
+      for ( my $k = 0 ; $k <= length( $querySeq ) ; $k++ ) {
         print "\t\t" . $dynMatrix[ $l ][ $k ]->{'sub'};
       }
       print "\n";
 
-      for ( my $k = 0 ; $k <= length( $querySeq ) ; $k++ )
-      {
+      for ( my $k = 0 ; $k <= length( $querySeq ) ; $k++ ) {
         print "\t\t" . $dynMatrix[ $l ][ $k ]->{'ins'};
       }
       print "\n";
 
-      for ( my $k = 0 ; $k <= length( $querySeq ) ; $k++ )
-      {
+      for ( my $k = 0 ; $k <= length( $querySeq ) ; $k++ ) {
         print "\t\t" . $dynMatrix[ $l ][ $k ]->{'del'};
       }
       print "\n";
@@ -344,38 +330,37 @@ sub search
   {
     $score        = $dynMatrix[ $i ][ $j ]->{'sub'};
     $lastEmission = "sub";
-  } elsif (  $dynMatrix[ $i ][ $j ]->{'ins'} > $dynMatrix[ $i ][ $j ]->{'sub'}
+  }
+  elsif (    $dynMatrix[ $i ][ $j ]->{'ins'} > $dynMatrix[ $i ][ $j ]->{'sub'}
           && $dynMatrix[ $i ][ $j ]->{'ins'} > $dynMatrix[ $i ][ $j ]->{'del'} )
   {
     $score        = $dynMatrix[ $i ][ $j ]->{'ins'};
     $lastEmission = "ins";
-  } else
-  {
+  }
+  else {
     $score        = $dynMatrix[ $i ][ $j ]->{'del'};
     $lastEmission = "del";
   }
 
-  while ( !( $i == 0 || $j == 0 ) )
-  {
+  while ( !( $i == 0 || $j == 0 ) ) {
 
-    if ( $lastEmission eq "del" )
-    {
+    if ( $lastEmission eq "del" ) {
       $lastEmission = $dynMatrix[ $i ][ $j ]->{'tracebackDel'};
 
       # Deletion
       $queryAlignment .= substr( $querySeq, $j - 1, 1 );
       $subjAlignment .= "-";
       $j--;
-    } elsif ( $lastEmission eq "sub" )
-    {
+    }
+    elsif ( $lastEmission eq "sub" ) {
       $lastEmission = $dynMatrix[ $i ][ $j ]->{'tracebackSub'};
       $queryAlignment .= substr( $querySeq, $j - 1, 1 );
       $subjAlignment  .= substr( $subjSeq,  $i - 1, 1 );
       $i--;
       $j--;
 
-    } elsif ( $lastEmission eq "ins" )
-    {
+    }
+    elsif ( $lastEmission eq "ins" ) {
       $lastEmission = $dynMatrix[ $i ][ $j ]->{'tracebackIns'};
 
       # Insertion
@@ -386,10 +371,8 @@ sub search
     }
   }
 
-  if ( 0 )
-  {
-    while ( !( $i == 0 || $j == 0 ) )
-    {
+  if ( 0 ) {
+    while ( !( $i == 0 || $j == 0 ) ) {
 
       if (  $dynMatrix[ $i ][ $j ]->{'del'} >= $dynMatrix[ $i ][ $j ]->{'sub'}
          && $dynMatrix[ $i ][ $j ]->{'del'} >= $dynMatrix[ $i ][ $j ]->{'ins'} )
@@ -399,16 +382,16 @@ sub search
         $queryAlignment .= substr( $querySeq, $j - 1, 1 );
         $subjAlignment .= "-";
         $j--;
-      } elsif (
-         $dynMatrix[ $i ][ $j ]->{'sub'} >= $dynMatrix[ $i ][ $j ]->{'del'}
+      }
+      elsif ( $dynMatrix[ $i ][ $j ]->{'sub'} >= $dynMatrix[ $i ][ $j ]->{'del'}
          && $dynMatrix[ $i ][ $j ]->{'sub'} >= $dynMatrix[ $i ][ $j ]->{'ins'} )
       {
         $queryAlignment .= substr( $querySeq, $j - 1, 1 );
         $subjAlignment  .= substr( $subjSeq,  $i - 1, 1 );
         $i--;
         $j--;
-      } else
-      {
+      }
+      else {
 
         # Insertion
         $queryAlignment .= "-";
@@ -419,13 +402,11 @@ sub search
     }
 
   }
-  if ( $i != 0 )
-  {
+  if ( $i != 0 ) {
     $subjAlignment .= reverse( substr( $subjSeq, 0, $i ) );
     $queryAlignment .= "-" x ( $i );
   }
-  if ( $j != 0 )
-  {
+  if ( $j != 0 ) {
     $queryAlignment .= reverse( substr( $querySeq, 0, $j ) );
     $subjAlignment .= "-" x ( $j );
   }
@@ -460,8 +441,7 @@ sub search
 ##-------------------------------------------------------------------------##
 
 ## TODO: Merge this and the other many matrix objects into one!
-sub readMatrix
-{
+sub readMatrix {
   my ( $matrixFileName ) = @_;
 
   open MATRIX, "<$matrixFileName" || die "Can't open $matrixFileName!\n";
@@ -469,26 +449,23 @@ sub readMatrix
   my $dataRow  = 0;
   my %matrix   = ();
   my @alphabet = ();
-  while ( <MATRIX> )
-  {
+  while ( <MATRIX> ) {
     $_ = uc( $_ );
     chomp;
     next if ( /FREQS\s+(.*)/ );
     next if ( /^#/ );
 
-    if ( /^\s*[A-Z]\s+[A-Z]\s+[A-Z]\s+[A-Z]\s+/ )
-    {
+    if ( /^\s*[A-Z]\s+[A-Z]\s+[A-Z]\s+[A-Z]\s+/ ) {
       @alphabet = split;
-    } elsif ( @alphabet
-              && /^\s*(\W\s+)*[\d-]+\s+[\d-]+\s+[\d-]+\s+[\d-]+\s+/ )
+    }
+    elsif ( @alphabet
+            && /^\s*(\W\s+)*[\d-]+\s+[\d-]+\s+[\d-]+\s+[\d-]+\s+/ )
     {
       my @rowValues = split;
-      if ( $1 ne "" )
-      {
+      if ( $1 ne "" ) {
         shift @rowValues;
       }
-      for ( my $i = 0 ; $i < $#rowValues ; $i++ )
-      {
+      for ( my $i = 0 ; $i < $#rowValues ; $i++ ) {
         $matrix{ $alphabet[ $dataRow ] }->{ $alphabet[ $i ] } =
             $rowValues[ $i ];
       }
@@ -515,8 +492,7 @@ sub readMatrix
 ##      of a data structure.  In this case the object data itself.
 ##
 ##-------------------------------------------------------------------------##
-sub toString
-{
+sub toString {
   my $this = shift;
   my $data_dumper = new Data::Dumper( [ $this ] );
   $data_dumper->Purity( 1 )->Terse( 1 )->Deepcopy( 1 );
@@ -535,8 +511,7 @@ sub toString
 ##	read back into an object of this type.
 ##
 ##-------------------------------------------------------------------------##
-sub serializeOUT
-{
+sub serializeOUT {
   my $this     = shift;
   my $fileName = shift;
 
@@ -558,8 +533,7 @@ sub serializeOUT
 ##	from a serialized PERL object or data structure.
 ##
 ##-------------------------------------------------------------------------##
-sub serializeIN
-{
+sub serializeIN {
   my $this         = shift;
   my $fileName     = shift;
   my $fileContents = "";

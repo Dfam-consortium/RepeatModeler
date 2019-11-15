@@ -120,7 +120,6 @@ use Cwd;
 use RepModelConfig;
 use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 
-
 #
 # Class Globals & Constants
 #
@@ -137,36 +136,38 @@ my $version = $RepModelConfig::VERSION;
 #   -t=i: Number paramters
 #
 my @opts = qw( help dir=s engine=s batch=s name=s );
+
 # Add configuration parameters as additional command-line options
 push @opts, RepModelConfig::getCommandLineOptions();
 
 #
-# Provide the POD text from this file and 
-# from the config file by merging them 
+# Provide the POD text from this file and
+# from the config file by merging them
 # together.  The heading "CONFIGURATION
 # OVERRIDES" provides the insertion point
 # for the configuration POD.
 #
 sub usage {
   my $p = Pod::Text->new();
-  $p->output_fh(*STDOUT);
+  $p->output_fh( *STDOUT );
   my $pod_str;
-  open IN,"<$0" or die "Could not open self ($0) for generating documentation!";
-  while (<IN>){
-    if ( /^=head1\s+CONFIGURATION OVERRIDES\s*$/ )
-    {
+  open IN, "<$0"
+      or die "Could not open self ($0) for generating documentation!";
+  while ( <IN> ) {
+    if ( /^=head1\s+CONFIGURATION OVERRIDES\s*$/ ) {
       my $c_pod = RepModelConfig::getPOD();
       if ( $c_pod ) {
         $pod_str .= $_ . $c_pod;
       }
-    }else {
+    }
+    else {
       $pod_str .= $_;
     }
   }
   close IN;
   print "$0 - $version\n";
-  $p->parse_string_document($pod_str);
-  exit(1);
+  $p->parse_string_document( $pod_str );
+  exit( 1 );
 }
 
 #
@@ -186,34 +187,33 @@ if ( ( $#ARGV == -1 && !$options{'batch'} && !$options{'dir'} )
 }
 
 #
-# Resolve configuration settings using the following precedence: 
+# Resolve configuration settings using the following precedence:
 # command line first, then environment, followed by config
 # file.
 #
-RepModelConfig::resolveConfiguration(\%options);
-my $config = $RepModelConfig::configuration;
-my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
+RepModelConfig::resolveConfiguration( \%options );
+my $config           = $RepModelConfig::configuration;
+my $XDFORMAT_PRGM    = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
 my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
-my $NCBIDBCMD_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
+my $NCBIDBCMD_PRGM   = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
 
 my $engine = "rmblast";
-if ( $options{'engine'} )
-{
-  if ( $options{'engine'} =~ /wublast|abblast/i )
-  {
-    die "RepeatModeler doesn't appear to be configured to use the " 
-      . "$options{'engine'} search engine.  Please re-run configure before "
-      . "using this or other RepeatModeler programs.\n"
-         if ( ! -x $XDFORMAT_PRGM );
+if ( $options{'engine'} ) {
+  if ( $options{'engine'} =~ /wublast|abblast/i ) {
+    die "RepeatModeler doesn't appear to be configured to use the "
+        . "$options{'engine'} search engine.  Please re-run configure before "
+        . "using this or other RepeatModeler programs.\n"
+        if ( !-x $XDFORMAT_PRGM );
     $engine = "abblast";
-  }elsif ( $options{'engine'} =~ /rmblast|ncbi/i )
-  {
-    die "RepeatModeler doesn't appear to be configured to use the " 
-      . "$options{'engine'} search engine.  Please re-run configure before "
-      . "using this or other RepeatModeler programs.\n"
-         if ( ! -x $NCBIBLASTDB_PRGM );
+  }
+  elsif ( $options{'engine'} =~ /rmblast|ncbi/i ) {
+    die "RepeatModeler doesn't appear to be configured to use the "
+        . "$options{'engine'} search engine.  Please re-run configure before "
+        . "using this or other RepeatModeler programs.\n"
+        if ( !-x $NCBIBLASTDB_PRGM );
     $engine = "rmblast";
-  }else {
+  }
+  else {
     print "I don't understand -engine $options{'engine'}\n";
     usage();
   }
@@ -291,20 +291,20 @@ my $dbSeqs  = 0;
 my $dbSize  = 0;
 print "Building database $options{'name'}:\n";
 
-
 # Sanitizing the names of all input databases and placing
 # in one big tempfile
 #   $fh = tempfile();
-my ($SEQ, $seqFilename) = tempfile( DIR => "." );
+my ( $SEQ, $seqFilename ) = tempfile( DIR => "." );
 my $file;
 for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
   $file = $fileList[ $i ];
 
   print "  Reading $file...\n";
-  if ( $file =~ /^.*\.gz$/ )
-  {
-    open IN, "gunzip -c $file|" or die $CLASS . ": Cannot open file using gunzip $file\n";
-  }else {
+  if ( $file =~ /^.*\.gz$/ ) {
+    open IN, "gunzip -c $file|"
+        or die $CLASS . ": Cannot open file using gunzip $file\n";
+  }
+  else {
     open IN, "<$file" or die $CLASS . ": Cannot open file $file\n";
   }
   while ( <IN> ) {
@@ -322,22 +322,24 @@ for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
 close $SEQ;
 $file = $seqFilename;
 
-if ( $engine eq "rmblast" )
-{
-    print "Running: $NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1\n" if ( $DEBUG );
-    $results =
-        `$NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1`;
-    if ( ! -s "$options{'name'}.nsq" )
-    {
-      print "The makeblastdb program did not generate the\nfile $options{'name'}.nsq.  Please check your input file(s) for potential formating errors.\n$NCBIBLASTDB_PRGM returned: $results\n";  
-      print "The command used was: $NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file\n";
-      die;
-    }
-}else 
-{
+if ( $engine eq "rmblast" ) {
+  print
+"Running: $NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1\n"
+      if ( $DEBUG );
   $results =
-      `$XDFORMAT_PRGM -n -o $options{'name'} $file 2>&1`;
-  while ( $results =~ /sequences\s*\(letters\)\s*(?:written|appended):\s*([\d,]+)\s+\(([\d,]+)\).*$/mg
+`$NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1`;
+  if ( !-s "$options{'name'}.nsq" ) {
+    print
+"The makeblastdb program did not generate the\nfile $options{'name'}.nsq.  Please check your input file(s) for potential formating errors.\n$NCBIBLASTDB_PRGM returned: $results\n";
+    print
+"The command used was: $NCBIBLASTDB_PRGM -out $options{'name'} -parse_seqids -dbtype nucl -in $file\n";
+    die;
+  }
+}
+else {
+  $results = `$XDFORMAT_PRGM -n -o $options{'name'} $file 2>&1`;
+  while ( $results =~
+/sequences\s*\(letters\)\s*(?:written|appended):\s*([\d,]+)\s+\(([\d,]+)\).*$/mg
       )
   {
     my $size = $2;
@@ -350,15 +352,13 @@ if ( $engine eq "rmblast" )
   }
 }
 
-
-if ( $engine eq "abblast" )
-{
+if ( $engine eq "abblast" ) {
   $results = `$XDFORMAT_PRGM -n -X $options{'name'} 2>&1`;
-}else 
-{
-  $results =
-          `$NCBIDBCMD_PRGM -db $options{'name'} -info 2>&1`;
-  while ( $results =~ /\s+([\d\,]+)\s+sequences;\s+([\d\,]+)\s+total bases.*$/mg )
+}
+else {
+  $results = `$NCBIDBCMD_PRGM -db $options{'name'} -info 2>&1`;
+  while (
+        $results =~ /\s+([\d\,]+)\s+sequences;\s+([\d\,]+)\s+total bases.*$/mg )
   {
     my $size = $2;
     my $seqs = $1;
@@ -369,8 +369,7 @@ if ( $engine eq "abblast" )
     last;
   }
 }
-  print "Number of sequences (bp) added to database: $dbSeqs ( $dbSize bp )\n";
-
+print "Number of sequences (bp) added to database: $dbSeqs ( $dbSize bp )\n";
 
 close $IDX;
 

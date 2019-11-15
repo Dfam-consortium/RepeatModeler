@@ -71,8 +71,7 @@ my $version = $RepModelConfig::VERSION;
 ## this script ends up in someones path and they run it
 ## unqualified from another installation directory.
 ##
-if ( cwd() ne $FindBin::RealBin )
-{
+if ( cwd() ne $FindBin::RealBin ) {
   print "\n    The RepeatModeler configure script must be run from\n"
       . "    inside the RepeatModeler installation directory:\n\n"
       . "       $FindBin::RealBin\n\n"
@@ -88,8 +87,9 @@ if ( cwd() ne $FindBin::RealBin )
 #   -t=i: Number parameters
 #
 my @getopt_args = (
-                    '-version',     # print out the version and exit
-                  );
+                    '-version',    # print out the version and exit
+);
+
 # Add configuration parameters as additional command-line options
 push @getopt_args, RepModelConfig::getCommandLineOptions();
 
@@ -103,65 +103,63 @@ unless ( GetOptions( \%options, @getopt_args ) ) {
 }
 
 #
-# Provide the POD text from this file and 
-# from the config file by merging them 
+# Provide the POD text from this file and
+# from the config file by merging them
 # together.  The heading "CONFIGURATION
 # OVERRIDES" provides the insertion point
 # for the configuration POD.
 #
 sub usage {
   my $p = Pod::Text->new();
-  $p->output_fh(*STDOUT);
+  $p->output_fh( *STDOUT );
   my $pod_str;
-  open IN,"<$0" or die "Could not open self ($0) for generating documentation!";
-  while (<IN>){
-    if ( /^=head1\s+CONFIGURATION OVERRIDES\s*$/ )
-    {
+  open IN, "<$0"
+      or die "Could not open self ($0) for generating documentation!";
+  while ( <IN> ) {
+    if ( /^=head1\s+CONFIGURATION OVERRIDES\s*$/ ) {
       my $c_pod = RepModelConfig::getPOD();
       if ( $c_pod ) {
         $pod_str .= $_ . $c_pod;
       }
-    }else {
+    }
+    else {
       $pod_str .= $_;
     }
   }
   close IN;
   print "$0 - $version\n";
-  $p->parse_string_document($pod_str);
-  exit(1);
+  $p->parse_string_document( $pod_str );
+  exit( 1 );
 }
 
 #
-# Resolve configuration settings using the following precedence: 
+# Resolve configuration settings using the following precedence:
 # command line first, then environment, followed by config
 # file.
 #
-RepModelConfig::resolveConfiguration(\%options);
+RepModelConfig::resolveConfiguration( \%options );
 my $config = $RepModelConfig::configuration;
 
 ##
 ## Check for RepeatMasker dependencies
 ##
-BEGIN
-{
+BEGIN {
   my @modDependencies = (
-                          "Tie::File",  "Getopt::Long",
-                          "POSIX",      "File::Copy",
-                          "File::Path", "Data::Dumper",
-                          "Cwd",        "JSON", "File::Which",
-                          "URI",        "LWP::UserAgent"
+                          "Tie::File",   "Getopt::Long",
+                          "POSIX",       "File::Copy",
+                          "File::Path",  "Data::Dumper",
+                          "Cwd",         "JSON",
+                          "File::Which", "URI",
+                          "LWP::UserAgent"
   );
 
   my @missingModules = ();
-  foreach my $module ( @modDependencies )
-  {
-    unless ( eval "require " . $module . ";" )
-    {
+  foreach my $module ( @modDependencies ) {
+    unless ( eval "require " . $module . ";" ) {
       push @missingModules, $module;
     }
   }
-  if ( @missingModules )
-  {
+  if ( @missingModules ) {
     print "\nThe following perl modules required by RepeatModeler "
         . "are missing from\nyour system.  Please install these "
         . "first:\n    "
@@ -173,8 +171,7 @@ BEGIN
 ##
 ## Check for perl version
 ##
-if ( $] && $] < 5.008 )
-{
+if ( $] && $] < 5.008 ) {
   system( "clear" );
   print "RepeatModeler should be used with perl 5.008 or higher.\n"
       . "Perl $] is being used to run configure.";
@@ -200,16 +197,14 @@ my $answer = <STDIN>;
 ##
 my $goodParam;
 my $perlLocation = $^X;
-do
-{
+do {
   $goodParam = 1;
   $perlLocation = &promptScreen(
 "**PERL INSTALLATION PATH**\n\n  This is the full path to the Perl interpreter.\n  ie. /usr/local/bin/perl\n",
     "Enter path",
     $perlLocation
   );
-  if ( !( $perlLocation =~ /^.*perl$/ ) )
-  {
+  if ( !( $perlLocation =~ /^.*perl$/ ) ) {
     $perlLocation .= "/" if ( !( $perlLocation =~ /^.*\/$/ ) );
     $perlLocation .= "perl";
   }
@@ -223,96 +218,97 @@ do
   }
 } while ( $goodParam != 1 );
 
-
 ## RepeatMasker
-if ( ! $options{'repeatmasker_dir'} ) {
-$goodParam = 1;
-do {
-  RepModelConfig::promptForParam('REPEATMASKER_DIR');
-  # Check for libraries
-  #    unless (    -s "$repMaskLocation/WUBlastSearchEngine.pm"
-  #             && -s "$repMaskLocation/Libraries/RepeatMaskerLib.embl" )
-  #      print "$repMaskLocation does not appear to contain a complete\n"
-#          . "set of files.  Perhaps you haven't installed the RepeatMasker\n"
-#          . "libraries yet?\n";
-#
-#    my $result = `$repMaskLocation/RepeatMasker -v 2>&1`;
-#
-#    # Two responses are expected:
-#    # Good Version:
-#    #    RepeatMasker version open-4.0.0
-#    # or RepeatMasker version development-
-#    #
-#    if ( $result =~ /RepeatMasker version open-(\S+)/ )
-#    {
-#      my $version = $1;
-#      $version =~ s/\.//g;
-#      if ( $version <= 400 )
-#      {
-#        die "$repMaskLocation/RepeatMasker is too old.  Must be open-4.0.5 "
-#            . "or later.  Install a newer version of RepeatMasker and re-run "
-#            . "configure.\n";
-#      }
-#    }
-#
-}while ( $goodParam != 1 );
+if ( !$options{'repeatmasker_dir'} ) {
+  $goodParam = 1;
+  do {
+    RepModelConfig::promptForParam( 'REPEATMASKER_DIR' );
+
+ # Check for libraries
+ #    unless (    -s "$repMaskLocation/WUBlastSearchEngine.pm"
+ #             && -s "$repMaskLocation/Libraries/RepeatMaskerLib.embl" )
+ #      print "$repMaskLocation does not appear to contain a complete\n"
+ #          . "set of files.  Perhaps you haven't installed the RepeatMasker\n"
+ #          . "libraries yet?\n";
+ #
+ #    my $result = `$repMaskLocation/RepeatMasker -v 2>&1`;
+ #
+ #    # Two responses are expected:
+ #    # Good Version:
+ #    #    RepeatMasker version open-4.0.0
+ #    # or RepeatMasker version development-
+ #    #
+ #    if ( $result =~ /RepeatMasker version open-(\S+)/ )
+ #    {
+ #      my $version = $1;
+ #      $version =~ s/\.//g;
+ #      if ( $version <= 400 )
+ #      {
+ #        die "$repMaskLocation/RepeatMasker is too old.  Must be open-4.0.5 "
+ #            . "or later.  Install a newer version of RepeatMasker and re-run "
+ #            . "configure.\n";
+ #      }
+ #    }
+ #
+  } while ( $goodParam != 1 );
 }
 my $repMaskLocation = $config->{'REPEATMASKER_DIR'}->{'value'};
 
-if ( ! $options{'recon_dir'} ) {
-RepModelConfig::promptForParam('RECON_DIR');
+if ( !$options{'recon_dir'} ) {
+  RepModelConfig::promptForParam( 'RECON_DIR' );
 }
-if ( ! $options{'repeatscout_dir'} ) {
-RepModelConfig::promptForParam('RSCOUT_DIR');
+if ( !$options{'repeatscout_dir'} ) {
+  RepModelConfig::promptForParam( 'RSCOUT_DIR' );
 }
-if ( ! $options{'dustmasker_prgm'} ) {
-RepModelConfig::promptForParam('DUSTMASKER_PRGM');
+if ( !$options{'dustmasker_prgm'} ) {
+  RepModelConfig::promptForParam( 'DUSTMASKER_PRGM' );
 }
-if ( ! $options{'trf_prgm'} ) {
-RepModelConfig::promptForParam('TRF_PRGM');
+if ( !$options{'trf_prgm'} ) {
+  RepModelConfig::promptForParam( 'TRF_PRGM' );
 }
 
 ##
 ## Search Engine Configuration
 ##
-if ( ! ( $options{'abblast_dir'} || $options{'rmblast_dir'} ) ) {
+if ( !( $options{'abblast_dir'} || $options{'rmblast_dir'} ) ) {
   searchEngineMenu();
 }
 
 ##
 ## LTRPipeline Configuration
 ##
-  system( "clear" );
-  print "\n\n\n";    
-  print "LTR Structural Identication Pipeline [optional]\n\n";
-  print "In addition to RECON/RepeatScout this version of RepeatModeler\n";
-  print "has the option of running an additional analysis to identify\n";
-  print "structural features of LTR sequences.\n\n";
-  print "Do you wish to configure RepeatModeler for this type\n";
-  print "of analysis [y] or n?: ";
-  $answer = <STDIN>;
-  $answer =~ s/[\n\r]+//g;
-  if ( $answer =~ /y|yes/i || $answer eq "" )
-  {
-    #if ( ! $options{'ltr_detector_dir'} ) {
-    #  RepModelConfig::promptForParam('LTR_DETECTOR_DIR');
-    #}
-    if ( ! $options{'genometools_dir'} ) {
-      RepModelConfig::promptForParam('GENOMETOOLS_DIR');
-    }
-    if ( ! $options{'ltr_retriever_dir'} ) {
-      RepModelConfig::promptForParam('LTR_RETRIEVER_DIR');
-    }
-    if ( ! $options{'mafft_dir'} ) {
-      RepModelConfig::promptForParam('MAFFT_DIR');
-    }
-    if ( ! $options{'ninja_dir'} ) {
-      RepModelConfig::promptForParam('NINJA_DIR');
-    }
-    if ( ! $options{'cdhit_dir'} ) {
-      RepModelConfig::promptForParam('CDHIT_DIR');
-    }
-  }   
+system( "clear" );
+print "\n\n\n";
+print "LTR Structural Identication Pipeline [optional]\n\n";
+print "In addition to RECON/RepeatScout this version of RepeatModeler\n";
+print "has the option of running an additional analysis to identify\n";
+print "structural features of LTR sequences.\n\n";
+print "Do you wish to configure RepeatModeler for this type\n";
+print "of analysis [y] or n?: ";
+$answer = <STDIN>;
+$answer =~ s/[\n\r]+//g;
+
+if ( $answer =~ /y|yes/i || $answer eq "" ) {
+
+  #if ( ! $options{'ltr_detector_dir'} ) {
+  #  RepModelConfig::promptForParam('LTR_DETECTOR_DIR');
+  #}
+  if ( !$options{'genometools_dir'} ) {
+    RepModelConfig::promptForParam( 'GENOMETOOLS_DIR' );
+  }
+  if ( !$options{'ltr_retriever_dir'} ) {
+    RepModelConfig::promptForParam( 'LTR_RETRIEVER_DIR' );
+  }
+  if ( !$options{'mafft_dir'} ) {
+    RepModelConfig::promptForParam( 'MAFFT_DIR' );
+  }
+  if ( !$options{'ninja_dir'} ) {
+    RepModelConfig::promptForParam( 'NINJA_DIR' );
+  }
+  if ( !$options{'cdhit_dir'} ) {
+    RepModelConfig::promptForParam( 'CDHIT_DIR' );
+  }
+}
 
 # Save settings
 RepModelConfig::updateConfigFile();
@@ -323,19 +319,18 @@ RepModelConfig::updateConfigFile();
 print " -- Setting perl interpreter and version...\n";
 ## Excluded modules: EdgeExtension, SegregationAnalysis
 my @progFiles = (
-                  "BuildDatabase",    "Refiner",
-                  "RepeatClassifier", "RepeatModeler",
-                  "TRFMask", "LTRPipeline",
-                  "util/renameIds.pl", "util/viewMSA.pl" 
+                  "BuildDatabase",     "Refiner",
+                  "RepeatClassifier",  "RepeatModeler",
+                  "TRFMask",           "LTRPipeline",
+                  "util/renameIds.pl", "util/viewMSA.pl"
 );
 my $perlLocEsc = $perlLocation;
 $perlLocEsc =~ s/\//\\\//g;
 
-foreach my $file ( @progFiles )
-{
-  if ( -s $file ) 
-  {
-    system("$perlLocation -i -0pe \'s/^#\\!.*perl.*/#\\!$perlLocEsc/g\;' $file" );
+foreach my $file ( @progFiles ) {
+  if ( -s $file ) {
+    system(
+         "$perlLocation -i -0pe \'s/^#\\!.*perl.*/#\\!$perlLocEsc/g\;' $file" );
   }
 }
 
@@ -343,19 +338,17 @@ print "\nCongratulations!  RepeatModeler is now ready to use.\n";
 
 ####################### S U B R O U T I N E S ##############################
 
-
-sub searchEngineMenu
-{
+sub searchEngineMenu {
   my @searchEngines = (
                   {
                     name => "RMBLAST_DIR",
                     desc => "RMBlast - NCBI Blast with RepeatMasker extensions",
-                    status       => 0,
+                    status => 0,
                   },
                   {
-                    name         => "ABBLAST_DIR",
-                    desc         => "WUBlast/ABBlast",
-                    status       => 0,
+                    name   => "ABBLAST_DIR",
+                    desc   => "WUBlast/ABBlast",
+                    status => 0,
                   }
   );
 
@@ -363,20 +356,18 @@ sub searchEngineMenu
   my $defaultEngine = "";
   do {
     system( "clear" );
-    print "\n\n\n";    
+    print "\n\n\n";
     print "Add a Search Engine:\n";
     my $i;
-    for ( $i = 0 ; $i <= $#searchEngines ; $i++ )
-    {
+    for ( $i = 0 ; $i <= $#searchEngines ; $i++ ) {
       print "   " . ( $i + 1 ) . ". $searchEngines[$i]->{'desc'}: [ ";
-      if ( $searchEngines[ $i ]->{'status'} == 0 )
-      {
+      if ( $searchEngines[ $i ]->{'status'} == 0 ) {
         print "Un-configured ]\n";
-      } elsif ( $searchEngines[ $i ]->{'status'} == 1 )
-      {
+      }
+      elsif ( $searchEngines[ $i ]->{'status'} == 1 ) {
         print "Configured ]\n";
-      } else
-      {
+      }
+      else {
         print "Configured, Default ]\n";
       }
     }
@@ -389,32 +380,30 @@ sub searchEngineMenu
 
     if ( $answer =~ /\d+/ && $answer > 0 && $answer <= ( $#searchEngines + 2 ) )
     {
-      if ( $answer == ( $#searchEngines + 2 ) )
-      {
-        if ( $defaultEngine eq "" )
-        {
+      if ( $answer == ( $#searchEngines + 2 ) ) {
+        if ( $defaultEngine eq "" ) {
           print "You must configure at least one search engine!\n";
           print "<PRESS ENTER TO CONTINUE - CTRL-C to QUIT>\n";
           $answer = <STDIN>;
-        } else
-        {
+        }
+        else {
           $done = 1;
         }
-      } else
-      {
-        RepModelConfig::promptForParam($searchEngines[$answer-1]->{'name'});
+      }
+      else {
+        RepModelConfig::promptForParam(
+                                      $searchEngines[ $answer - 1 ]->{'name'} );
         $searchEngines[ $answer - 1 ]->{'status'} = 1;
         $defaultEngine = 0;
       }
-    } else
-    {
+    }
+    else {
       print "Invalid selection!\n";
       print "<PRESS ENTER TO CONTINUE>\n";
       $answer = <STDIN>;
     }
   } while ( $done == 0 );
 }
-
 
 ##-------------------------------------------------------------------------##
 
@@ -430,8 +419,7 @@ Clear the screen and prompt the user for input
 =cut
 
 ##-------------------------------------------------------------------------##
-sub promptScreen
-{
+sub promptScreen {
   my $screenText     = shift;
   my $promptText     = shift;
   my $defaultAnswer  = shift;
@@ -445,26 +433,22 @@ sub promptScreen
   print "\n\n\n";
   print $screenText;
   my $numLines = ( $screenText =~ s/(\n)/$1/g );
-  for ( my $i = 0 ; $i < 15 - $numLines ; $i++ )
-  {
+  for ( my $i = 0 ; $i < 15 - $numLines ; $i++ ) {
     print "\n";
   }
-  if ( defined $validResponses )
-  {
+  if ( defined $validResponses ) {
     $promptText .= " ( " . $validResponses . " )";
   }
-  if ( defined $defaultAnswer )
-  {
+  if ( defined $defaultAnswer ) {
     $promptText .= " [ " . $defaultAnswer . " ]: ";
   }
   print $promptText;
   $answer = <STDIN>;
 
-  if ( $answer =~ /^\s*$/ )
-  {
+  if ( $answer =~ /^\s*$/ ) {
     $answer = $defaultAnswer;
-  } else
-  {
+  }
+  else {
     $answer =~ s/[\n\r]+//g;
   }
 

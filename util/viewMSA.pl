@@ -171,33 +171,28 @@ my @getopt_args = (
 
 my %options = ();
 Getopt::Long::config( "noignorecase", "bundling_override" );
-unless ( GetOptions( \%options, @getopt_args ) )
-{
+unless ( GetOptions( \%options, @getopt_args ) ) {
   usage();
 }
 
-sub usage
-{
+sub usage {
   print "$0 - $Version\n\n";
   exec "pod2text $0";
   exit;
 }
 
-if ( $options{'version'} )
-{
+if ( $options{'version'} ) {
   print "$Version\n";
   exit;
 }
 
 my $searchResultsFile;
 my $order;
-if ( $options{'order'} )
-{
-  if ( $options{'order'} =~ /start|div/i )
-  {
+if ( $options{'order'} ) {
+  if ( $options{'order'} =~ /start|div/i ) {
     $order = lc( $options{'order'} );
-  } else
-  {
+  }
+  else {
     print "\n\nOrder parameter not recognized ( $options{'order'} ). "
         . "Must be either 'start' or 'div'!\n\n";
     usage();
@@ -207,8 +202,7 @@ if ( $options{'order'} )
 my $resultCollection;
 my $refInput = MultAln::Subject;
 
-if ( $options{'search_results'} )
-{
+if ( $options{'search_results'} ) {
   $searchResultsFile = $options{'search_results'};
   $resultCollection  =
       CrossmatchSearchEngine::parseOutput( searchOutput => $searchResultsFile );
@@ -220,8 +214,7 @@ if ( $options{'search_results'} )
   my $subjID;
   my $staticQuery   = 1;
   my $staticSubject = 1;
-  for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ ) {
     my $result = $resultCollection->get( $i );
     my $qID    = $result->getQueryName();
     my $sID    = $result->getSubjName();
@@ -237,25 +230,22 @@ if ( $options{'search_results'} )
       if ( $staticQuery && $staticSubject );
   $refInput = MultAln::Query if ( $staticQuery );
 
-} elsif ( !$options{'malign'} )
-{
+}
+elsif ( !$options{'malign'} ) {
   my $refSeqFile;
   my $compSeqFile;
-  if ( !$options{'sequences'} )
-  {
+  if ( !$options{'sequences'} ) {
     print "\nMissing option -sequences <*.fa>!\n\n";
     usage();
   }
   $compSeqFile = $options{'sequences'};
-  if ( !$options{'ref_sequence'} )
-  {
+  if ( !$options{'ref_sequence'} ) {
     print "\nMissing option -ref_sequence <*.fa>!\n\n";
     usage();
   }
   $refSeqFile = $options{'ref_sequence'};
 
-  if ( !-s $RepeatMaskerConfig::CROSSMATCH_PRGM )
-  {
+  if ( !-s $RepeatMaskerConfig::CROSSMATCH_PRGM ) {
     die "Could not find the crossmatch program.  Perhaps RepeatModeler\n"
         . "hasn't been configured yet?\n";
   }
@@ -278,17 +268,14 @@ if ( $options{'search_results'} )
 }
 
 my $malign;
-if ( $resultCollection && $resultCollection->size() > 0 )
-{
+if ( $resultCollection && $resultCollection->size() > 0 ) {
   print "  -- Building multiple alignment\n";
   print "Search result collection = " . $resultCollection->size() . "\n";
 
-  if ( $options{'clustalTree'} )
-  {
+  if ( $options{'clustalTree'} ) {
     my @idOrder = loadClustalWTreeProximity( $options{'clustalTree'} );
     my %idOrderHash;
-    for ( my $i = 0 ; $i <= $#idOrder ; $i++ )
-    {
+    for ( my $i = 0 ; $i <= $#idOrder ; $i++ ) {
       $idOrderHash{ $idOrder[ $i ] } = $i;
     }
     $resultCollection->sort(
@@ -300,22 +287,20 @@ if ( $resultCollection && $resultCollection->size() > 0 )
   }
   $malign = MultAln->new( searchCollection          => $resultCollection,
                           searchCollectionReference => $refInput, );
-} elsif ( $options{'malign'} )
-{
+}
+elsif ( $options{'malign'} ) {
   $malign = MultAln->new();
   $malign = $malign->serializeIN( $options{'malign'} );
-} else
-{
+}
+else {
   die "Could not build multiple alignment -- no result collection!\n";
 }
 
-if ( $malign )
-{
+if ( $malign ) {
   my $MOUT;
   open $MOUT, ">MultipleAlignment.html";
 
-  if ( $options{'useOld'} )
-  {
+  if ( $options{'useOld'} ) {
     print $MOUT "<HR><P><H1>Heading...</H1>\n";
     &writeHTMLMultAlign(
                          multAln              => $malign,
@@ -323,8 +308,8 @@ if ( $malign )
                          noteTransitionsWithI => 1,
                          highlightCpGs        => 1
     );
-  } else
-  {
+  }
+  else {
     generateJavascriptSummaryAndAlignmentViewer( $malign, $MOUT );
   }
 
@@ -343,8 +328,7 @@ if ( $malign )
 ##
 ##
 ##-------------------------------------------------------------------------##
-sub writeHTMLMultAlign
-{
+sub writeHTMLMultAlign {
   my %parameters = @_;
 
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
@@ -354,10 +338,8 @@ sub writeHTMLMultAlign
   my $mAlign = $parameters{'multAln'};
 
   my $OUT = *STDOUT;
-  if ( defined $parameters{'destination'} )
-  {
-    if ( ref( $parameters{'destination'} ) !~ /GLOB|FileHandle/ )
-    {
+  if ( defined $parameters{'destination'} ) {
+    if ( ref( $parameters{'destination'} ) !~ /GLOB|FileHandle/ ) {
       print "::$subroutine("
           . ") Opening file "
           . $parameters{'destination'} . "\n"
@@ -367,8 +349,8 @@ sub writeHTMLMultAlign
           . "$subroutine("
           . ": Unable to open "
           . "results file: $parameters{'destination'} : $!";
-    } else
-    {
+    }
+    else {
       $OUT = $parameters{'destination'};
     }
   }
@@ -429,8 +411,7 @@ END
   my @orderedSeqIDs  = ();
   my @orderedSeqNums = ();
   my %desc           = ();
-  if ( defined $parameters{'SeqDB'} )
-  {
+  if ( defined $parameters{'SeqDB'} ) {
     @orderedSeqIDs = $parameters{'SeqDB'}->getIDs();
   }
 
@@ -440,8 +421,7 @@ END
   my $maxQueryEnd       = length( $mAlign->getReferenceSeq() );
   my $maxNameDescLength = 0;
   my %nameToNum         = ();
-  foreach my $seqNum ( 0 .. $mAlign->getNumAlignedSeqs() - 1 )
-  {
+  foreach my $seqNum ( 0 .. $mAlign->getNumAlignedSeqs() - 1 ) {
     my $relLeftLen =
         length( $mAlign->getLeftFlankingSequence( $seqNum ) ) -
         $mAlign->getAlignedStart( $seqNum );
@@ -467,25 +447,21 @@ END
 
   # If provided a SeqDB then order the instances by
   # SeqDB
-  if ( defined $parameters{'SeqDB'} )
-  {
-    for ( my $i = 0 ; $i <= $#orderedSeqIDs ; $i++ )
-    {
-      if ( exists $nameToNum{ $orderedSeqIDs[ $i ] } )
-      {
+  if ( defined $parameters{'SeqDB'} ) {
+    for ( my $i = 0 ; $i <= $#orderedSeqIDs ; $i++ ) {
+      if ( exists $nameToNum{ $orderedSeqIDs[ $i ] } ) {
         $orderedSeqIDs[ $i ] = $nameToNum{ $orderedSeqIDs[ $i ] };
-      } else
-      {
+      }
+      else {
         warn "Could not determine the id number for $orderedSeqIDs[$i]\n";
         $orderedSeqIDs[ $i ] = -1;
       }
     }
     unshift @orderedSeqIDs, 0;
-  } else
-  {
+  }
+  else {
     @orderedSeqIDs = ( 0 .. $mAlign->getNumAlignedSeqs() );
-    if ( $order eq "div" )
-    {
+    if ( $order eq "div" ) {
 
       # Order by divergence
       $mAlign->kimuraDivergence();
@@ -493,8 +469,8 @@ END
           sort { $mAlign->getAlignedDiv( $a ) <=> $mAlign->getAlignedDiv( $b ) }
           ( 0 .. ( $mAlign->getNumAlignedSeqs() - 1 ) );
       unshift( @orderedSeqIDs, 0 );
-    } elsif ( $order eq "start" )
-    {
+    }
+    elsif ( $order eq "start" ) {
       @orderedSeqIDs = sort {
         $mAlign->getAlignedStart( $a ) <=> $mAlign->getAlignedStart( $b )
       } ( 0 .. ( $mAlign->getNumAlignedSeqs() - 1 ) );
@@ -519,38 +495,31 @@ END
 
   # Print position index
   my @lines = ();
-  for ( my $i = 0 ; $i < length( $ugRefLen ) ; $i++ )
-  {
+  for ( my $i = 0 ; $i < length( $ugRefLen ) ; $i++ ) {
     $lines[ $i ] = ' ' x $maxNameDescLength . "   " . ' ' x ( $maxLeftLen );
   }
   my $idxInt = 50;
   my $pos    = 0;
-  for ( my $j = 0 ; $j < length( $ref ) ; $j++ )
-  {
+  for ( my $j = 0 ; $j < length( $ref ) ; $j++ ) {
     my $refChar = substr( $ref, $j, 1 );
     my $idxLen = 0;
-    if ( $refChar ne "-" )
-    {
+    if ( $refChar ne "-" ) {
       $pos++;
-      if ( $pos == 1 || $pos % $idxInt == 0 || $pos == $ugRefLen )
-      {
+      if ( $pos == 1 || $pos % $idxInt == 0 || $pos == $ugRefLen ) {
         $idxLen = length( $pos );
       }
     }
-    for ( my $k = 0 ; $k < length( $ugRefLen ) ; $k++ )
-    {
-      if ( $k < $idxLen )
-      {
+    for ( my $k = 0 ; $k < length( $ugRefLen ) ; $k++ ) {
+      if ( $k < $idxLen ) {
         $lines[ $k ] .= substr( $pos, length( $pos ) - $k - 1, 1 );
-      } else
-      {
+      }
+      else {
         $lines[ $k ] .= " ";
       }
     }
   }
   print $OUT "<pre>\n";
-  for ( my $i = $#lines ; $i >= 0 ; $i-- )
-  {
+  for ( my $i = $#lines ; $i >= 0 ; $i-- ) {
     print $OUT $lines[ $i ] . "\n";
   }
   print $OUT "</pre>\n";
@@ -563,13 +532,11 @@ END
 
   warn "Ref/cons not the same length!\n"
       if ( length( $ref ) != length( $seq ) );
-  for ( my $u = 0 ; $u < length( $ref ) ; $u++ )
-  {
-    if ( substr( $seq, $u, 1 ) ne substr( $ref, $u, 1 ) )
-    {
+  for ( my $u = 0 ; $u < length( $ref ) ; $u++ ) {
+    if ( substr( $seq, $u, 1 ) ne substr( $ref, $u, 1 ) ) {
       print $OUT "<font color=\"blue\">" . substr( $seq, $u, 1 ) . "</font>";
-    } else
-    {
+    }
+    else {
       print $OUT "" . substr( $seq, $u, 1 );
     }
   }
@@ -582,8 +549,7 @@ END
       . ' ' x $namePad
       . ": $ref</pre></th></tr>\n";
 
-  foreach my $i ( @orderedSeqIDs )
-  {
+  foreach my $i ( @orderedSeqIDs ) {
     next if $i < 0;
     $name = $mAlign->getAlignedName( $i );
     my $desc = "";
@@ -600,11 +566,10 @@ END
     my $start   = $mAlign->getAlignedStart( $i );
     $leftPad = ( $maxLeftLen - ( length( $lfSeq ) - $start ) );
     $seq = ' ' x ( $leftPad );
-    if ( $parameters{'leftFlankingID'} eq $i - 1 )
-    {
+    if ( $parameters{'leftFlankingID'} eq $i - 1 ) {
       $seq .= "<font color=\"blue\">" . lc( $lfSeq ) . "</font>";
-    } else
-    {
+    }
+    else {
       $seq .= lc( $lfSeq );
     }
     for ( my $j = $mAlign->getAlignedStart( $i ) ;
@@ -626,14 +591,13 @@ END
       {
         $seq .= "<font class=\"CpG\">";
       }
-      if ( $base ne "-" && $base eq $cb && $i > 0 )
-      {
+      if ( $base ne "-" && $base eq $cb && $i > 0 ) {
         $seq .= ".";
-      } elsif ( $base eq "-" && $base eq $cb && $i > 0 )
-      {
+      }
+      elsif ( $base eq "-" && $base eq $cb && $i > 0 ) {
         $seq .= " ";
-      } else
-      {
+      }
+      else {
         ##
         ##  Note transitions with an 'i' if desired
         ##    A->G or C->T Transition
@@ -646,8 +610,8 @@ END
             )
         {
           $seq .= "i";
-        } else
-        {
+        }
+        else {
           $seq .= $base;
         }
       }
@@ -665,14 +629,13 @@ END
 
     }
 
-    if ( $parameters{'rightFlankingID'} eq $i - 1 )
-    {
+    if ( $parameters{'rightFlankingID'} eq $i - 1 ) {
       $seq .=
             "<font color=\"blue\">"
           . lc( $mAlign->getRightFlankingSequence( $i ) )
           . "</font>";
-    } else
-    {
+    }
+    else {
       $seq .= lc( $mAlign->getRightFlankingSequence( $i ) );
     }
 
@@ -699,15 +662,13 @@ END
 # proximity of ids in that file as a way to order
 # the ids in the multiple alignment.
 #
-sub loadClustalWTreeProximity
-{
+sub loadClustalWTreeProximity {
   my $fileName = shift;
 
   open IN, "<$fileName"
       or die "Could not open Clustalw tree file ( $fileName ): $!\n";
   my @seqIDOrder = ();
-  while ( <IN> )
-  {
+  while ( <IN> ) {
 
     # (
     # (
@@ -715,8 +676,7 @@ sub loadClustalWTreeProximity
     # :distance[bootstrap]
     # );
     # bootstrap is not always present
-    if ( /(\S+)\:[\d\.]+/ )
-    {
+    if ( /(\S+)\:[\d\.]+/ ) {
       my $id = $1;
       $id =~ s/\(\)//g;
       push @seqIDOrder, $id;
@@ -726,8 +686,7 @@ sub loadClustalWTreeProximity
   return ( @seqIDOrder );
 }
 
-sub summaryViewJS
-{
+sub summaryViewJS {
   my $javascript = '
 //
 // Setup HTML5 Canvas
@@ -836,12 +795,12 @@ function visualizeMultiple(order) {
     var alignmentSpacing = alignmentGlyphHeight + 1;
     var rulerHeight = 8;
     var rulerVerticalMargin = 10;
-    
+
     var viewWidth = align_canvas.width - divMargin; // Width of reference sequence in pixels
     var xScale = viewWidth / data.length;
     var alignments = data.alignments;
     var qualWidthBP = data.qualityBlockLen;
-    
+
     // Clear overlayed canvases
     align_context.clearRect(0, 0, align_canvas.width,
     align_canvas.height);
@@ -955,17 +914,16 @@ visualizeMultiple("norm");
   return ( $javascript );
 }
 
-sub inlineTableJS
-{
+sub inlineTableJS {
   my $javascript = ' 
 // ===================================================================
 // Author: Denis Howlett <feedback@isocra.com>
 // WWW: http://www.isocra.com/
 // ===================================================================
-                
+
 /** Keep hold of the current table being dragged */
 var currenttable = null;
-            
+
 /** Capture the onmousemove so that we can see if a row from the current
  *  table if any is being dragged.
  * @param ev the event (for Firefox and Safari, otherwise we use window.event for IE)
@@ -1152,8 +1110,7 @@ function TableDnD()
   return $javascript;
 }
 
-sub getMSASummaryViewJSON
-{
+sub getMSASummaryViewJSON {
   my $object = shift;
 
   my $maxNameLen      = 0;
@@ -1174,16 +1131,13 @@ sub getMSASummaryViewJSON
   $data{'qualityBlockLen'} = $qualityBlockLen;
   $data{'alignments'}      = [];
 
-  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
 
     # Count referene up to aligned start
     my $alignedStart = $object->getAlignedStart( $i );
     my $refStart     = 0;
-    for ( my $j = 0 ; $j <= $alignedStart ; $j++ )
-    {
-      if ( substr( $refSeq, $j, 1 ) ne "-" )
-      {
+    for ( my $j = 0 ; $j <= $alignedStart ; $j++ ) {
+      if ( substr( $refSeq, $j, 1 ) ne "-" ) {
         $refStart++;
       }
     }
@@ -1193,12 +1147,10 @@ sub getMSASummaryViewJSON
     my $mut     = 0;
     my $aligned = 0;
     my @scores  = ();
-    for ( my $j = 0 ; $j < length( $seq ) ; $j++ )
-    {
+    for ( my $j = 0 ; $j < length( $seq ) ; $j++ ) {
       my $rChar = substr( $refSeq, $j + $alignedStart, 1 );
       my $aChar = substr( $seq, $j, 1 );
-      if ( $rChar eq "-" )
-      {
+      if ( $rChar eq "-" ) {
         $ins++ if ( $aChar ne "-" );
         next;
       }
@@ -1206,15 +1158,13 @@ sub getMSASummaryViewJSON
 
       # TODO: Consider the order of these two conditionals.  It seems that del
       # would never be invoked.
-      if ( $rChar ne $aChar )
-      {
+      if ( $rChar ne $aChar ) {
         $mut++;
-      } elsif ( $aChar eq "-" )
-      {
+      }
+      elsif ( $aChar eq "-" ) {
         $del++;
       }
-      if ( $aligned % $qualityBlockLen == 0 )
-      {
+      if ( $aligned % $qualityBlockLen == 0 ) {
         my $score = $qualityBlockLen - $mut + $del;
         $score-- if ( $ins );
         $score = 1 if ( $score < 1 );
@@ -1224,8 +1174,7 @@ sub getMSASummaryViewJSON
         $mut = 0;
       }
     }
-    if ( $mut || $del || $ins )
-    {
+    if ( $mut || $del || $ins ) {
       my $score = $qualityBlockLen - $mut + $del;
       $score-- if ( $ins );
       $score = 1 if ( $score < 1 );
@@ -1237,8 +1186,7 @@ sub getMSASummaryViewJSON
     my $start  = $object->getAlignedSeqStart( $i );
     my $end    = $object->getAlignedSeqEnd( $i );
     my $orient = "F";
-    if ( $object->getAlignedOrientation( $i ) eq "-" )
-    {
+    if ( $object->getAlignedOrientation( $i ) eq "-" ) {
       $orient = "R";
     }
     push @{ $data{'alignments'} },
@@ -1251,18 +1199,15 @@ sub getMSASummaryViewJSON
   return ( $json->encode( \%data ) );
 }
 
-sub generateJavascriptSummaryAndAlignmentViewer
-{
+sub generateJavascriptSummaryAndAlignmentViewer {
   my $mAlign = shift;
   my $MOUT   = shift;
 
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
 
   my $OUT = *STDOUT;
-  if ( defined $MOUT )
-  {
-    if ( ref( $MOUT ) !~ /GLOB|FileHandle/ )
-    {
+  if ( defined $MOUT ) {
+    if ( ref( $MOUT ) !~ /GLOB|FileHandle/ ) {
       print "::$subroutine(" . ") Opening file " . $MOUT . "\n"
           if ( $DEBUG );
       open $OUT, $MOUT
@@ -1270,8 +1215,8 @@ sub generateJavascriptSummaryAndAlignmentViewer
           . "$subroutine("
           . ": Unable to open "
           . "results file: $MOUT : $!";
-    } else
-    {
+    }
+    else {
       $OUT = $MOUT;
     }
   }
@@ -1293,16 +1238,14 @@ sub generateJavascriptSummaryAndAlignmentViewer
   # Save the score data
   my ( $columns, $scoreArray ) = $mAlign->getLowScoringAlignmentColumns();
   $detailData{'alignmentScore'} = ();
-  for ( my $j = 0 ; $j <= $#{$scoreArray} ; $j++ )
-  {
+  for ( my $j = 0 ; $j <= $#{$scoreArray} ; $j++ ) {
     my $num = int( $scoreArray->[ $j ] * 10 ) / 10;
     push @{ $detailData{'alignmentScore'} }, $num;
     $scoreArray->[ $j ] = $num;
   }
 
   # Save the actual alignments
-  for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs ; $i++ ) {
     my $seq   = $mAlign->getAlignedSeq( $i );
     my $name  = $mAlign->getAlignedName( $i );
     my $start = $mAlign->getAlignedStart( $i );
@@ -1330,16 +1273,13 @@ sub generateJavascriptSummaryAndAlignmentViewer
   $summaryData{'length'}          = $refLen;
   $summaryData{'qualityBlockLen'} = $qualityBlockLen;
   $summaryData{'alignments'}      = [];
-  for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs ; $i++ )
-  {
+  for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs ; $i++ ) {
 
     # Count referene up to aligned start
     my $alignedStart = $mAlign->getAlignedStart( $i );
     my $refStart     = 0;
-    for ( my $j = 0 ; $j <= $alignedStart ; $j++ )
-    {
-      if ( substr( $refSeq, $j, 1 ) ne "-" )
-      {
+    for ( my $j = 0 ; $j <= $alignedStart ; $j++ ) {
+      if ( substr( $refSeq, $j, 1 ) ne "-" ) {
         $refStart++;
       }
     }
@@ -1349,25 +1289,21 @@ sub generateJavascriptSummaryAndAlignmentViewer
     my $mut     = 0;
     my $aligned = 0;
     my @scores  = ();
-    for ( my $j = 0 ; $j < length( $seq ) ; $j++ )
-    {
+    for ( my $j = 0 ; $j < length( $seq ) ; $j++ ) {
       my $rChar = substr( $refSeq, $j + $alignedStart, 1 );
       my $aChar = substr( $seq, $j, 1 );
-      if ( $rChar eq "-" )
-      {
+      if ( $rChar eq "-" ) {
         $ins++ if ( $aChar ne "-" );
         next;
       }
       $aligned++;
-      if ( $rChar ne $aChar )
-      {
+      if ( $rChar ne $aChar ) {
         $mut++;
-      } elsif ( $aChar eq "-" )
-      {
+      }
+      elsif ( $aChar eq "-" ) {
         $del++;
       }
-      if ( $aligned % $qualityBlockLen == 0 )
-      {
+      if ( $aligned % $qualityBlockLen == 0 ) {
         my $score = $qualityBlockLen - $mut + $del;
         $score-- if ( $ins );
         $score = 1 if ( $score < 1 );
@@ -1377,8 +1313,7 @@ sub generateJavascriptSummaryAndAlignmentViewer
         $mut = 0;
       }
     }
-    if ( $mut || $del || $ins )
-    {
+    if ( $mut || $del || $ins ) {
       my $score = $qualityBlockLen - $mut + $del;
       $score-- if ( $ins );
       $score = 1 if ( $score < 1 );
@@ -1390,8 +1325,7 @@ sub generateJavascriptSummaryAndAlignmentViewer
     my $start  = $mAlign->getAlignedSeqStart( $i );
     my $end    = $mAlign->getAlignedSeqEnd( $i );
     my $orient = "F";
-    if ( $mAlign->getAlignedOrientation( $i ) eq "-" )
-    {
+    if ( $mAlign->getAlignedOrientation( $i ) eq "-" ) {
       $orient = "R";
     }
     push @{ $summaryData{'alignments'} },
@@ -1424,16 +1358,14 @@ sub generateJavascriptSummaryAndAlignmentViewer
   open IN, "<$FindBin::RealBin/javascript/zynga-1.2.2-10/Animate.js"
       or die "Could not inline $FindBin::RealBin/javascript/"
       . "zynga-1.2.2-10/Animate.js file!";
-  while ( <IN> )
-  {
+  while ( <IN> ) {
     print $OUT "$_";
   }
   close IN;
   open IN, "<$FindBin::RealBin/javascript/zynga-1.2.2-10/Scroller.js"
       or die "Could not inline $FindBin::RealBin/javascript/"
       . "zynga-1.2.2-10/Scroller.js file!";
-  while ( <IN> )
-  {
+  while ( <IN> ) {
     print $OUT "$_";
   }
   close IN;
@@ -1449,8 +1381,7 @@ sub generateJavascriptSummaryAndAlignmentViewer
   open IN, "<$FindBin::RealBin/javascript/isb/AlignmentSummary.js"
       or die "Could not inline $FindBin::RealBin/javascript/"
       . "isb/AlignmentSummary.js file!";
-  while ( <IN> )
-  {
+  while ( <IN> ) {
     print $OUT "$_";
   }
   close IN;
@@ -1467,8 +1398,7 @@ sub generateJavascriptSummaryAndAlignmentViewer
   open IN, "<$FindBin::RealBin/javascript/isb/AlignmentViewer.js"
       or die "Could not inline $FindBin::RealBin/javascript/"
       . "isb/AlignmentViewer.js file!";
-  while ( <IN> )
-  {
+  while ( <IN> ) {
     print $OUT "$_";
   }
   close IN;
