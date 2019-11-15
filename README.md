@@ -298,8 +298,7 @@ genomes.
 
 RepeatModeler 2.0 ( RECON + RepeatScout + LTRStruct ):
 
-                |  Genome DB |   Run Time*|   Models 
-Genome          |  Size (bp) |   (hh:mm)  |   Built   
+Genome          |  Genome DB Size (bp) |   Runtime (hh:mm)*  |  Models Built   
 ----------------|------------|------------|----------
 D. melanogaster |  164 Mbp   |    12:56   |     734    
 D. rerio        |  1.4 Gbp   |    40:36   |    3851  
