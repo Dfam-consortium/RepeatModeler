@@ -812,10 +812,10 @@ sub buildConsensus
   }    # if Run stat from first pass
 
   ## Testing: Saving out unaligned fasta for experimentation
-  open OUT, ">unaligned.fa"
-      or die "Refiner Failed: Could not open unaligned\.fa file!\n";
-  print OUT $unalignedFastaSeqs;
-  close OUT;
+  #open OUT, ">unaligned.fa"
+  #    or die "Refiner Failed: Could not open unaligned\.fa file!\n";
+  #print OUT $unalignedFastaSeqs;
+  #close OUT;
 
   # Adjust identifiers in MultAln
   for ( my $i = 0 ; $i < $malign->getNumAlignedSeqs() ; $i++ )
