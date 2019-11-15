@@ -36,10 +36,10 @@ Installation
  There are two supported paths to installing RepeatModeler on a 
  UNIX-based server. RepeatModeler may be installed from source as
  described in the "Source Distribution Installation" instructions
- below, or using one of our TETools container images ( Docker or 
+ below, or using one of our Dfam-TETools container images ( Docker or 
  Singularity ). The containers include RepeatModeler, it's 
  prerequisites and additional TE analysis tools/utilities used by
- Dfam. Information on the TETools container may be found here:
+ Dfam. Information on the Dfam-TETools container may be found here:
  https://github.com/Dfam-consortium/TETools
  
 
@@ -124,10 +124,9 @@ Source Distribution Installation
 
   2. Uncompress and expand the distribution archive:
 
-     Typically:   tar -zxvf RepeatModeler-open-#.#.#.tar.gz
-                or
-                  gunzip RepeatModeler-open-#.#.#.tar.gz
-                  tar -xvf RepeatModeler-open-#.#.#.tar
+     ```
+     tar -zxvf RepeatModeler-#.#.tar.gz
+     ```
 
   3. Configure for your site:
 
