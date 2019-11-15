@@ -263,25 +263,25 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
 
   Recover from a failure
 
-    If for some reason RepeatModeler fails, you may restart an
-    analysis starting from the last round it was working on.  The
-    -recoverDir [<i>ResultDir</i>] option allows you to specify a
-    diretory ( i.e RM_<PID>.<DATE>/ ) where a previous run of
-    RepeatModeler was working and it will automatically determine
-    how to continue the analysis.
+  If for some reason RepeatModeler fails, you may restart an
+  analysis starting from the last round it was working on.  The
+  -recoverDir [<i>ResultDir</i>] option allows you to specify a
+  diretory ( i.e RM_<PID>.<DATE>/ ) where a previous run of
+  RepeatModeler was working and it will automatically determine
+  how to continue the analysis.
 
 Caveats
 -------
 
-  o RepeatModeler is designed to run on assemblies rather
+  + RepeatModeler is designed to run on assemblies rather
     than genome reads. At the start of a run a quick analysis
     is performed on the input database to ascertain the 
     assembly N50.  A histogram of contig size is also displayed.
 
-  o RepeatModeler employs symmetric multiprocessing parallelism,
+  + RepeatModeler employs symmetric multiprocessing parallelism,
     therefore should be run on a single machine per-assembly.
 
-  o It is not recommended that a genome be run in a batched fashion
+  + It is not recommended that a genome be run in a batched fashion
     nor the results of multiple RepeatModeler runs on the same 
     genome be naively combined.  Doing so will generate a combined
     library that is largely redundant.  The -genomeSampleSizeMax 
