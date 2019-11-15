@@ -165,7 +165,7 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
      the user in creating a single database from several 
      types of input structures.  
 
-     <RepeatModelerPath>/BuildDatabase -name elephant elephant.fa
+           <RepeatModelerPath>/BuildDatabase -name elephant elephant.fa
 
      Run "BuildDatabase" without any options in order to see the 
      full documentation on this utility. There are several options
@@ -186,7 +186,7 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
      To specify a run using 20 parallel jobs, and including the new 
      LTR discovery pipeline:
      
-     nohup <RepeatModelerPath>/RepeatModeler -database elephant 
+            nohup <RepeatModelerPath>/RepeatModeler -database elephant 
             -pa 20 -LTRStruct >& run.out &
 
      The nohup is used on our machines when running long ( > 3-4 hour ) 
