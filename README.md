@@ -7,7 +7,7 @@ GitHub Conventions:
      http://www.repeatmasker.org
 ```
 
-RepeatModeler 
+RepeatModeler
 =============
 
 RepeatModeler is a de novo transposable element (TE) family identification and 
@@ -28,7 +28,7 @@ Authors
    Robert Hubley, Arian Smit - Institute for Systems Biology
 
  LTR Pipeline Extensions:
-   Jullien M. Flynn, Cedric Feschotte - Cornell University
+   Jullien M. Flynn - Cornell University
 
 Installation
 ------------
@@ -36,15 +36,12 @@ Installation
  There are two supported paths to installing RepeatModeler on a 
  UNIX-based server. RepeatModeler may be installed from source as
  described in the "Source Distribution Installation" instructions
- below, or using one of our container images ( Docker or Singularity ).
- The containers include RepeatModeler, it's prerequisites and additional
- TE analysis tools/utilities used by Dfam. 
-
-
-Container Distribution Installation
------------------------------------
-
-
+ below, or using one of our TETools container images ( Docker or 
+ Singularity ). The containers include RepeatModeler, it's 
+ prerequisites and additional TE analysis tools/utilities used by
+ Dfam. Information on the TETools container may be found here:
+ https://github.com/Dfam-consortium/TETools
+ 
 
 Source Distribution Installation
 --------------------------------
@@ -162,8 +159,8 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
 
   1. Create a Database for RepeatModeler
 
-     RepeatModeler uses a ABBlast/WUBlast XDF database or a NCBI 
-     DB ( depending on the search engine used ) as input to the
+     RepeatModeler uses a NCBI BLASTDB or a ABBlast XDF database 
+     ( depending on the search engine used ) as input to the
      repeat modeling pipeline.  A utility is provided to assist
      the user in creating a single database from several 
      types of input structures.  
@@ -186,30 +183,30 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
      input sequence.  For best results run this on a single machine with
      a moderate amount of memory > 32GB and multiple processors.  
      Our setup is Xeon(R) CPU E5-2680 v4 @ 2.40GHz - 28 cores, 128GB RAM.
-     To specify a run using 20 cpus, and including the new LTR discovery
-     pipeline:
+     To specify a run using 20 parallel jobs, and including the new 
+     LTR discovery pipeline:
      
      nohup <RepeatModelerPath>/RepeatModeler -database elephant 
             -pa 20 -LTRStruct >& run.out &
-     
+
      The nohup is used on our machines when running long ( > 3-4 hour ) 
      jobs.  The log output is saved to a file and the process is backgrounded.
-     For typical runtimes ( can be > 3 days with this configuration )
-     see the run statistics section of this file.  It is important to save
-     the log output for later usage.  It contains the random number 
-     generator seed so that the sampling process may be reproduced if
-     necessary.  In addition the log file contains details about the
-     progress of the run for later assesment of peformance or debuging 
-     problems.
+     For typical runtimes ( can be > 2 days with this configuration on a
+     well assembled mammalian genome ) see the run statistics section of 
+     this file.  It is important to save the log output for later usage.  
+     It contains the random number generator seed so that the sampling 
+     process may be reproduced if necessary.  In addition the log file 
+     contains details about the progress of the run for later assesment 
+     of peformance or debuging problems.
 
   3. Interpret the results
 
      RepeatModeler produces a voluminous amount of temporary files stored
      in a directory created at runtime named like:
        RM_<PID>.<DATE> ie. "RM_5098.MonMar141305172005" 
-     and remains after each run for debugging purposes or resumed runs
-     if a failure occurs.  At the succesful completion of a run
-     run two files are generated:
+     and remains after each run for debugging purposes or for the purpose
+     of resuming runs if a failure occures. At the succesful completion 
+     of a run, two files are generated:
 
                <database_name>-families.fa  : Consensus sequences
                <database_name>-families.stk : Seed alignments
@@ -269,6 +266,23 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
     RepeatModeler was working and it will automatically determine
     how to continue the analysis.
 
+Caveats
+-------
+
+  o RepeatModeler is designed to run on assemblies rather
+    than genome reads. At the start of a run a quick analysis
+    is performed on the input database to ascertain the 
+    assembly N50.  A histogram of contig size is also displayed.
+
+  o RepeatModeler employs symmetric multiprocessing parallelism,
+    therefore should be run on a single machine per-assembly.
+
+  o It is not recommended that a genome be run in a batched fashion
+    nor the results of multiple RepeatModeler runs on the same 
+    genome be naively combined.  Doing so will generate a combined
+    library that is largely redundant.  The -genomeSampleSizeMax 
+    parameter is provided for the purpose of increasing the amount
+    of the genome sampled while avoiding rediscovery of families.
 
   Please see the RELEASE-NOTES file for more details.
 
@@ -277,6 +291,21 @@ RepeatModeler Statistics
 ------------------------
 Benchmarks and statistics for runs of RepeatModeler on several sample
 genomes.
+
+RepeatModeler 2.0 ( RECON + RepeatScout + LTRStruct ):
+
+                  Genome DB    Run Time*   Models   
+Genome            Size (bp)    (hh:mm)     Built   
+----------------  -----------  ----------  -------- 
+D. melanogaster   164 Mbp       12:56        734    
+D. rerio          1.4 Gbp       40:36       3851
+O. sativa         375 Mbp       37:23       2648
+
+  *  Analysis run on a CentOS 7.6.1810 Linux system with
+     Intel... processors.  D. melanogaster was run using 
+     8 parallel jobs ( -pa 8 ) while D. rerio and O.sativa
+     were run with 16 parallel jobs.
+
 
 RepeatModeler 1.0.3 ( RECON + RepeatScout ):
 
@@ -297,7 +326,6 @@ Zebrafinch  1.2 Bbp      222 Mbp      66:29        178       75          8.6
   *** Sample size does not include 40 Mbp used in the RepeatScout analysis.  
       This 40 Mbp is randomly chosen and may overlap 0-100% of the 
       sample used in the RECON analysis.
-
 
 
 RepeatModeler 1.0.2 ( RECON + RepeatScout ):
@@ -343,18 +371,6 @@ Elephant    11,550,090   11,550,090    1:21      34       28           37.08
      the -lib option.
 
 
-Caveats
--------
-
-  o Genomes with numerous short contigs ( Diatom for example )
-    will take longer to BLAST than larger genomes with 
-    larger contigs.  This is an optimization problem left for 
-    future releases. 
-
-  o This program is not parallelized.  It can only run on
-    one node.  This is something we are considering for future
-    releases.
-
 
 Credits
 -------
@@ -369,6 +385,9 @@ and consultation on his ABBlast program suite.
 Alkes Price and Pavel Pevzner for assistance with RepeatScout
 and hosting my multi-sequence version of RepeatScout.
 
+Shujun Ou, and Ning Jiang for discussions and assistance with 
+using LTR_retreiver.
+
 This work was supported by the NIH ( R44 HG02244-02), 
 ( RO1 HG002939 ), ( U24 HG010136 ), and the Institute 
 for Systems Biology.
@@ -381,5 +400,4 @@ This work is licensed under the Open Source License v2.1.
 To view a copy of this license, visit 
 http://www.opensource.org/licenses/osl-2.1.php or
 see the LICENSE file contained in this distribution.
-
 

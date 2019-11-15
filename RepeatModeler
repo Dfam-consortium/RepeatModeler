@@ -48,7 +48,7 @@ using the "-name" option.
 =item -pa #
 
 Specify the number of parallel search jobs to run.  RMBlast jobs will
-use 4 cores each and WUBlast/ABBlast jobs will use a single core each.
+use 4 cores each and ABBlast jobs will use a single core each.
 i.e. on a machine with 12 cores and running with RMBlast you would use 
 -pa 3 to fully utilize the machine.
 
@@ -70,6 +70,11 @@ should be an integer number.
 
 Run the LTR structural discovery pipeline ( LTR_Harvest and LTR_retreiver ) and 
 combine results with the RepeatScout/RECON pipeline. [optional]
+
+=item -genomeSampleSizeMax #
+
+Optionally change the maximum bp of the genome to sample in all rounds
+of RECON (default=243000000).  
 
 =back
 
