@@ -617,8 +617,7 @@ sub runLtrRetriever {
     $redundantLibFile = "$tmpDir/seq.fa.mod.LTRlib.redundant.fa";
   }
   else {
-    print
-"ERROR: LTRPipeline::runLtrRetriever : Could not locate redundant library in $tmpDir\n";
+    #print "\nERROR: LTRPipeline::runLtrRetriever : Could not locate redundant library in $tmpDir\n";
     $error = 1;
   }
 

@@ -1636,8 +1636,7 @@ if ( $options{'LTRStruct'} ) {
     $optionalArgs .= " -pa $options{'pa'}" if ( exists $options{'pa'} );
     $optionalArgs .= " -debug"             if ( $DEBUG );
     ## Run the LTR Pipeline
-    print
-"Calling LTRPipeline as: $FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq\n";
+    print "Calling LTRPipeline as: $FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq\n" if ( $DEBUG );
     system( "$FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq" );
     unlink "$tmpDir/tmpInputSeq" unless ( $DEBUG );
     if ( -s "$tmpDir/tmpInputSeq-ltrs.fa" ) {
