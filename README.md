@@ -124,11 +124,9 @@ Source Distribution Installation
 
   2. Uncompress and expand the distribution archive:
 
-     Typically:   
-               tar -zxvf RepeatModeler-open-#.#.#.tar.gz
-     or
-               gunzip RepeatModeler-open-#.#.#.tar.gz
-               tar -xvf RepeatModeler-open-#.#.#.tar
+     ```
+     tar -zxvf RepeatModeler-#.#.tar.gz
+     ```
 
   3. Configure for your site:
 
