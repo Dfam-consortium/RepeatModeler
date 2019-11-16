@@ -62,7 +62,7 @@ sequence alignment program.',
       'expected_binaries'    => [ 'blastp' ],
       'param_type'           => 'directory',
       'required'             => 0,
-      'value'                => ''
+      'value'                => '/usr/local/abblast'
     },
     'CDHIT_DIR' => {
       'command_line_override' => 'cdhit_dir',
@@ -72,7 +72,7 @@ sequence clustering package.',
       'expected_binaries'    => [ 'cd-hit' ],
       'param_type'           => 'directory',
       'required'             => 0,
-      'value'                => ''
+      'value'                => '/home/rhubley/src/cd-hit-v4.8.1-2019-0228'
     },
     'GENOMETOOLS_DIR' => {
                  'command_line_override' => 'genometools_dir',
@@ -82,7 +82,7 @@ sequence clustering package.',
                  'expected_binaries'    => [ 'gt' ],
                  'param_type'           => 'directory',
                  'required'             => 0,
-                 'value' => ''
+                 'value' => '/home/rhubley/src/genometools-1.5.9/bin'
     },
     'LTR_RETRIEVER_DIR' => {
       'command_line_override' => 'ltr_retriever_dir',
@@ -92,7 +92,7 @@ structural LTR analysis package.',
       'expected_binaries'    => [ 'LTR_retriever' ],
       'param_type'           => 'directory',
       'required'             => 0,
-      'value'                => ''
+      'value'                => '/home/rhubley/src/LTR_retriever-2.6'
     },
     'MAFFT_DIR' => {
       'command_line_override' => 'mafft_dir',
@@ -102,7 +102,7 @@ multiple alignment program.',
       'expected_binaries'    => [ 'bin/mafft' ],
       'param_type'           => 'directory',
       'required'             => 0,
-      'value'                => ''
+      'value'                => '/usr/local/mafft'
     },
     'NINJA_DIR' => {
       'command_line_override' => 'ninja_dir',
@@ -112,7 +112,7 @@ phylogenetic analysis package.',
       'expected_binaries'    => [ 'Ninja' ],
       'param_type'           => 'directory',
       'required'             => 0,
-      'value'                => ''
+      'value'                => '/home/rhubley/projects/NINJA/NINJA'
     },
     'RECON_DIR' => {
       'command_line_override' => 'recon_dir',
@@ -122,7 +122,7 @@ de-novo repeatfinding program.',
       'expected_binaries'    => [ 'eledef', 'eleredef' ],
       'param_type'           => 'directory',
       'required'             => 1,
-      'value'                => ''
+      'value'                => '/usr/local/RECON'
     },
     'REPEATMASKER_DIR' => {
                'command_line_override' => 'repeatmasker_dir',
@@ -131,7 +131,7 @@ de-novo repeatfinding program.',
                'expected_binaries'    => [ 'RepeatMasker' ],
                'param_type'           => 'directory',
                'required'             => 1,
-               'value'                => ''
+               'value'                => '/usr/local/RepeatMasker'
     },
     'RMBLAST_DIR' => {
       'command_line_override' => 'rmblast_dir',
@@ -145,7 +145,7 @@ sequence alignment program.',
       ],
       'param_type' => 'directory',
       'required'   => 1,
-      'value'      => ''
+      'value'      => '/usr/local/rmblast/bin'
     },
     'RSCOUT_DIR' => {
       'command_line_override' => 'rscout_dir',
@@ -156,15 +156,15 @@ de-novo repeatfinding program.',
       'expected_binaries'    => [ 'RepeatScout', 'build_lmer_table' ],
       'param_type'           => 'directory',
       'required'             => 1,
-      'value'                => ''
+      'value'                => '/usr/local/RepeatScout-1.0.6'
     },
     'TRF_PRGM' => {
        'command_line_override' => 'trf_prgm',
-       'description' => 'The full path including the name for the TRF program. ( 4.0.9 or higher )',
+       'description' => 'The full path including the name for the TRF program ( 4.0.9 or higher )',
        'environment_override' => 'TRF_PRGM',
        'param_type'           => 'program',
        'required'             => 1,
-       'value'                => ''
+       'value'                => '/usr/local/bin/trf409.linux64'
     }
   };
 
@@ -180,7 +180,7 @@ de-novo repeatfinding program.',
   #
   # Current version of the software
   #
-  $VERSION = "2.0";
+  $VERSION = "2.1-alpha-1";
 
   #
   # Set this flag to default to debug mode for the entire package
