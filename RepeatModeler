@@ -560,7 +560,7 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
       }
     }
     else {
-      last;
+      last unless ( $i == 1 && $options{'skipRS'} );
     }
   }
 
@@ -623,7 +623,9 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
 
   # Recalculate totSampledBP
   $totSampledBP = 0;
-  for ( my $i = 1 ; $i <= $highestGoodRound ; $i++ ) {
+  my $startIdx = 1;
+  $startIdx = 2 if ( $options{'skipRS'} );
+  for ( my $i = $startIdx ; $i <= $highestGoodRound ; $i++ ) {
 
     # Open up sampleDB-$i.fa with FastaDB and count bases
     my $sDB = FastaDB->new( fileName => "$recoverDir/round-$i/sampleDB-$i.fa",
@@ -2632,6 +2634,8 @@ sub buildReconConsensi {
         )
     {
       $numElements++;
+      # TODO: Create two files ( one with all elements ) and another
+      #       that has a cap of 2000 elements.
 
       #
       # Parse genomic start/end out of batch seqname:

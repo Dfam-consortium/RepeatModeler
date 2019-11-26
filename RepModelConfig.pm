@@ -99,10 +99,10 @@ structural LTR analysis package.',
       'description'           => 'The path to the installation of the MAFFT
 multiple alignment program.',
       'environment_override' => 'MAFFT_DIR',
-      'expected_binaries'    => [ 'bin/mafft' ],
+      'expected_binaries'    => [ 'mafft' ],
       'param_type'           => 'directory',
       'required'             => 0,
-      'value'                => '/usr/local/mafft'
+      'value'                => '/usr/local/mafft/bin'
     },
     'NINJA_DIR' => {
       'command_line_override' => 'ninja_dir',
