@@ -115,10 +115,10 @@ use FindBin;
 use lib $FindBin::RealBin;
 use lib "$FindBin::RealBin/..";
 use RepModelConfig;
+use MultAln;
 
 # RepeatMasker Libraries
-use lib $RepModelConfig::REPEATMASKER_DIR;
-use MultAln;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use SequenceSimilarityMatrix;
 use CrossmatchSearchEngine;
 use FastaDB;

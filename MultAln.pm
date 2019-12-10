@@ -3422,13 +3422,14 @@ sub toSTK {
     print $OUT "#=GF RM 12343244 ~:PubMed ID\n";
     print $OUT "#=GF RN [2]\n";
     print $OUT "#=GF RM 289283 ~: Another PubMed ID\n";
+    print $OUT "#=GF DR RepBase;$id; ~:Database Reference\n";
     print $OUT "#=GF CC ~:Public description with more details of the family\n";
     print $OUT "#=GF ** ~:Curation details and metdata go in the ** field\n";
     print $OUT "#=GF **\n";
     print $OUT
         "#=GF ** SearchStages: 3, 5, 10  ~: stages, separated by commas\n";
     print $OUT
-"#=GF ** BufferStages: 3[1-2], 5[3-6], 1020 ~: 'stage'[start-end] or just 'stage'\n";
+"#=GF ** BufferStages: 3[1-2], 5[3-6], 5 ~: 'stage'[start-end] or just 'stage'\n";
     print $OUT "#=GF ** HC: CACTACCCCC ~: Handbuilt consensus\n";
   }
   else {
