@@ -40,15 +40,23 @@ Linup -
 =head1 SYNOPSIS
 
   Linup [-version] [-i] [-matrix <matrix_file>
-                          [-cgParam #] [-taParam # ] [-cgTransParam #] ]
+                        [-cgParam #] [-taParam # ] [-cgTransParam #] ]
                         [-trimLeft #] [-trimRight #] [-name familyname]
-                        [-normalizeCoord]
-                        [-stockholm | -msf | -consensus | -alignedcons | -fasta]
-                        [-showScore]
+                        [-normalizeCoord] [-showScore] 
+                        [-seqdb <fasta_file> -includeFlanking #]
+                        [-stockholm | -msf | 
+                         -consensus | -msa
+                         -fasta ]
         <crossmatch file> | <stockholm file> | <msa fasta> | <malign file>
 
 
 =head1 DESCRIPTION
+
+Output Formats:
+  MSF - GCG Wisconsin Package Format
+  Stockholm - Stockholm format used by Dfam/Pfam/Rfam
+  MSA - Aligned sequences stored in FASTA/A2M format
+  FASTA - All sequences without alignment characters
 
 The options are:
 
@@ -70,6 +78,10 @@ Write out multiple alignment in Stockholm format.
 
 Write out the multiple aligment in MSF format.
 
+=item -msa
+
+Write out the multiple alignment in MSA ( FASTA/A2M ) format.
+
 =item -fasta
 
 Write out the sequences in FASTA format.  NOTE: This
@@ -81,15 +93,25 @@ sequences.
 Calculate the consensus and output in FASTA format excluding
 the gap characters.
 
-=item -alignedcons
-
-Calculate the consensus and output in FASTA format including the
-gap characters.
-
-
 =item -showScore
 
 Include score in the default Linup output format.
+
+=item -seqdb <fasta_file>
+
+This parameter is used in conjunction with the -msa and 
+-includeFlanking parameters.  The fasta file should contain
+the sequences (and flanking sequence) that was used to 
+generate the alignments.  
+
+=item -includeFlanking #
+
+Include up to #bp of flanking sequence when using the -msa output
+format and only if the -seqdb parameter is specified.  The same 
+size string is appended/prepended to each aligned sequence 
+regardless of available flanking bases using the "-" to pad out 
+any differences.  The amount of available sequence is dependent 
+on what is in the -seqdb file.
 
 =back
 
@@ -128,8 +150,11 @@ use SearchResultCollection;
 use WUBlastSearchEngine;
 use NCBIBlastSearchEngine;
 use CrossmatchSearchEngine;
+use FastaDB;
+
 
 my $Version    = $RepModelConfig::VERSION;
+my $ucscToolsDir = "/usr/local/bin";
 
 #
 # Magic numbers/constants here
@@ -152,13 +177,15 @@ my @getopt_args = (
                     '-showScore',
                     '-msf',
                     '-fasta',
-                    '-alignedcons',  
+                    '-msa',
                     '-consensus',
                     '-name=s',
                     '-trimLeft=s',
                     '-trimRight=s',
                     '-normalizeCoord',
                     '-matrix=s',
+                    '-seqdb=s',
+                    '-includeFlanking=i',
                     '-cgParam=s',
                     '-taParam=s',
                     '-cgTransParam=s',
@@ -224,6 +251,11 @@ if ( $options{'matrix'} )
   $cgTransParam = $options{'cgTransParam'};
 }
 
+if ( $options{'includeFlanking'} && ! ( $options{'seqdb'} && $options{'msa'} ) ) {
+  print "\nThe includeFlanking option is only valid with the -seqdb and -msa output format!\n";
+  usage();
+}
+
 ##
 ## Determine file type
 ##
@@ -238,6 +270,11 @@ while ( <IN> )
   last if ( $maxLines-- < 0 );
   if ( /^#\s+STOCKHOLM/ )
   {
+    if ( $options{'includeFlanking'} ) 
+    {
+      print "\n\nThe includeFlanking parameter currently only works with *.out files!\n\n";
+      usage();
+    }
     $fileType = "stockholm";
     last;
   }
@@ -249,11 +286,21 @@ while ( <IN> )
   $foundFastaHdr = 1 if ( /^>\S+.*/ );
   if ( $foundFastaHdr && /^\s*[ACGTUMRWSYKVHDBNacgtumrwsykvhdbn\-\.]+\s*$/ )
   {
+    if ( $options{'includeFlanking'} ) 
+    {
+      print "\n\nThe includeFlanking parameter currently only works with *.out files!\n\n";
+      usage();
+    }
     $fileType = "msa-fasta";
     last;
   }
   if ( /^\s+\'alignCol\'\s+=>/ )
   {
+    if ( $options{'includeFlanking'} ) 
+    {
+      print "\n\nThe includeFlanking parameter currently only works with *.out files!\n\n";
+      usage();
+    }
     $fileType = "malign";
     last;
   }
@@ -299,11 +346,23 @@ if ( $fileType eq "crossmatch" )
   my $refInput = MultAln::Subject;
   $refInput = MultAln::Query if ( $staticQuery );
 
-  $mAlign = MultAln->new(
+  if ( $options{'includeFlanking'} && $options{'seqdb'} ){
+    my $fSeqDB = FastaDB->new( fileName => "repseq.bak",
+                          openMode => SeqDBI::ReadOnly );
+    $mAlign = MultAln->new(
+                          referenceSeq              => "",
+                          searchCollection          => $resultCollection,
+                          searchCollectionReference => $refInput,
+                          flankingSequenceDatabase  => $fSeqDB,
+                          maxFlankingSequenceLen    => $options{'includeFlanking'} 
+                          );
+  }else {
+    $mAlign = MultAln->new(
                           referenceSeq              => "",
                           searchCollection          => $resultCollection,
                           searchCollectionReference => $refInput
-  );
+                           );
+  }
 } elsif ( $fileType eq "stockholm" )
 {
   open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
@@ -395,7 +454,6 @@ if ( $matrixFile eq "" )
   $cons = $mAlign->consensus( inclRef => $inclRef );
 } else
 {
-
   # TODO: Finish implementing
   # open up matrix file and create object
 }
@@ -412,11 +470,8 @@ if ( $options{'stockholm'} )
   $mAlign->toMSF( includeReference => 1 );
 } elsif ( $options{'fasta'} )
 {
-  # NOTE: This is broken...currently output a non MSA fasta
-  #$mAlign->toFASTA();
   $mAlign->toFASTA( seqOnly => 1 );
-# -alignedcons is a deprecated name for the option -consensus
-} elsif ( $options{'consensus'} || $options{'alignedcons'} ) {
+} elsif ( $options{'consensus'} ) {
   if ( $options{'consensus'} ) {
     $cons =~ s/-//g;
   }
@@ -424,6 +479,21 @@ if ( $options{'stockholm'} )
     print ">" . $options{'name'} . "\n$cons\n\n";
   }else {
     print ">" . $mAlign->getReferenceName() . "\n$cons\n\n";
+  }
+}elsif ( $options{'msa'} ) {
+   # DEBUGING
+   #for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs() ; $i++ ) {
+   #   my $name = $mAlign->getAlignedName( $i );
+   #   my $qs = $mAlign->getAlignedSeqStart( $i );
+   #   my $lFlank = $mAlign->getLeftFlankingSequence( $i );
+   #   my $rFlank = $mAlign->getRightFlankingSequence( $i );
+   #   print "$name ($i) - q:$qs\n lf=$lFlank\n rf=$rFlank\n";
+   #}
+  if ( exists $options{'includeFlanking'} && $options{'includeFlanking'} > 0 ) 
+  {
+    $mAlign->toFASTA( includeFlanking => $options{'includeFlanking'}, includeReference => $inclRef, includeConsensus => 1 );
+  }else {
+    $mAlign->toFASTA();
   }
 }else
 {
