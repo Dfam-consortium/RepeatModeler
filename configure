@@ -322,7 +322,8 @@ my @progFiles = (
                   "BuildDatabase",     "Refiner",
                   "RepeatClassifier",  "RepeatModeler",
                   "TRFMask",           "LTRPipeline",
-                  "util/renameIds.pl", "util/viewMSA.pl"
+                  "util/renameIds.pl", "util/viewMSA.pl",
+                  "util/Linup" 
 );
 my $perlLocEsc = $perlLocation;
 $perlLocEsc =~ s/\//\\\//g;

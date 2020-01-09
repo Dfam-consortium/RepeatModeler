@@ -54,119 +54,132 @@ BEGIN {
 ##                                                                      ##
   ## STCFG --do-not-remove--
   $configuration = {
-    'ABBLAST_DIR' => {
-      'command_line_override' => 'abblast_dir',
-      'description'           => 'The path to the installation of the ABBLAST
-sequence alignment program.',
-      'environment_override' => 'ABBLAST_DIR',
-      'expected_binaries'    => [ 'blastp' ],
-      'param_type'           => 'directory',
-      'required'             => 0,
-      'value'                => ''
-    },
-    'CDHIT_DIR' => {
-      'command_line_override' => 'cdhit_dir',
-      'description'           => 'The path to the installation of the CD-Hit
-sequence clustering package.',
-      'environment_override' => 'CDHIT_DIR',
-      'expected_binaries'    => [ 'cd-hit' ],
-      'param_type'           => 'directory',
-      'required'             => 0,
-      'value'                => ''
-    },
-    'GENOMETOOLS_DIR' => {
-                 'command_line_override' => 'genometools_dir',
-                 'description'           =>
-                     'The path to the installation of the GenomeTools package.',
-                 'environment_override' => 'GENOMETOOLS_DIR',
-                 'expected_binaries'    => [ 'gt' ],
-                 'param_type'           => 'directory',
-                 'required'             => 0,
-                 'value' => ''
-    },
-    'LTR_RETRIEVER_DIR' => {
-      'command_line_override' => 'ltr_retriever_dir',
-      'description' => 'The path to the installation of the LTR_Retriever
-structural LTR analysis package.',
-      'environment_override' => 'LTR_RETRIEVER_DIR',
-      'expected_binaries'    => [ 'LTR_retriever' ],
-      'param_type'           => 'directory',
-      'required'             => 0,
-      'value'                => ''
-    },
-    'MAFFT_DIR' => {
-      'command_line_override' => 'mafft_dir',
-      'description'           => 'The path to the installation of the MAFFT
-multiple alignment program.',
-      'environment_override' => 'MAFFT_DIR',
-      'expected_binaries'    => [ 'bin/mafft' ],
-      'param_type'           => 'directory',
-      'required'             => 0,
-      'value'                => ''
-    },
-    'NINJA_DIR' => {
-      'command_line_override' => 'ninja_dir',
-      'description'           => 'The path to the installation of the Ninja
-phylogenetic analysis package.',
-      'environment_override' => 'NINJA_DIR',
-      'expected_binaries'    => [ 'Ninja' ],
-      'param_type'           => 'directory',
-      'required'             => 0,
-      'value'                => ''
-    },
-    'RECON_DIR' => {
-      'command_line_override' => 'recon_dir',
-      'description'           => 'The path to the installation of the RECON
-de-novo repeatfinding program.',
-      'environment_override' => 'RECON_DIR',
-      'expected_binaries'    => [ 'eledef', 'eleredef' ],
-      'param_type'           => 'directory',
-      'required'             => 1,
-      'value'                => ''
-    },
-    'REPEATMASKER_DIR' => {
-               'command_line_override' => 'repeatmasker_dir',
-               'description' => 'The path to the installation of RepeatMasker.',
-               'environment_override' => 'REPEATMASKER_DIR',
-               'expected_binaries'    => [ 'RepeatMasker' ],
-               'param_type'           => 'directory',
-               'required'             => 1,
-               'value'                => ''
-    },
-    'RMBLAST_DIR' => {
-      'command_line_override' => 'rmblast_dir',
-      'description'           => 'The path to the installation of the RMBLAST
-sequence alignment program.',
-      'environment_override' => 'RMBLAST_DIR',
-      'expected_binaries'    => [
-                               'rmblastn',          'dustmasker',
-                               'makeblastdb',       'blastdbcmd',
-                               'blastdb_aliastool', 'blastn'
-      ],
-      'param_type' => 'directory',
-      'required'   => 1,
-      'value'      => ''
-    },
-    'RSCOUT_DIR' => {
-      'command_line_override' => 'rscout_dir',
-      'description'           =>
-          'The path to the installation of the RepeatScout ( 1.0.6 or higher )
-de-novo repeatfinding program.',
-      'environment_override' => 'RSCOUT_DIR',
-      'expected_binaries'    => [ 'RepeatScout', 'build_lmer_table' ],
-      'param_type'           => 'directory',
-      'required'             => 1,
-      'value'                => ''
-    },
-    'TRF_PRGM' => {
-       'command_line_override' => 'trf_prgm',
-       'description' => 'The full path including the name for the TRF program. ( 4.0.9 or higher )',
-       'environment_override' => 'TRF_PRGM',
-       'param_type'           => 'program',
-       'required'             => 1,
-       'value'                => ''
-    }
-  };
+          'ABBLAST_DIR' => {
+                             'command_line_override' => 'abblast_dir',
+                             'description' => 'The path to the installation of the ABBLAST sequence alignment program.',
+                             'environment_override' => 'ABBLAST_DIR',
+                             'expected_binaries' => [
+                                                      'blastp'
+                                                    ],
+                             'param_type' => 'directory',
+                             'required' => 0,
+                             'value' => '/usr/local/abblast'
+                           },
+          'CDHIT_DIR' => {
+                           'command_line_override' => 'cdhit_dir',
+                           'description' => 'The path to the installation of the CD-Hit sequence clustering package.',
+                           'environment_override' => 'CDHIT_DIR',
+                           'expected_binaries' => [
+                                                    'cd-hit'
+                                                  ],
+                           'param_type' => 'directory',
+                           'required' => 0,
+                           'value' => '/home/rhubley/src/cd-hit-v4.8.1-2019-0228'
+                         },
+          'GENOMETOOLS_DIR' => {
+                                 'command_line_override' => 'genometools_dir',
+                                 'description' => 'The path to the installation of the GenomeTools package.',
+                                 'environment_override' => 'GENOMETOOLS_DIR',
+                                 'expected_binaries' => [
+                                                          'gt'
+                                                        ],
+                                 'param_type' => 'directory',
+                                 'required' => 0,
+                                 'value' => '/home/rhubley/src/genometools-1.5.9/bin'
+                               },
+          'LTR_RETRIEVER_DIR' => {
+                                   'command_line_override' => 'ltr_retriever_dir',
+                                   'description' => 'The path to the installation of the LTR_Retriever structural LTR analysis package.',
+                                   'environment_override' => 'LTR_RETRIEVER_DIR',
+                                   'expected_binaries' => [
+                                                            'LTR_retriever'
+                                                          ],
+                                   'param_type' => 'directory',
+                                   'required' => 0,
+                                   'value' => '/home/rhubley/src/LTR_retriever-2.6'
+                                 },
+          'MAFFT_DIR' => {
+                           'command_line_override' => 'mafft_dir',
+                           'description' => 'The path to the installation of the MAFFT multiple alignment program.',
+                           'environment_override' => 'MAFFT_DIR',
+                           'expected_binaries' => [
+                                                    'mafft'
+                                                  ],
+                           'param_type' => 'directory',
+                           'required' => 0,
+                           'value' => '/usr/local/mafft/bin'
+                         },
+          'NINJA_DIR' => {
+                           'command_line_override' => 'ninja_dir',
+                           'description' => 'The path to the installation of the Ninja phylogenetic analysis package.',
+                           'environment_override' => 'NINJA_DIR',
+                           'expected_binaries' => [
+                                                    'Ninja'
+                                                  ],
+                           'param_type' => 'directory',
+                           'required' => 0,
+                           'value' => '/home/rhubley/projects/NINJA/NINJA'
+                         },
+          'RECON_DIR' => {
+                           'command_line_override' => 'recon_dir',
+                           'description' => 'The path to the installation of the RECON de-novo repeatfinding program.',
+                           'environment_override' => 'RECON_DIR',
+                           'expected_binaries' => [
+                                                    'eledef',
+                                                    'eleredef'
+                                                  ],
+                           'param_type' => 'directory',
+                           'required' => 1,
+                           'value' => '/usr/local/RECON'
+                         },
+          'REPEATMASKER_DIR' => {
+                                  'command_line_override' => 'repeatmasker_dir',
+                                  'description' => 'The path to the installation of RepeatMasker.',
+                                  'environment_override' => 'REPEATMASKER_DIR',
+                                  'expected_binaries' => [
+                                                           'RepeatMasker'
+                                                         ],
+                                  'param_type' => 'directory',
+                                  'required' => 1,
+                                  'value' => '/usr/local/RepeatMasker'
+                                },
+          'RMBLAST_DIR' => {
+                             'command_line_override' => 'rmblast_dir',
+                             'description' => 'The path to the installation of the RMBLAST sequence alignment program.',
+                             'environment_override' => 'RMBLAST_DIR',
+                             'expected_binaries' => [
+                                                      'rmblastn',
+                                                      'dustmasker',
+                                                      'makeblastdb',
+                                                      'blastdbcmd',
+                                                      'blastdb_aliastool',
+                                                      'blastn'
+                                                    ],
+                             'param_type' => 'directory',
+                             'required' => 1,
+                             'value' => '/usr/local/rmblast/bin'
+                           },
+          'RSCOUT_DIR' => {
+                            'command_line_override' => 'rscout_dir',
+                            'description' => 'The path to the installation of the RepeatScout ( 1.0.6 or higher ) de-novo repeatfinding program.',
+                            'environment_override' => 'RSCOUT_DIR',
+                            'expected_binaries' => [
+                                                     'RepeatScout',
+                                                     'build_lmer_table'
+                                                   ],
+                            'param_type' => 'directory',
+                            'required' => 1,
+                            'value' => '/usr/local/RepeatScout-1.0.6'
+                          },
+          'TRF_PRGM' => {
+                          'command_line_override' => 'trf_prgm',
+                          'description' => 'The full path including the name for the TRF program ( 4.0.9 or higher )',
+                          'environment_override' => 'TRF_PRGM',
+                          'param_type' => 'program',
+                          'required' => 1,
+                          'value' => '/usr/local/bin/trf409.linux64'
+                        }
+        };
 
   ## EDCFG --do-not-remove--
 
@@ -180,7 +193,7 @@ de-novo repeatfinding program.',
   #
   # Current version of the software
   #
-  $VERSION = "2.0";
+  $VERSION = "2.0.1";
 
   #
   # Set this flag to default to debug mode for the entire package
@@ -311,6 +324,10 @@ de-novo repeatfinding program.',
       }
     } while ( $validParam == 0 );
     $configuration->{$param}->{'value'} = $value;
+    #my $version = &getDependencyVersion($param);
+    #if ( $version ) {
+    #  $configuration->{$param}->{'version'} = $version;
+    #}
   }
 
   #
@@ -326,6 +343,7 @@ de-novo repeatfinding program.',
 
     my $value = $configuration->{$param}->{'value'};
     $value = $new_setting if ( defined $new_setting );
+
 
     # Always assume the "good" in parameters...
     my $validParam = 1;
@@ -356,6 +374,14 @@ de-novo repeatfinding program.',
         $validParam = 0;
       }
     }
+
+    # TODO Validate versions
+    #if ( $validParam ) {
+    #  my $version = &getDependencyVersion($param);
+    #  if ( $version ) {
+    #    $configuration->{$param}->{'version'} = $version;
+    #  }
+    #}
 
     return $validParam;
   }
@@ -459,6 +485,124 @@ de-novo repeatfinding program.',
             $ENV{ $configuration->{$param}->{'environment_override'} };
       }
     }
+  }
+
+  sub getDependencyVersion {
+    my $param = shift;
+
+    if ( !exists $configuration->{$param} ) {
+      die "Unknown parameter \"$param\"\n";
+    }
+
+    my $value = $configuration->{$param}->{'value'};
+    my $version = "";
+    my $tmpStr = "";
+    if ( $param eq "RSCOUT_DIR" ) {
+      # Simple case where the program reports it's version in it's usage details
+      #./RepeatScout -blah
+      #RepeatScout Version 1.0.6
+      #
+      #Usage: 
+      #RepeatScout -sequence <seq> -output <out> -freq <freq> -l <l> [opts]
+      #     -L # size of region to extend left or right (10000) 
+      #     -match # reward for a match (+1)  
+      #     -mismatch # penalty for a mismatch (-1) 
+      #...
+      $tmpStr = `$value/RepeatScout -blah 2>&1`;
+      $tmpStr =~ /Version\s*(\d+\.\d+\.\d+)/;
+      $version = $1;
+    }elsif ( $param eq "RMBLAST_DIR" ) {
+      #./rmblastn -version
+      #rmblastn: 2.9.0+
+      # Package: blast 2.9.0, build Sep  9 2019 15:21:42
+      $tmpStr = `$value/rmblastn -version`;
+      $tmpStr =~ /rmblastn:\s+(\d+\.\d+\.\d+\+?)/;
+      $version = $1;
+    }elsif ( $param eq "RECON_DIR" ) {
+      # More complex.  The version is only printed in a
+      # text file that may or may not have been installed by
+      # the user. 
+      # 00README:
+      # Version 1.08 (Jan 2014)
+      if ( -e "$value/00README" ) {
+        open IN,"<$value/00README" or die;
+        while (<IN>){
+          if (/Version\s+(\d+\.\d+)/ )
+          {
+            $version = $1;
+            last;
+          }
+        }
+        close IN;
+      }
+    }elsif ( $param eq "TRF_PRGM" ) { 
+      # trf -V
+      # Tandem Repeats Finder, Version 4.09
+      # Copyright (C) Dr. Gary Benson 1999-2012. All rights reserved.
+      $tmpStr = `$value -V 2>&1`;
+      $tmpStr =~ /Version\s+(\d+\.\d+)/;
+      $version = $1;
+    }elsif ( $param eq "ABBLAST_DIR" ) {
+      #blastp -blah
+      #BLASTP 3.0SE-AB [2009-10-30] [linux26-x64-I32LPF64 2009-10-30T17:06:09]
+      $tmpStr = `$value/blastp -blah 2>&1`;
+      $tmpStr =~ /BLASTP\s+(\d+\.\d+\S+)/;
+      $version = $1;
+    }elsif ( $param eq "CDHIT_DIR" ) {
+      #cd-hit -blah
+      # 	====== CD-HIT version 4.8.1 (built on Mar 21 2019) ======
+      $tmpStr = `$value/cd-hit -blah 2>&1`;
+      $tmpStr =~ /CD-HIT version\s+(\d+\.\d+\.\d+)/;
+      $version = $1;
+    }elsif ( $param eq "GENOMETOOLS_DIR" ) {
+      #gt -version
+      #/home/rhubley/src/genometools-1.5.9/bin/gt (GenomeTools) 1.5.9
+      #Copyright (c) 2003-2016 G. Gremme, S. Steinbiss, S. Kurtz, and CONTRIBUTORS
+      #Copyright (c) 2003-2016 Center for Bioinformatics, University of Hamburg
+      #See LICENSE file or http://genometools.org/license.html for license details.
+      #
+      #Used compiler: cc (GCC) 4.8.5 20150623 (Red Hat 4.8.5-36.0.1)
+      #Compile flags:  -g -Wall -Wunused-parameter -pipe -fPIC -Wpointer-arith -Wno-unknown-pragmas -O3 -Werror
+      $tmpStr = `$value/gt -version 2>&1`;
+      $tmpStr =~ /\(GenomeTools\)\s+(\d+\.\d+\.\d+)/;
+      $version = $1;
+    }elsif ( $param eq "LTR_RETRIEVER_DIR" ) {
+      # More complex.  Older versions only printed the version in the
+      # output. This is fragile...but we are going to try and pull it
+      # out of the script:
+      open IN,"<$value/LTR_retriever" or die;
+      while (<IN>){
+        if (/^my\s+\$version\s*=\s*\"(\S+)\";/)
+        {
+          $version = $1;
+          last;
+        }
+      }
+      close IN;
+    }elsif ( $param eq "MAFFT_DIR" ) {
+      #mafft -blah
+      #------------------------------------------------------------------------------
+      #  MAFFT v7.407 (2018/Jul/23)
+      #  https://mafft.cbrc.jp/alignment/software/
+      #  MBE 30:772-780 (2013), NAR 30:3059-3066 (2002)
+      #------------------------------------------------------------------------------
+      $tmpStr = `$value/mafft -blah 2>&1`;
+      $tmpStr =~ /MAFFT\s+v(\d+\.\d+)/;
+      $version = $1;
+    }elsif ( $param eq "NINJA_DIR" ) {
+      #Ninja -v
+      #Version 0.97-cluster_only
+      $tmpStr = `$value/Ninja -v 2>&1`;
+      $tmpStr =~ /Version\s+(\d+\.\d+\S+)/;
+      $version = $1;
+    }elsif ( $param eq "REPEATMASKER_DIR" ) {
+      #RepeatMasker -v
+      #RepeatMasker version 4.1.0
+      $tmpStr = `$value/RepeatMasker -v 2>&1`;
+      $tmpStr =~ /version\s+(\d+\.\d+\.\d+)/;
+      $version = $1;
+    }
+    return $version;
   }
 
 }

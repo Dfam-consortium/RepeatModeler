@@ -540,7 +540,7 @@ sub runMafft {
 #       =========================================================================
 #       Illegal character i
 #
-  my $cmd = "$binDir/bin/mafft --large --quiet";
+  my $cmd = "$binDir/mafft --large --quiet";
   if ( defined $threads && $threads > 1 ) {
     $cmd .= " --thread $threads";
   }

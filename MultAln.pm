@@ -2021,35 +2021,36 @@ sub _alignFromSearchResultCollection {
       }
     }
 
-    # Grab the reference flanking sequence
+    # TODO: Grab the reference flanking sequence
     my $seqID        = $object->getReferenceName();
     my $seqStart     = $tMin;
     my $seqEnd       = $tMax;
     my $seqRemaining = $tRemaining;
-    if ( $seqDB->getSeqLength( $seqID ) > 0 ) {
-
-      # Determine the left boundaries
-      my $end   = $seqStart - 1;
-      my $start = 0;
-      if ( $maxLen > -1 ) {
-        $start = $seqStart - $maxLen if ( $seqStart > $maxLen );
-      }
-      $object->setLeftFlankingSequence(
-                                        0,
-                                        $seqDB->getSubstr(
-                                                   $seqID, $start, $end - $start
-                                        )
-      );
-
-      # Determine the right boundaries
-      $start = $seqEnd + 1;
-      $end   = $seqEnd + $seqRemaining;
-      if ( $maxLen > -1 ) {
-        $end = $end - $maxLen if ( $seqRemaining > $maxLen );
-      }
-      $object->setRightFlankingSequence( 0,
-                       $seqDB->getSubstr( $seqID, $start, $end - $start - 1 ) );
-    }
+#    if ( $seqDB->getSeqLength( $seqID ) > 0 ) {
+#
+#      # Determine the left boundaries
+#      my $start = 0;
+#      my $end   = $seqStart - 2;
+#      if ( $maxLen > -1 ) {
+#        $start = $seqStart - $maxLen - 1 if ( $seqStart > $maxLen );
+#      }
+#print "REF $seqID (0) maxlen = $maxLen seqRemainining = $seqRemaining seqStart = $seqStart finalRange: $start - $end\n";
+#      $object->setLeftFlankingSequence(
+#                                        0,
+#                                        $seqDB->getSubstr(
+#                                                   $seqID, $start, $end - $start + 1
+#                                        )
+#      );
+#
+#      # Determine the right boundaries
+#      $start = $seqEnd + 1;
+#      $end   = $seqEnd + $seqRemaining - 1;
+#      if ( $maxLen > -1 ) {
+#        $end = $seqEnd + $maxLen - 1 if ( $seqRemaining > $maxLen );
+#      }
+#      $object->setRightFlankingSequence( 0,
+#                       $seqDB->getSubstr( $seqID, $start, $end - $start + 1 ) );
+#    }
 
     # Grab the instance flanking sequence
     for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ ) {
@@ -2060,25 +2061,29 @@ sub _alignFromSearchResultCollection {
       $seqRemaining = $result->$instRemaining();
       if ( $seqDB->getSeqLength( $seqID ) > 0 ) {
 
-        # Determine the left boundaries
-        my $end   = $seqStart - 1;
+        # Determine the left boundaries ( zero based, fully closed )
         my $start = 0;
+        my $end   = $seqStart - 2;
         if ( $maxLen > -1 ) {
-          $start = $seqStart - $maxLen if ( $seqStart > $maxLen );
+          $start = $seqStart - $maxLen - 1 if ( $seqStart > $maxLen );
         }
-        $object->setLeftFlankingSequence( $l + 1,
-                           $seqDB->getSubstr( $seqID, $start, $end - $start ) );
+#print "$seqID (".($l).") maxlen = $maxLen seqRemainining = $seqRemaining seqStart = $seqStart finalRange: $start - $end\n";
+        $object->setLeftFlankingSequence( $l,
+                           $seqDB->getSubstr( $seqID, $start, $end - $start + 1 ) );
+#print "  seq = " . $seqDB->getSubstr( $seqID, $start, $end - $start + 1 ) . "\n";
 
         # Determine the right boundaries
         $start = $seqEnd;
-        $end   = $seqEnd + $seqRemaining;
+        $end   = $seqEnd + $seqRemaining - 1;
         if ( $maxLen > -1 ) {
-          $end = $end - $maxLen if ( $seqRemaining > $maxLen );
+          $end = $seqEnd + $maxLen - 1 if ( $seqRemaining > $maxLen );
         }
-        $object->setRightFlankingSequence( $l + 1,
-                           $seqDB->getSubstr( $seqID, $start, $end - $start ) );
+#print "  now right seqEnd = $seqEnd finalRange: $start - $end\n";
+        $object->setRightFlankingSequence( $l,
+                           $seqDB->getSubstr( $seqID, $start, $end - $start + 1 ) );
+#print "  seq = " . $seqDB->getSubstr( $seqID, $start, $end - $start + 1 ) . "\n";
 
-      }
+      } #else { print "Could not find $seqID\n"; }
     }
   }
 
@@ -3422,13 +3427,14 @@ sub toSTK {
     print $OUT "#=GF RM 12343244 ~:PubMed ID\n";
     print $OUT "#=GF RN [2]\n";
     print $OUT "#=GF RM 289283 ~: Another PubMed ID\n";
+    print $OUT "#=GF DR RepBase;$id; ~:Database Reference\n";
     print $OUT "#=GF CC ~:Public description with more details of the family\n";
     print $OUT "#=GF ** ~:Curation details and metdata go in the ** field\n";
     print $OUT "#=GF **\n";
     print $OUT
         "#=GF ** SearchStages: 3, 5, 10  ~: stages, separated by commas\n";
     print $OUT
-"#=GF ** BufferStages: 3[1-2], 5[3-6], 1020 ~: 'stage'[start-end] or just 'stage'\n";
+"#=GF ** BufferStages: 3[1-2], 5[3-6], 5 ~: 'stage'[start-end] or just 'stage'\n";
     print $OUT "#=GF ** HC: CACTACCCCC ~: Handbuilt consensus\n";
   }
   else {
@@ -3573,9 +3579,13 @@ sub toSTK {
 =head2 toFASTA()
 
   Use: $obj->toFASTA( filename => "filename",
-                    includeReference => 1 );
+                      includeReference => 1, 
+                      includeConsensus => 1,
+                      seqOnly => 1,
+                      includeFlanking => # );
 
   Export the multiple alignment data to a msa FASTA format.
+  All arguments are optional.
 
 =cut
 
@@ -3593,20 +3603,43 @@ sub toFASTA {
   }
 
   my $malignLen = 0;
-  if ( defined $parameters{'includeReference'} && $object->getReferenceSeq() ) {
-    my $refSeq = $object->getReferenceSeq();
-    if ( $parameters{'seqOnly'} ) {
-      $refSeq =~ s/-//g;
-    }
-    print $OUT ">" . $object->getReferenceName() . " - reference sequence\n";
-    print $OUT "$refSeq\n";
-    $malignLen = length( $refSeq );
-  }
-
   # Sanity check malignLen and handle noref case
   for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
     my $seq = $object->getAlignedSeq( $i );
     $malignLen = length( $seq ) if ( length( $seq ) > $malignLen );
+  }
+
+
+  if ( exists $parameters{'includeConsensus'} ) {
+    my $cons;
+    if ( defined $parameters{'includeReference'} && $parameters{'includeReference'} > 0 ) {
+      $cons = $object->consensus( inclRef => 1 );
+    }else {
+      $cons = $object->consensus();
+    }
+    $malignLen = length( $cons ) if ( length( $cons ) > $malignLen );
+    print $OUT ">consensus\n";
+    if ( $parameters{'includeFlanking'} ) {
+    print $OUT "-"x($parameters{'includeFlanking'}) . $cons . "-"x($parameters{'includeFlanking'}) . "\n";
+    }else {
+      print $OUT "$cons\n";
+    }
+  }
+
+
+  if ( defined $parameters{'includeReference'} && $parameters{'includeReference'} > 0  && $object->getReferenceSeq() ) {
+    my $refSeq = $object->getReferenceSeq();
+    $malignLen = length( $refSeq ) if ( length( $refSeq ) > $malignLen );
+    if ( $parameters{'seqOnly'} ) {
+      $refSeq =~ s/-//g;
+    }
+    print $OUT ">" . $object->getReferenceName() . " - reference sequence\n";
+    if ( $parameters{'includeFlanking'} ) {
+      print $OUT "-"x($parameters{'includeFlanking'}) . $refSeq . "-"x($parameters{'includeFlanking'}-1) . "\n";
+    }else {
+      print $OUT "$refSeq\n";
+    }
+    $malignLen = length( $refSeq );
   }
 
   for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
@@ -3617,9 +3650,31 @@ sub toFASTA {
     else {
       my $start = $object->getAlignedStart( $i );
       my $end   = $object->getAlignedEnd( $i );
-      $seq = "-" x ( $start ) . $seq . "-" x ( $malignLen - $end );
+      $seq = "-" x ( $start ) . $seq . "-" x ( $malignLen - $end - 1 );
     }
-    print $OUT ">" . $object->getAlignedName( $i ) . "\n";
+    if ( $parameters{'includeFlanking'} ) {
+      # TODO sanity check flanking lengths are consistent
+      my $lf = $object->getLeftFlankingSequence($i);
+#print "lf before: $lf";
+      if ( length($lf) > $parameters{'includeFlanking'} ) {
+        $lf = substr($lf, length($lf) - $parameters{'includeFlanking'} );
+      }else {
+        $lf = "-"x($parameters{'includeFlanking'} - length($lf)) . $lf;
+      }
+#print " after: $lf\n";
+      my $rf = $object->getRightFlankingSequence($i);
+#print "rf before: $rf";
+      if ( length($rf) > $parameters{'includeFlanking'} ) {
+        $rf = substr($rf, 0, $parameters{'includeFlanking'});
+      }else {
+        $rf = $rf . "-"x($parameters{'includeFlanking'} - length($rf));
+      }
+#print " after: $rf\n";
+      $seq = $lf . $seq . $rf;
+      print $OUT ">" . $object->getAlignedName( $i ) . " - including (up to) " . $parameters{'includeFlanking'} . "bp of flanking sequence\n";
+    }else {
+      print $OUT ">" . $object->getAlignedName( $i ) . "\n";
+    }
     print $OUT "$seq\n";
   }
   close $OUT;
