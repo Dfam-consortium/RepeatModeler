@@ -399,9 +399,15 @@ else {
 my $title = "RepeatModeler Version $version";
 print "$title\n";
 print "=" x length( $title ) . "\n";
-print "Search Engine = $engine\n";
+print "Search Engine = $engine " . $searchEngineN->getVersion() . "\n";
+print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_PRGM") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . "\n";
 if ( $options{'LTRStruct'} ) {
-  print "LTR Structural Analysis: Enabled\n";
+  print "LTR Structural Analysis: Enabled ( " . 
+      "GenomeTools " . RepModelConfig::getDependencyVersion("GENOMETOOLS_DIR") . ", " .
+      "LTR_Retriever " . RepModelConfig::getDependencyVersion("LTR_RETRIEVER_DIR") . ",\n" .
+      "                                   Ninja " . RepModelConfig::getDependencyVersion("NINJA_DIR") . ", " .
+      "MAFFT " . RepModelConfig::getDependencyVersion("MAFFT_DIR") . ",\n" .
+      "                                   CD-HIT " . RepModelConfig::getDependencyVersion("CDHIT_DIR") . " )\n";
 }
 else {
   print "LTR Structural Analysis: Disabled [use -LTRStruct to enable]\n";
@@ -848,6 +854,7 @@ while ( 1 ) {
     print "   - Num Contigs Represented = "
         . scalar( keys( %sampleContigs ) ) . "\n";
     print "   - Sequence extraction : " . elapsedTime( 3 ) . "\n";
+    elapsedTime("repeatscout");
     print " -- Running RepeatScout on the sequences...\n";
     &runRepeatScout(
                      workDir     => $roundTmpDir,
@@ -857,6 +864,7 @@ while ( 1 ) {
                      fastaFile   => $sampleFastaFile,
                      seqSize     => $actualGenomeSampleSize
     );
+    print "   - RepeatScout: " . elapsedTime( "repeatscout" ) . "\n";
 
     if ( -s "$sampleFastaFile.rscons.filtered" ) {
       system( "cp $sampleFastaFile.rscons.filtered $roundConsensiFile" );
@@ -871,7 +879,7 @@ while ( 1 ) {
       else {
 
         # MAKEBLASTDB the database
-        system(   "$NCBIBLASTDB_PRGM -out $sampleFastaFile "
+        system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $sampleFastaFile "
                 . "-parse_seqids -dbtype nucl -in $sampleFastaFile >> "
                 . "$roundTmpDir/makeblastdb.log 2>&1" );
       }
@@ -1055,7 +1063,7 @@ while ( 1 ) {
   else {
 
     # MAKEBLASTDB the database
-    system(   "$NCBIBLASTDB_PRGM -out $sampleFastaFile.masked "
+    system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $sampleFastaFile.masked "
             . "-parse_seqids -dbtype nucl -in $sampleFastaFile.masked >> "
             . "$roundTmpDir/makeblastdb.log 2>&1" );
   }
@@ -2214,7 +2222,6 @@ sub buildRSConsensi {
   my %localizedToSeqNames = ();
 
   ## Get Sequences
-  print "   - Collecting repeat instances...\n";
 
   my $searchEngineN;
   if ( $engine eq "abblast" ) {
@@ -2237,9 +2244,6 @@ sub buildRSConsensi {
   $searchEngineN->setDelGapExt( -5 );
   $searchEngineN->setMinMatch( 7 );
   $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
-  $searchEngineN->setSubject( "$workDir/sampleDB-$round.fa" );
-  $searchEngineN->setQuery( "$workDir/consensi.fa" );
-
   if ( $engine eq "abblast" ) {
     $searchEngineN->setOverrideParameters(
                       "$workDir/sampleDB-$round.fa $workDir/consensi.fa "
@@ -2249,6 +2253,90 @@ sub buildRSConsensi {
 
     #print "WUBlastParams: " . $searchEngineN->getParameters() . "\n";
   }
+
+  # TODO: Large Satellite Detection
+  #    1. Build a database from consensi.fa
+  elapsedTime( "satellite_filtering" );
+  if ( $engine eq "abblast" ) {
+    # XDFORMAT the conseni.fa
+    system(   "$XDFORMAT_PRGM -n -I "
+                . "$workDir/consensi.fa >> "
+                . "$workDir/xdformat.log 2>&1" );
+  }
+  else {
+    # MAKEBLASTDB the consensi.fa
+    system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $workDir/consensi.fa "
+                . "-parse_seqids -dbtype nucl -in $workDir/consensi.fa >> "
+                . "$workDir/makeblastdb.log 2>&1" );
+  }
+  #    2. Search consensi.fa against itself
+  $searchEngineN->setSubject( "$workDir/consensi.fa" );
+  $searchEngineN->setQuery( "$workDir/consensi.fa" );
+  #    3. For each family which has a off diagonal match to itself
+  #       calculate the coverage of the off diagonal hits
+  #       Filter out families which are larger than 3kb, 
+  #       are covered by >90% by off diagonal hits.
+  my %satelliteSeqIDs = ();
+  my ( $status, $resultCollection ) = $searchEngineN->search();
+  if ( $status ) {
+    print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
+  }
+  else {
+    print "   - Large Satellite Filtering.. ";
+    my %coverage = ();
+    for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
+      my $resultRef = $resultCollection->get( $k );
+      # Only consider families against themselves and off diagonal hits
+      next if ( $resultRef->getQueryName() ne $resultRef->getSubjName() ||
+                ( $resultRef->getQueryStart() == 1 && $resultRef->getQueryRemaining() == 0 &&
+                  $resultRef->getSubjStart() == 1 && $resultRef->getSubjRemaining() == 0 ) );
+      my $ID = $resultRef->getQueryName();
+      my $familyLen = $resultRef->getQueryEnd() + $resultRef->getQueryRemaining();
+      # Do not want to screen out computationally easy satellites
+      next if ( $familyLen < 3000 );
+      $coverage{$ID} += $resultRef->getQueryEnd() - $resultRef->getQueryStart() + 1;
+      if ( $coverage{$ID} > 0.9 * $familyLen ) {
+        $satelliteSeqIDs{$ID} = 1;
+      }
+    }
+    if ( keys %satelliteSeqIDs ) {
+      if ( $DEBUG ) {
+        system("cp $workDir/consensi.fa $workDir/consensi.rsorig.fa");
+      }
+      my $consDB = FastaDB->new( fileName => "$workDir/consensi.fa",
+                                 openMode => SeqDBI::ReadOnly );
+      open OUTC, ">$workDir/consensi-filtered.fa" or 
+         die "Could not open $workDir/consensi-filtered.fa for writing!\n";
+
+      foreach my $seqID ( $consDB->getIDs() ) {
+        unless ( exists $satelliteSeqIDs{ $seqID } ) {
+          my $seq  = $consDB->getSequence( $seqID );
+          my $desc = $consDB->getDescription( $seqID );
+          print OUTC ">$seqID\n";
+          $seq =~ s/(.{50})/$1\n/g;
+          print OUTC "$seq\n";
+        }elsif ( $DEBUG ) {
+          print "INFO: Filtering out putative satellite $seqID ( coverage = $coverage{$seqID} bp ).\n";
+        }
+      }
+      close OUTC;
+      $consDB = undef;
+
+      system("mv $workDir/consensi-filtered.fa $workDir/consensi.fa");
+    }
+  }
+  # Cleanup uncessary DB files
+  unless ( $DEBUG ) {
+    foreach my $suffix ( "nhr", "nin", "nnd", "nni", "nog", "nsq" ) {
+      unlink("$workDir/consensi.fa.$suffix") if ( -e "$workDir/consensi.fa.$suffix" );
+    }
+  }
+  print ": " . scalar(keys(%satelliteSeqIDs)) . " found in " . elapsedTime("satellite_filtering") . "\n";
+
+  # Refine remaining consensi
+  print "   - Collecting repeat instances...\n";
+  $searchEngineN->setSubject( "$workDir/sampleDB-$round.fa" );
+  $searchEngineN->setQuery( "$workDir/consensi.fa" );
 
   my ( $status, $resultCollection ) = $searchEngineN->search();
   if ( $status ) {

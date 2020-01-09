@@ -171,7 +171,7 @@ sub ncbiMaskDatabase {
     $dbName = "tmpMaskDB-$index";
   }
   system(
-"$makeDBPath -out $workingDir/$dbName -parse_seqids -dbtype nucl -in $fastaFile > /dev/null 2>&1"
+"$makeDBPath -blastdb_version 4 -out $workingDir/$dbName -parse_seqids -dbtype nucl -in $fastaFile > /dev/null 2>&1"
   );
   my $tmpDBStats  = `$dbCMDPath -db $workingDir/$dbName -info 2>&1`;
   my $dbNumSeqs   = 0;

@@ -383,7 +383,7 @@ sub buildConsensus {
 
     # MAKEBLASTDB the database
     #. "-parse_seqids -dbtype nucl -in $pathToFastaFile >> "
-    system(   "$NCBIBLASTDB_PRGM -out $pathToFastaFile "
+    system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $pathToFastaFile "
             . "-dbtype nucl -in $pathToFastaFile >> "
             . "$wrkDir/makeblastdb.log 2>&1" );
     $srchEngAllVsAll->setMatrix( "$matrixDir/ncbi/nt/comparison.matrix" );
@@ -572,7 +572,7 @@ sub buildConsensus {
 
           # MAKEBLASTDB the database
           #. "-parse_seqids -dbtype nucl -in "
-          system(   "$NCBIBLASTDB_PRGM -out "
+          system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out "
                   . "$wrkDir/$consName-cons-$round.fa "
                   . "-dbtype nucl -in "
                   . "$wrkDir/$consName-cons-$round.fa >> "
