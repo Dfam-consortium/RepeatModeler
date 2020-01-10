@@ -32,7 +32,7 @@ LTRPipeline - Run a structural LTR finder on the genome and polish the results
 
 =head1 SYNOPSIS
 
-  LTRPipeline [-version]
+  LTRPipeline [-version] [-pa #] <input_sequence.fa>
 
 =head1 DESCRIPTION
 
