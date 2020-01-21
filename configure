@@ -257,14 +257,7 @@ my $repMaskLocation = $config->{'REPEATMASKER_DIR'}->{'value'};
 if ( !$options{'recon_dir'} ) {
   RepModelConfig::promptForParam( 'RECON_DIR' );
 }
-if ( $options{'repeatscout_dir'} ) {
-  my $valid = RepModelConfig::validateParam( 'RSCOUT_DIR', $options{'repeatscout_dir'} );
-  if ( $valid ) {
-    $config->{'RSCOUT_DIR'}->{'value'} = $options{'repeatscout_dir'};
-  }else {
-    die "\nThe setting for -repeatscout_dir (\"$options{'repeatscout_dir'}\") is incorrect.\n\n";
-  }
-}elsif ( !$options{'rscout_dir'} ) {
+if ( !$options{'rscout_dir'} ) {
   RepModelConfig::promptForParam( 'RSCOUT_DIR' );
 }
 if ( !$options{'dustmasker_prgm'} ) {
