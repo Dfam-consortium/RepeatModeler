@@ -460,6 +460,11 @@ if ( @contigSizes > 100 ) {
 
   foreach my $val ( @contigSizes ) {
     my $bin = int( ( $val - $minVal ) / $binSize );
+    # JR 20200121: the largest contig will normally end up in
+    # "one-past-the-last" bin by the above formula
+    if ($bin >= $numBins) {
+      $bin = $numBins - 1;
+    }
     $bins[ $bin ]++;
     $maxHistBarCnt = $bins[ $bin ] if ( $bins[ $bin ] > $maxHistBarCnt );
   }
