@@ -141,7 +141,7 @@ BEGIN {
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/usr/local/RepeatMasker'
+                                  'value' => '/home/rhubley/projects/RepeatMasker'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',

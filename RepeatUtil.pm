@@ -210,6 +210,7 @@ sub ncbiMaskDatabase {
     open $INST, ">$parameters{'instSeqFile'}";
   }
 
+
   # Check to make sure additional parameters haven't already
   # been set
   my $additionalParams = "";

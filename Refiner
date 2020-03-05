@@ -397,6 +397,7 @@ sub buildConsensus {
   $srchEngAllVsAll->setInsGapExt( -5 );
   $srchEngAllVsAll->setDelGapExt( -5 );
   $srchEngAllVsAll->setMinMatch( 7 );
+  #$srchEngAllVsAll->setBandwidth( -50 );
   $srchEngAllVsAll->setTempDir( dirname( $pathToFastaFile ) );
   $srchEngAllVsAll->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
 
@@ -421,6 +422,8 @@ sub buildConsensus {
 
   my $round = "1";
   my ( $runStat, $familyCollection ) = $srchEngAllVsAll->search();
+
+#$familyCollection->write( "foo", SearchResult::AlignWithQuerySeq);
 
   ## Cleanup after run
   if ( $engine eq "abblast" ) {
