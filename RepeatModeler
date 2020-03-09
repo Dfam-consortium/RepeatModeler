@@ -170,6 +170,7 @@ my @getopt_args = (
                     '-pa=i',
                     '-srand=i',
                     '-rsSampleSize=s',
+                    '-numAddlRounds=s',
                     '-genomeSampleSizeMax=s',
                     '-LTRStruct',
                     '-LTRMaxSeqLen=i',
@@ -265,6 +266,11 @@ if ( $options{'LTRStruct'} ) {
 "\n  LTRPipeline dependency missing or incorrectly set for $param!\n   Rerun ./configure or check your command line to ensure that RepeatModeler\n  has access to and the correct version of this dependency.\n\n";
     }
   }
+  unless ( eval "require threads;" ) 
+  {
+    die "LTRRetriever used in the LTRPipeline depends on perl threads.  This version of\n".
+        "perl does not appear to be compiled with the thread option.\n";
+  }
 }
 
 if ( $options{'version'} ) {
@@ -335,6 +341,10 @@ my $genomeSampleSizeMax        = 243000000;    # The max sample size for
                                                #   RECON analysis
 my $genomeSampleSizeMultiplier = 3;            # The multiplier for sample size
                                                #   between rounds
+my $numAdditionalRounds = 0;                   # Number of additional rounds at
+                                               #   genomeSampleSizeMax to run.
+                                               
+$numAdditionalRounds = $options{'numAddlRounds'} if ( $options{'numAddlRounds'} );
 
 #
 # Override the RepeatScout sample size
@@ -370,6 +380,7 @@ if ( $options{'onlyIns'} ) {
   $reconSampleSizeStart       = 200000;
   $genomeSampleSizeMultiplier = 4;
   $recommendedFamilySize      = 50;
+  $numAdditionalRounds = 0;
 }
 
 #
@@ -735,7 +746,8 @@ print "      be terminated early.\n";
 #    Sample from the sequence database starting from $reconSampleSizeStart
 #  and increasing by a factor of $genomeSampleSizeMultiplier until either
 #  the sequence database is fully covered or we complete one round with
-#  the sample size at $genomeSampleSizeMax
+#  the sample size at $genomeSampleSizeMax.  NOTE: If -numAddlRounds is
+#  used, then additional rounds at $genomeSampleSizeMax will be run.
 #
 elapsedTime( "runtime" );    # Setup the timers
 
@@ -765,7 +777,7 @@ while ( 1 ) {
        || (
             !$options{'onlyIns'}
             && (    $totSampledBP >= $dbSize
-                 || $sampleSize >= $genomeSampleSizeMax
+                 || ( $sampleSize >= $genomeSampleSizeMax && $numAdditionalRounds <= 0 )
                  || $seqRemaining < $fragmentSize )
        )
       )
@@ -773,16 +785,13 @@ while ( 1 ) {
 
     # this round will be last
     $inLastRound = 1;
-
- #print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
- #$familyCutoff = $minFamilySize;
+    #print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
+    #$familyCutoff = $minFamilySize;
     if ( $options{'onlyIns'} ) {
-      print
-"   - Last round, lowering family cutoff to $insertMinFamilySize elements.\n";
+      print "   - Last round, lowering family cutoff to $insertMinFamilySize elements.\n";
       $familyCutoff = $insertMinFamilySize;
     }
   }
-
   # Setup file locations
   my $roundTmpDir       = "$tmpDir/round-$round";
   my $instFile          = "$tmpDir/instdb.txt";
@@ -1587,11 +1596,15 @@ while ( 1 ) {
   }
   else {
     if (    $totSampledBP >= $dbSize
-         || $sampleSize >= $genomeSampleSizeMax
+         || ( $sampleSize >= $genomeSampleSizeMax && $numAdditionalRounds <= 0 )
          || $seqRemaining < $fragmentSize )
     {
       last;
     }
+  }
+  if ( $numAdditionalRounds > 0 && $sampleSize >= $genomeSampleSizeMax )
+  {
+    $numAdditionalRounds--;
   }
 
   # This is a followup round of RECON, scale sampleSize accordingly
