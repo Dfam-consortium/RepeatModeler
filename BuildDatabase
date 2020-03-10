@@ -325,10 +325,9 @@ $file = $seqFilename;
 if ( $engine eq "rmblast" ) {
   my $cmd = "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1";
   print "Running: $cmd\n" if ( $DEBUG );
-  $results = `$cmd`;
-  if ( !-s "$options{'name'}.nsq" ) {
-    print
-"The makeblastdb program did not generate the\nfile $options{'name'}.nsq.  Please check your input file(s) for potential formating errors.\n$NCBIBLASTDB_PRGM returned: $results\n";
+  $results = `$cmd; echo \$?`;
+  if ( $results !~ m/0\n$/ ) {
+    print "The makeblastdb program did not generate the\nfile $options{'name'}.nsq.  Please check your input file(s) for potential formating errors.\n$NCBIBLASTDB_PRGM returned: $results\n";
     print "The command used was: $cmd\n";
     die;
   }
