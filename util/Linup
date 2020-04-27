@@ -487,6 +487,7 @@ if ( $options{'stockholm'} )
   );
   print "Avg Kimura Div: $avgDiv\n";
   $cons =~ s/\-//g;
+  print "Cons length: " . length($cons) . "\n";
   if ( $options{'name'} ) {
     print "\n\n>" . $options{'name'} . "\n$cons\n\n";
   }else {
@@ -494,7 +495,7 @@ if ( $options{'stockholm'} )
   }
 
 }
-print stderr "Avg Kimura Div: $avgDiv\n";
+#print stderr "Avg Kimura Div: $avgDiv\n";
 
 $mAlign->serializeOUT( "out.malign" );
 

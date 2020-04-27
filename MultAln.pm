@@ -3511,6 +3511,8 @@ sub toSTK {
   #       RF line. 8/21/2015
   $seq =~ s/-/./g;
   if ( $parameters{'nuclRF'} ) {
+    # 3/27/2020 - TODO: Consider why gaps like this exist in the first place.
+    $seq =~ s/ /N/g;
     $seq = uc( $seq );
   }
   else {

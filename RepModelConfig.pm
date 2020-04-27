@@ -157,7 +157,7 @@ BEGIN {
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast/bin'
+                             'value' => '/usr/local/rmblast-2.10.0/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',

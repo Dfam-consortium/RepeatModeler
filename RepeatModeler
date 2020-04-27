@@ -136,6 +136,9 @@ use SeqDBI;
 use SimpleBatcher;
 use FastaDB;
 
+
+use Devel::Size qw(size total_size);
+
 #
 # Global Class Variables/Constants
 #
@@ -426,22 +429,26 @@ else {
 print "Random Number Seed: $seed\n";
 print "Database = $genomeDB ";
 
-my %dbSeqs;    # Hash containing the names of all the DB seq IDs and their size
-my @dbSeqIDArray = ();
+#my %dbSeqs;    # Hash containing the names of all the DB seq IDs and their size
+#my @dbSeqIDArray = ();
 my $dbSize       = 0;
 my @contigSizes  = ();
 while ( $dbIndex =~ />?(\S+)\s+(\d+)\s*$/mg ) {
-  print "." if ( ( $#dbSeqIDArray % 10000 ) == 0 );
-  $dbSeqs{$1} = $2;
+  #print "." if ( ( $#dbSeqIDArray % 10000 ) == 0 );
+  print "." if ( ( $#contigSizes % 10000 ) == 0 );
+  #$dbSeqs{$1} = $2;
   push @contigSizes,  $2;
-  push @dbSeqIDArray, $1;
+  #push @dbSeqIDArray, $1;
   $dbSize += $2;
 }
 undef $dbIndex;
 print "\n";
+#die "Database $genomeDB does not contain any sequences!\n"
+#    if ( keys( %dbSeqs ) == 0 );
 die "Database $genomeDB does not contain any sequences!\n"
-    if ( keys( %dbSeqs ) == 0 );
-print "  - Sequences = " . ( $#dbSeqIDArray + 1 ) . "\n";
+    if ( scalar(@contigSizes) < 1 );
+#print "  - Sequences = " . ( $#dbSeqIDArray + 1 ) . "\n";
+print "  - Sequences = " . ( $#contigSizes + 1 ) . "\n";
 print "  - Bases = $dbSize\n";
 
 if ( @contigSizes > 100 ) {
@@ -530,10 +537,16 @@ else {
   );
 }
 
+##RMH::TEST
+print "dbSourceList size = " . total_size($dbSourceList) . "\n";
+
 #
 # Randomize List
 #
 &fisherYatesShuffle( $dbSourceList );
+
+##RMH::TEST
+print "dbSourceList size now 1 = " . total_size($dbSourceList) . "\n";
 
 #
 # Setup initial parameters
@@ -758,6 +771,8 @@ my $numModels;
 my $inLastRound = 0;
 while ( 1 ) {
 
+#RMH::Test
+print "dbSourceList size now 2 = " . total_size($dbSourceList) . "\n";
   # Reset the timers
   elapsedTime( 1 );
   elapsedTime( 2 );
@@ -847,6 +862,9 @@ while ( 1 ) {
     }
   }
 
+#RMH::Test
+print "usedBlockIndex = " . total_size($usedBlockIndex) . "\n";
+
   # Tabulate non-Ambiguous bases
   my $sampleDB = FastaDB->new( fileName => $sampleFastaFile,
                                openMode => SeqDBI::ReadOnly );
@@ -861,6 +879,7 @@ while ( 1 ) {
     $actualGenomeSampleSize += $sampleDB->getSeqLength( $seqID );
   }
   undef $sampleDB;
+print "sampleContigs = " . total_size(\%sampleContigs) . "\n";
 
   if ( $round == 1 ) {
     print "   - Final Sample Size = $actualGenomeSampleSize "
@@ -898,7 +917,7 @@ while ( 1 ) {
                 . "$roundTmpDir/makeblastdb.log 2>&1" );
       }
 
-      ( $families, $numModels ) = &buildRSConsensi(
+      ( $numModels ) = &buildRSConsensi(
                                  workDir          => $roundTmpDir,
                                  consensiFile     => $consensiFile,
                                  combFamiliesFile => $combFamiliesFile,
@@ -908,6 +927,9 @@ while ( 1 ) {
                                  numContigs => scalar( keys( %sampleContigs ) ),
                                  usedBlockIndex => $usedBlockIndex
       );
+      # We don't need to keep the large families datastructure around
+      # at this point
+      undef $families;
     }
     else {
       system( "touch $sampleFastaFile.rscons.filtered" );
@@ -922,6 +944,9 @@ while ( 1 ) {
 
     next;
   }
+print "families size = " . total_size($families) . "\n";
+print "engine size = " . total_size($engine) . "\n";
+print "usedBlockIndex= " . total_size($usedBlockIndex) . "\n";
 
   print "   - Sequence extraction : " . elapsedTime( 3 ) . "\n";
 
@@ -1532,13 +1557,16 @@ while ( 1 ) {
 #  }
 #}
       my $tmpNumModels = 0;
-      ( $families, $tmpNumModels ) = &buildReconConsensi(
+      ( $tmpNumModels ) = &buildReconConsensi(
                                           workDir          => $roundTmpDir,
                                           consensiFile     => $consensiFile,
                                           combFamiliesFile => $combFamiliesFile,
                                           round            => $round,
                                           familyCutoff     => $familyCutoff
       );
+      # We don't need to keep the large families datastructure around
+      # at this point
+      undef $families;
       $numModels += $tmpNumModels;
     }
     else {
@@ -2344,7 +2372,7 @@ sub buildRSConsensi {
         }
       }
       close OUTC;
-      $consDB = undef;
+      undef $consDB;
 
       system("mv $workDir/consensi-filtered.fa $workDir/consensi.fa");
     }
@@ -2625,7 +2653,9 @@ sub buildRSConsensi {
 
   }
   undef $searchEngineN;
-  return \%families, $numModels;
+  #return \%families, $numModels;
+  undef %families;
+  return $numModels;
 
 }
 
@@ -2982,7 +3012,9 @@ sub buildReconConsensi {
   close OUTS;
   print "Family Refinement: " . elapsedTime( "family_refinement" ) . "\n";
 
-  return \%families, $numModels;
+  #return \%families, $numModels;
+  undef %families;
+  return $numModels;
 }
 
 #
