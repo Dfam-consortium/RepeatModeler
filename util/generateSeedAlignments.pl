@@ -38,11 +38,18 @@ TODO:
    - Store the divergence of the family as determined from these whole
      genome runs.
    - Make sure the stockholm contains the minimal fields for import into Dfam
+ 
+
+Looks like this simply takes the highest scores first
+    perl $SOFTWARE/extractAlignTEs.pl --genome $SUBNAME".masked.fa" --blast $THISGENOME/blastfiles/$SUBNAME"_rnd1_blastn.out" --consTEs $SUBNAME"_rnd1_young_query.fa"
+ --seqBuffer $SEQBUFFER --seqNum $SEQNUMBER --align
+
 
 =head1 SYNOPSIS
 
 generateSeedAlignments [-element <id>] [-includeRef]
                        [-outSTKFile <*.stk>] [-taxon <ncbi_taxonomy_name]
+                       [-highestScoringHits #]
                        [-assemblyID <id>] -assembly <*.2bit>
                        <RepeatMasker *.align File>
 
@@ -59,6 +66,11 @@ Only analyze one family from the provided RepeatMasker alignment file.
 =item -includeRef
 
 blah blah blah
+
+=item -highestScoringHits #
+
+Only consider the score when selecting the elements.  Pick the top most <#> hits
+after sorting by score.  
 
 =back
 
@@ -121,9 +133,9 @@ my @getopt_args = (
                     '-element=s',
                     '-assembly=s',
                     '-taxon=s',
-                    '-update',
                     '-includeRef',
                     '-outSTKFile=s',
+                    '-highestScoringHits=s',
                     '-includeRefWithGaps',
                     '-excludeExistingDfam=s'
 );
@@ -443,8 +455,6 @@ my $excludeShort       = 1;
 my $targetSampleCount  = 500;
 my $minDepth           = 10;
 my $fastaLineLen       = 50;
-my $repbaseFile        = "/u1/local/repeatDB/util/reconciliation/data/RepBase20.07/RBCombined.embl";
-my $repeatmaskerFile   = "/usr/local/RepeatMasker-4.0.6/Libraries/RepeatMaskerLib.embl";
 my $consLen              = 0;
 my $totalAttemptedBuilds = 0;
 my $assemblyName = "";
@@ -466,39 +476,54 @@ foreach my $id ( keys( %alignByID ) )
   elapsedTime(1);
   elapsedTime(3);
   
-  my @sortedByDiv = sort { $a->getPctKimuraDiverge() <=> $b->getPctKimuraDiverge() } @{$alignByID{$id}};
-  my @outliers = ();
-  my $divergenceFilter = 100;
+  my @data = ();
+  my $outlierStartIdx;
   my $medianDiv;
-  if ( scalar(@sortedByDiv) % 2 )
-  {
-    # Odd
-    $medianDiv = $sortedByDiv[int(scalar(@sortedByDiv)/2)]->getPctKimuraDiverge();
+  if ( $options{'highestScoringHits'} ) {
+    # Simplified selection to match David's extract_align.
+    @data = sort { $a->getScore() <=> $b->getScore() } @{$alignByID{$id}};
+    $targetSampleCount = $options{'highestScoringHits'};
+    $outlierStartIdx = scalar(@data);
+    $medianDiv = "--";
   }else {
-    # Even
-    $medianDiv = ($sortedByDiv[int(scalar(@sortedByDiv)/2)-1]->getPctKimuraDiverge() +
-               $sortedByDiv[int(scalar(@sortedByDiv)/2)]->getPctKimuraDiverge()
-              ) / 2;
-  }
-  my $quartileDiv = $sortedByDiv[int(scalar(@sortedByDiv)/4)*3]->getPctKimuraDiverge();
-  print "  Median Divergence = $medianDiv\n";
-  print "  3rd Quartile Divergence = $quartileDiv\n";
-  #$divergenceFilter =
-  #    ( $medianDiv - $quartileDiv ) + $medianDiv;
-  @outliers = splice(@sortedByDiv, int(scalar(@sortedByDiv)/4)*3);
-  # Re-sort by length
-  @outliers = sort { ($b->getSubjEnd()-$b->getSubjStart()) <=> ($a->getSubjEnd()-$a->getSubjStart()) } @outliers;
-  print "  " . scalar(@outliers) . " outliers were moved to the end of the priority list\n";
+    # Selection based on the following priority:
+    #     Long elements
+    #     Elements within first 3 quartiles of kimura divergence
+    #     Elements that cover a low-sample-depth region
+ 
+    my @sortedByDiv = sort { $a->getPctKimuraDiverge() <=> $b->getPctKimuraDiverge() } @{$alignByID{$id}};
+    my @outliers = ();
+    my $divergenceFilter = 100;
+    if ( scalar(@sortedByDiv) % 2 )
+    {
+      # Odd
+      $medianDiv = $sortedByDiv[int(scalar(@sortedByDiv)/2)]->getPctKimuraDiverge();
+    }else {
+      # Even
+      $medianDiv = ($sortedByDiv[int(scalar(@sortedByDiv)/2)-1]->getPctKimuraDiverge() +
+                 $sortedByDiv[int(scalar(@sortedByDiv)/2)]->getPctKimuraDiverge()
+                ) / 2;
+    }
+    my $quartileDiv = $sortedByDiv[int(scalar(@sortedByDiv)/4)*3]->getPctKimuraDiverge();
+    print "  Median Divergence = $medianDiv\n";
+    print "  3rd Quartile Divergence = $quartileDiv\n";
+    #$divergenceFilter =
+    #    ( $medianDiv - $quartileDiv ) + $medianDiv;
+    @outliers = splice(@sortedByDiv, int(scalar(@sortedByDiv)/4)*3);
+    # Re-sort by length
+    @outliers = sort { ($b->getSubjEnd()-$b->getSubjStart()) <=> ($a->getSubjEnd()-$a->getSubjStart()) } @outliers;
+    print "  " . scalar(@outliers) . " outliers were moved to the end of the priority list\n";
 
-  # Sort by length, longest first
-  my @data = sort { ($b->getSubjEnd()-$b->getSubjStart()) <=> ($a->getSubjEnd()-$a->getSubjStart()) } @sortedByDiv;
-  my $outlierStartIdx = scalar(@data);
+    # Sort by length, longest first
+    @data = sort { ($b->getSubjEnd()-$b->getSubjStart()) <=> ($a->getSubjEnd()-$a->getSubjStart()) } @sortedByDiv;
+    $outlierStartIdx = scalar(@data);
     
-  # Precedence:
-  #     Long elements
-  #     Elements within first 3 quartiles of kimura divergence
-  #     Elements that cover a low-sample-depth region
-  push @data, @outliers;
+    # Precedence:
+    #     Long elements
+    #     Elements within first 3 quartiles of kimura divergence
+    #     Elements that cover a low-sample-depth region
+    push @data, @outliers;
+  }
 
   my $idx         = 0;
   my $sampleCount = 0;
@@ -1448,7 +1473,7 @@ sub RMClassToDfam {
     'sine/alu' =>
 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter;No-core;L1-dependent;Alu',
     'sine/b2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter;No-core;L1-dependent;B2',
+'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No-core;L1-dependent;B2',
     'sine/7sl' =>
 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter',
     'sine/trna-5s' =>
@@ -1593,7 +1618,8 @@ sub RMClassToDfam {
   if ( exists $rmToDfamClass{$rmClass} ){
     return $rmToDfamClass{$rmClass};
   }else {
-    return "Unknown";
+    warn "Could not identify class \"$rmClass\" -- labeling as \"Unknown\"\n";
+    return "Interspersed_Repeat;Unknown";
   }
 }
 

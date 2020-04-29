@@ -1692,6 +1692,9 @@ sub _alignFromSeedAlignment {
   }
   my $consensus = $object->consensus();
   $object->setReferenceSeq( $consensus );
+  if ( $seedAlignment->getId() ne "" ){
+    $object->setReferenceName($seedAlignment->getId());
+  }
 }
 
 ##---------------------------------------------------------------------##

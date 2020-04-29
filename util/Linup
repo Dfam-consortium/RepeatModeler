@@ -453,6 +453,14 @@ if ( $options{'stockholm'} )
     $mAlign->setReferenceName( $options{'name'} );
   }
   $mAlign->toSTK( includeTemplate => 1, nuclRF => 1 );
+
+  # TODO : streamline STK generation.  Perhaps have
+  #        MultAln produce a "SeedAlignment" object.
+  #        Then this object can be manipulated and
+  #        experted as STK.
+  #my $seedAlign = SeedAlignment->new();
+  #$seedAlign->read_stockholm( $IN );
+ 
 } elsif ( $options{'msf'} )
 {
   $mAlign->toMSF( includeReference => 1 );
@@ -465,8 +473,10 @@ if ( $options{'stockholm'} )
   }
   if ( $options{'name'} ) {
     print ">" . $options{'name'} . "\n$cons\n\n";
-  }else {
+  }elsif ( $mAlign->getReferenceName() ne "" ) {
     print ">" . $mAlign->getReferenceName() . "\n$cons\n\n";
+  }else {
+    print ">consensus\n";
   }
 }elsif ( $options{'msa'} ) {
   if ( exists $options{'includeFlanking'} && exists $options{'genome'} && $options{'includeFlanking'} > 0 ) 
