@@ -537,16 +537,11 @@ else {
   );
 }
 
-##RMH::TEST
-print "dbSourceList size = " . total_size($dbSourceList) . "\n";
 
 #
 # Randomize List
 #
 &fisherYatesShuffle( $dbSourceList );
-
-##RMH::TEST
-print "dbSourceList size now 1 = " . total_size($dbSourceList) . "\n";
 
 #
 # Setup initial parameters
@@ -771,8 +766,6 @@ my $numModels;
 my $inLastRound = 0;
 while ( 1 ) {
 
-#RMH::Test
-print "dbSourceList size now 2 = " . total_size($dbSourceList) . "\n";
   # Reset the timers
   elapsedTime( 1 );
   elapsedTime( 2 );
@@ -861,9 +854,6 @@ print "dbSourceList size now 2 = " . total_size($dbSourceList) . "\n";
 
     }
   }
-
-#RMH::Test
-print "usedBlockIndex = " . total_size($usedBlockIndex) . "\n";
 
   # Tabulate non-Ambiguous bases
   my $sampleDB = FastaDB->new( fileName => $sampleFastaFile,
@@ -2446,7 +2436,7 @@ sub buildRSConsensi {
 
         # Quit if remaining family sizes are below cutoff
         last if ( $#{ $families{$key}->{'elements'} } < $familySizeCutoff );
-
+ 
         $families{$key}->{'roundfam'} = $familyID;
 
         open FAM, ">$workDir/family-$familyID.fa"
@@ -2458,7 +2448,6 @@ sub buildRSConsensi {
         foreach my $ele ( sort { $b->{'score'} <=> $a->{'score'} }
                           @{ $families{$key}->{'elements'} } )
         {
-
           # Number of elements to keep
           last if ( $numElements == 100 );
           print FAM ">" . $ele->{'seqID'} . "\n";

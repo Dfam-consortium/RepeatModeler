@@ -5,6 +5,8 @@
 ##  Author:
 ##      Robert M. Hubley   rhubley@systemsbiology.org
 ##  Description:
+##      Generate seed alignments using RepeatMasker alignments
+##      of a consensus library against an assembly.
 ##
 #******************************************************************************
 #*  This software is provided ``AS IS'' and any express or implied            *
@@ -20,57 +22,109 @@
 #*  if advised of the possibility of such damage.                             *
 #*                                                                            *
 #******************************************************************************
-#
-## ChangeLog
-#
-#    $Log$
-#
-###############################################################################
-#
-#
 
 =head1 NAME
 
-generateSeedAlignments - Generate a seed alignment from RM *.align output
+generateSeedAlignments - Generate a seed alignments from RM *.align output
 
-TODO:
-   - Option to generate a single vs multiple stockholm files
+   TODO:
    - Store the divergence of the family as determined from these whole
      genome runs.
    - Make sure the stockholm contains the minimal fields for import into Dfam
- 
-
-Looks like this simply takes the highest scores first
-    perl $SOFTWARE/extractAlignTEs.pl --genome $SUBNAME".masked.fa" --blast $THISGENOME/blastfiles/$SUBNAME"_rnd1_blastn.out" --consTEs $SUBNAME"_rnd1_young_query.fa"
- --seqBuffer $SEQBUFFER --seqNum $SEQNUMBER --align
-
 
 =head1 SYNOPSIS
 
-generateSeedAlignments [-element <id>] [-includeRef]
-                       [-outSTKFile <*.stk>] [-taxon <ncbi_taxonomy_name]
-                       [-highestScoringHits #]
-                       [-assemblyID <id>] -assembly <*.2bit>
-                       <RepeatMasker *.align File>
+ generateSeedAlignments [-families "<id1> <id2> .."] [-includeRef]
+                        [-outSTKFile <*.stk>] [-taxon <ncbi_taxonomy_name>]
+                        [-assemblyID <id>] [-minAlignedLength #]
+                        [-verbose][-noColor]
+                        -assemblyFile <*.2bit>
+                        <RepeatMasker *.align File>
 
 =head1 DESCRIPTION
+
+Reverse engineer seed alignments using the following pipline:
+
+  o [optional] : Screen initial consensus library for
+    possible short period tandem repeat families.  These
+    sometimes find their way in de-novo produced output.
+
+  o Run RepeatMasker with a consensus library against the 
+    assembly from which the consensus library was derived.
+    (NOTE: use the -a option to produce an alignment file )
+
+  o Run this script using the RepeatMasker alignment output
+    and the assembly in 2bit format to produce seed alignments
+    for each family ( or a particular set ) in Stockholm format.
+
+  o [optional] : If there is a high level of fragmentation in
+    the original consensus library, run an extension algorithm
+    ( RepeatAfterMe/ExtendAlign, or Arian's dothemsimple method ).
+
+  o Refine the consensus...using alignAndCallConsensus.pl.  The
+    sample of instances chosen by this script probably don't match
+    the sample used to generate the original consensus fed to 
+    RepeatMasker.  It is essential to take the sample sequences and
+    iterate a consensus building process to simultaneously refine
+    the alignment and the consensus until they stabilize.
+
+  o Compress the alignment.  We store seed alignments in Dfam using
+    A3M.......document this!
+
+
+TODO:
+
+  - What primarily influences the lack of coverage in families?
+	* Is it that when competed through RepeatMasker some
+          related families steal instances?  If so, why doesn't 
+          RepeatModeler's competition with previous round consensi
+          reduce this?
+  - This script should refine the seed alignment/consensus before
+    creating a stockholm file.
+
 
 The options are:
 
 =over 4
 
-=item -element <id>
+=item -families "<id1> <id2> .."
 
-Only analyze one family from the provided RepeatMasker alignment file.
+Only analyze a specific set of families from the RepeatMasker alignment file.
 
 =item -includeRef
 
-blah blah blah
+Use consensus sequence in the RF line rather than "x"s.
 
-=item -highestScoringHits #
+=item -outSTKFile <*.stk>
 
-Only consider the score when selecting the elements.  Pick the top most <#> hits
-after sorting by score.  
+Concatenate all seed alignments generated into one file.  If not specified the
+default is to create individual Stockholm files for each family.
+
+=item -taxon <ncbi_taxonomy_name>
+
+Default taxon for to set in the Stockholm files for each family.
+
+=item -assemblyID <id>
+
+The identifier to attach to the family instance ranges.  If not specified
+the default is to use the name of the assembly file.
+
+=item -verbose
+
+Include many more details in the log output.
+
+=item -assemblyFile <*.2bit>
+
+A two bit file containing the assembly that was RepeatMasked.
+
+=item -minAlignedLength
+
+The minimum size a repeat instance must be to include in a seed alignment.
+[Default = 30]
+
+=item -noColor
+
+Do not use escape codes to color the coverage depth log output.
 
 =back
 
@@ -110,14 +164,15 @@ use SearchResultCollection;
 use CrossmatchSearchEngine;
 
 #
+# Dependencies *not-yet* configured by RepeatModeler installation
 #
-#
-my $ucscToolsDir = "/home/rh105648e/ucscTools";
+my $ucscToolsDir = "/usr/local/bin";
 
 #
 # Version
 #
-my $Version = "2.0";
+my $Version = "2.1";
+my $DEBUG = 0;
 
 my %TimeBefore = ();
 
@@ -130,14 +185,14 @@ my %TimeBefore = ();
 #
 my @getopt_args = (
                     '-version',                # print out the version and exit
-                    '-element=s',
-                    '-assembly=s',
+                    '-verbose',
+                    '-families=s',
+                    '-assemblyFile=s',
                     '-taxon=s',
                     '-includeRef',
                     '-outSTKFile=s',
-                    '-highestScoringHits=s',
-                    '-includeRefWithGaps',
-                    '-excludeExistingDfam=s'
+                    '-noColor',
+                    '-minAlignedLength=s'
 );
 
 my %options = ();
@@ -160,27 +215,46 @@ if ( $options{'version'} )
   exit;
 }
 
-# Playing around with developing a seed alignment for AluYk3 -- success!
-#my @diagSites = ( [248, "C"], [252, "G"], [263, "A"], [236, "A"], [57, "C"], [86, "T"], [96, "C"] );
+# 
+# Experimental: Require seed alignment instances to have a particular set of diagnostic
+#               sites. E.g for Aluyk3:
+#  my @diagSites = ( [248, "C"], [252, "G"], [263, "A"], [236, "A"], [57, "C"], [86, "T"], [96, "C"] );
 my @diagSites = ();
 
-my $theseElements = "";
-if ( defined $options{'element'} )
+my %onlyTheseFamilies = ();
+if ( defined $options{'families'} )
 {
-  $theseElements = $options{'element'};
+  foreach my $value ( split(/\s+/,$options{'families'} ) ) {
+    $onlyTheseFamilies{$value} = 1;
+  }
+}
+
+if ( ! $options{'assemblyFile'} ) {
+  print "\nMust supply an assemblyFile parameter!\n\n";
+  usage();
 }
 
 if ( $options{'outSTKFile'} ) {
   if ( -e $options{'outSTKFile'} ) {
-    die "Output file already exists $options{'outSTKFile'}.  Please remove and re-run program\n";
+    die "\nOutput file already exists $options{'outSTKFile'}.  Please remove and re-run program\n\n";
   }
 }
 
 my $alignFile = $ARGV[0];
 if ( ! -s $alignFile ) {
-  die "Error: Missing RepeatMasker alignment file!\n";
+  print "\nError: Missing RepeatMasker alignment file!\n\n";
+  usage();
 }
 
+# The minimum sequence length to include in the seed alignment ( in bp ).
+my $minAlignedLength = 30;
+$minAlignedLength = $options{'minAlignedLength'} if ( $options{'minAlignedLength'} );
+
+elapsedTime("full_program");
+
+#
+# Parse the alignment file
+#
 elapsedTime("reading");
 my $resultCollection;
 my $ALIGN;
@@ -196,13 +270,26 @@ if ( $alignFile =~ /.*\.gz$/ ) {
 print "Alignment file read in: " . elapsedTime("reading") . "\n";
 
 
+#
+# Scrub the alignments
+#
+#   * Remove simple/tandem/low_complexity and "short" alignments
+#
+#   * Calculate the consensus size for each family and warn if 
+#     inconsistent in the *.align file.
+#
+#   * Handle some alignment artefacts generated by RepeatMasker's
+#     processing of search-engine data.
+#
+#   * Generate data for later sequence validation.
+#
 elapsedTime("scrubbing");
 my %consSizeByID = ();
 my $numBadRMAlignData = 0;
 my $numShort = 0;
+my $numLongXStretch = 0;
 my %validate = ();
 my %invalid = ();
-#open OUT,">tmpSeqList.bed" or die;
 my ($tfh, $tfilename) = tempfile("tmpGenSeedsXXXXXXXX", DIR=>".",UNLINK => 0);
 for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ ) {
   my $result = $resultCollection->get( $i );
@@ -322,31 +409,39 @@ for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ ) {
   }
 
   # Alignments that have an internal repeat ( long string of Xs )
-  if ( $querySeq =~ /X{10}/ && $options{'assembly'} )
-  {
-    my $xStart     = $result->getQueryStart() - 1;
-    my $twoBitFile = $options{'assembly'};
-    my $chr         = $result->getQueryName();
-    my $newQuerySeq = "";
-    while ( $querySeq =~ /([^X]+)(X{10,}+)/ig )
-    {
-      my $prefixSeq    = $1;
-      my $xSeq         = $2;
-      my $prefixSeqLen = $prefixSeq;
-      $prefixSeqLen =~ s/-//g;
-      $xStart += length( $prefixSeqLen );
-      my $xEnd = $xStart + length( $xSeq );
-      $newQuerySeq .= $prefixSeq;
-      my $replSeq = `$ucscToolsDir/twoBitToFa $twoBitFile:$chr:$xStart-$xEnd stdout`;
-      $xStart += length( $xSeq );
-      $replSeq =~ s/^>[^\n\r]+[\n\r]+//;
-      $replSeq =~ s/[\n\r]//g;
-      $newQuerySeq .= $replSeq;
-    }
-    $newQuerySeq .= substr( $querySeq, length( $newQuerySeq ) );
-    $result->setQueryString( $newQuerySeq );
-    $querySeq = $newQuerySeq;
+  # These are problematic.  If we include the internal repeat it will
+  # get built into the family model as a mosaic.  For now just
+  # report the number of times it occurs.
+  if ( $querySeq =~ /X{10}/ ) {
+    $numLongXStretch++; 
+    $invalid{$i} = 1;
+    next;
   }
+  #if ( $querySeq =~ /X{10}/ && $options{'assembly'} )
+  #{
+  #  my $xStart     = $result->getQueryStart() - 1;
+  #  my $twoBitFile = $options{'assembly'};
+  #  my $chr         = $result->getQueryName();
+  #  my $newQuerySeq = "";
+  #  while ( $querySeq =~ /([^X]+)(X{10,}+)/ig )
+  #  {
+  #    my $prefixSeq    = $1;
+  #    my $xSeq         = $2;
+  #    my $prefixSeqLen = $prefixSeq;
+  #    $prefixSeqLen =~ s/-//g;
+  #    $xStart += length( $prefixSeqLen );
+  #    my $xEnd = $xStart + length( $xSeq );
+  #    $newQuerySeq .= $prefixSeq;
+  #    my $replSeq = `$ucscToolsDir/twoBitToFa $twoBitFile:$chr:$xStart-$xEnd stdout`;
+  #    $xStart += length( $xSeq );
+  #    $replSeq =~ s/^>[^\n\r]+[\n\r]+//;
+  #    $replSeq =~ s/[\n\r]//g;
+  #    $newQuerySeq .= $replSeq;
+  #  }
+  #  $newQuerySeq .= substr( $querySeq, length( $newQuerySeq ) );
+  #  $result->setQueryString( $newQuerySeq );
+  #  $querySeq = $newQuerySeq;
+  #}
   # Alignments that still contain an 'X' character
   if ( $querySeq =~ /X/ )
   {
@@ -360,14 +455,16 @@ for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ ) {
   # Test for minimum length
   my $qs = $querySeq;
   $qs =~ s/-//g;
-  if ( length( $qs ) < 30 )
+  if ( length( $qs ) < $minAlignedLength )
   {
     $numShort++;
     $invalid{$i} = 1;
     next;
   }
 
-  # save twoBitQuery details for sequence validation
+  # Save twoBitQuery details for sequence validation
+  #   Creates a BED file and a hash with the sequence
+  #   range and the query sequence (sans gap characters).
   my $twoBitQueryConcat =
          $result->getQueryName() . ":"
       . ( $result->getQueryStart() - 1 ) . "-"
@@ -384,13 +481,18 @@ for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ ) {
 close $tfh;
 
 print "$numBadRMAlignData bad RepeatMasker alignment data\n";
-print "$numShort sequences were too short ( < 30bp )\n";
+print "$numShort sequences were too short ( < $minAlignedLength bp )\n";
+print "$numLongXStretch sequences with internal masked region (>= 10 Xs in a row).\n";
 print "Scrubbing RM data in: " . elapsedTime("scrubbing") . "\n";
-elapsedTime("validating");
 
+
+#
+# Validate that the sequence coordinates match the given assembly file
+#
+elapsedTime("validating");
 #   -bed=input.bed  Grab sequences specified by input.bed. Will exclude introns.
 #   -bedPos         With -bed, use chrom:start-end as the fasta ID in output.fa.
-open IN,"$ucscToolsDir/twoBitToFa -bedPos -bed=$tfilename $options{'assembly'} stdout|" or die;
+open IN,"$ucscToolsDir/twoBitToFa -bedPos -bed=$tfilename $options{'assemblyFile'} stdout|" or die;
 my $id = "";
 my $seq = "";
 my $idx = 0;
@@ -403,12 +505,15 @@ while ( <IN> ) {
         if ( $validate{$id} ne uc($seq) ) {
           $invalid{$idx} = 1;
           $numFailedSeqValidation++;
-          #print "$id did not validate!\n";
+          if ( $options{'verbose'} ) {
+            print "Invalid sequence $id ( aligned seq length = " . length($validate{$id}) . 
+                  ", assembly seq length = " . length($seq) . "\n";
+          }
         }else {
           # Good mapping
         }
       }else {
-        print "WARN: Could not find $id in validate structure\n";
+        print "ERROR: Could not find $id in validate structure\n";
       }
       $idx++;
     }
@@ -424,18 +529,22 @@ if ( $seq ) {
     if ( $validate{$id} ne uc($seq) ) {
       $invalid{$idx} = 1;
       $numFailedSeqValidation++;
-      #print "$id did not validate!\n";
+      if ( $options{'verbose'} ) {
+        print "Invalid sequence $id ( aligned seq length = " . length($validate{$id}) . 
+              ", assembly seq length = " . length($seq) . "\n";
+      }
     }else {
       # Good mapping
     }
   }else {
-    print "WARN: Could not find $id in validate structure\n";
+    print "ERROR: Could not find $id in validate structure\n";
   }
 }
 close IN;
 unlink($tfilename);
 undef %validate;
 
+# Generate alignment pointers organized by family name
 my %alignByID = ();
 for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ ) {
   unless ( $invalid{$i} ) {
@@ -444,86 +553,76 @@ for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ ) {
     push @{$alignByID{$familyName}}, $result;
   }
 }
+
 print "$numFailedSeqValidation sequences failed validation against the assembly.\n";
 print "Validating sequences in: " . elapsedTime("validating") . "\n";
 undef $resultCollection;
 print "  Total Families:  " . scalar( keys( %alignByID ) ) . " ( excluding simple/low )\n";
 
-
-my $excludeSimple      = 1;
-my $excludeShort       = 1;
 my $targetSampleCount  = 500;
 my $minDepth           = 10;
-my $fastaLineLen       = 50;
 my $consLen              = 0;
 my $totalAttemptedBuilds = 0;
-my $assemblyName = "";
-# TODO: Make this more general.  
-if ( $options{'assembly'} && $options{'assembly'} =~ /(GCA_\d+(\.\d+)?)/ ) {
-  $assemblyName = $1;
-}
-my $DEBUG = 0;
 
+# Set the identifier for the assembly to be used in Stockholm file.  If not provided
+# explicitly use the filename of the assembly (sans path).
+my $assemblyName = $options{'assemblyFile'};
+$assemblyName = $1 if ( $assemblyName =~ /.*\/([^\/\s]+)\s*$/ );
+$assemblyName = $options{'assemblyID'} if ( $options{'assemblyID'} );
 
 my $totalBuilt = 0;
 my $noAlign = 0;
+my $numNoCov = 0;
+my $numPoorCov = 0;
 foreach my $id ( keys( %alignByID ) )
 {
+  # option to only consider specific families
+  next if ( $options{'families'} && ! exists $onlyTheseFamilies{$id} );
+
+  elapsedTime("family_build_time");
   $totalAttemptedBuilds++;
   my $countInGenome = scalar(@{$alignByID{$id}});
   $consLen = $consSizeByID{$id};
   print "Working on $id ( length=$consLen, $countInGenome in assembly )\n";
-  elapsedTime(1);
-  elapsedTime(3);
+  elapsedTime("outlier_detection");
   
-  my @data = ();
-  my $outlierStartIdx;
+  # Sort alignments for this family by divergence (ascending) and find the median and
+  # quartile values.
+  my @sortedByDiv = sort { $a->getPctKimuraDiverge() <=> $b->getPctKimuraDiverge() } @{$alignByID{$id}};
+  my @outliers = ();
+  my $divergenceFilter = 100;
   my $medianDiv;
-  if ( $options{'highestScoringHits'} ) {
-    # Simplified selection to match David's extract_align.
-    @data = sort { $a->getScore() <=> $b->getScore() } @{$alignByID{$id}};
-    $targetSampleCount = $options{'highestScoringHits'};
-    $outlierStartIdx = scalar(@data);
-    $medianDiv = "--";
+  if ( scalar(@sortedByDiv) % 2 )
+  {
+    # Odd
+    $medianDiv = $sortedByDiv[int(scalar(@sortedByDiv)/2)]->getPctKimuraDiverge();
   }else {
-    # Selection based on the following priority:
-    #     Long elements
-    #     Elements within first 3 quartiles of kimura divergence
-    #     Elements that cover a low-sample-depth region
- 
-    my @sortedByDiv = sort { $a->getPctKimuraDiverge() <=> $b->getPctKimuraDiverge() } @{$alignByID{$id}};
-    my @outliers = ();
-    my $divergenceFilter = 100;
-    if ( scalar(@sortedByDiv) % 2 )
-    {
-      # Odd
-      $medianDiv = $sortedByDiv[int(scalar(@sortedByDiv)/2)]->getPctKimuraDiverge();
-    }else {
-      # Even
-      $medianDiv = ($sortedByDiv[int(scalar(@sortedByDiv)/2)-1]->getPctKimuraDiverge() +
-                 $sortedByDiv[int(scalar(@sortedByDiv)/2)]->getPctKimuraDiverge()
-                ) / 2;
-    }
-    my $quartileDiv = $sortedByDiv[int(scalar(@sortedByDiv)/4)*3]->getPctKimuraDiverge();
-    print "  Median Divergence = $medianDiv\n";
-    print "  3rd Quartile Divergence = $quartileDiv\n";
-    #$divergenceFilter =
-    #    ( $medianDiv - $quartileDiv ) + $medianDiv;
-    @outliers = splice(@sortedByDiv, int(scalar(@sortedByDiv)/4)*3);
-    # Re-sort by length
-    @outliers = sort { ($b->getSubjEnd()-$b->getSubjStart()) <=> ($a->getSubjEnd()-$a->getSubjStart()) } @outliers;
-    print "  " . scalar(@outliers) . " outliers were moved to the end of the priority list\n";
-
-    # Sort by length, longest first
-    @data = sort { ($b->getSubjEnd()-$b->getSubjStart()) <=> ($a->getSubjEnd()-$a->getSubjStart()) } @sortedByDiv;
-    $outlierStartIdx = scalar(@data);
-    
-    # Precedence:
-    #     Long elements
-    #     Elements within first 3 quartiles of kimura divergence
-    #     Elements that cover a low-sample-depth region
-    push @data, @outliers;
+    # Even
+    $medianDiv = ($sortedByDiv[int(scalar(@sortedByDiv)/2)-1]->getPctKimuraDiverge() +
+               $sortedByDiv[int(scalar(@sortedByDiv)/2)]->getPctKimuraDiverge()
+              ) / 2;
   }
+  my $quartileDiv = $sortedByDiv[int(scalar(@sortedByDiv)/4)*3]->getPctKimuraDiverge();
+  print "  Median Divergence = $medianDiv\n";
+  print "  3rd Quartile Divergence = $quartileDiv\n";
+
+
+  # Remove elements that are in top divergence quartile
+  @outliers = splice(@sortedByDiv, int(scalar(@sortedByDiv)/4)*3);
+
+  # Re-sort outliers list by length (descending)
+  @outliers = sort { ($b->getSubjEnd()-$b->getSubjStart()) <=> ($a->getSubjEnd()-$a->getSubjStart()) } @outliers;
+  print "  " . scalar(@outliers) . " outliers were moved to the end of the priority list\n";
+
+  # Sort main element list by length (descending)
+  my @data = sort { ($b->getSubjEnd()-$b->getSubjStart()) <=> ($a->getSubjEnd()-$a->getSubjStart()) } @sortedByDiv;
+  my $outlierStartIdx = scalar(@data);
+    
+  # Precedence:
+  #     Elements within first 3 quartiles of kimura divergence
+  #     Long elements
+  #     Elements that cover a low-sample-depth region
+  push @data, @outliers;
 
   my $idx         = 0;
   my $sampleCount = 0;
@@ -532,25 +631,26 @@ foreach my $id ( keys( %alignByID ) )
   my %seen         = ();
   my $numBadReportedConsLen = 0;
   my $numDiagMismatch = 0;
+  my $dupsFound  = 0;
 #  print
 #"Key: '*' = Saved , '+' = Good Align , '?' = Cons Length , '.' = Bad Align, 'S' = Short, '!' = Incorrect Mapping \n";
-  print "   - Sorting and data preparation : " . elapsedTime( 1 ) . "\n";
-  elapsedTime(2);
-  elapsedTime(4);
+  print "   - Sorting and data preparation : " . elapsedTime("outlier_detection") . "\n";
+  elapsedTime("instance_selection");
   while ( @data )
   {
     my $result = shift @data;
     $idx++;
 
-    # Does this matter?
+    # This was warned about in the scrubbing routine...is this necessary?
     my $calcCLen = $result->getSubjEnd() + $result->getSubjRemaining();
     if ( $calcCLen != $consLen )
     {
-      #print "?";
       $numBadReportedConsLen++;
     }
 
-    # Must-have positions
+    # Experimental ( currently not implemented for multi-family use )
+    # This only keeps elements that contain the correct diagnostic
+    # sites and bases.
     if ( @diagSites )
     {
       my $qry = $result->getQueryString();
@@ -559,8 +659,6 @@ foreach my $id ( keys( %alignByID ) )
       my @sPosToQBase = ();
       my $sIdx = $result->getSubjStart(); # one based
       $sIdx = $result->setSubjEnd() if ( $result->getOrientation() eq "C" );
-      #print "\n$qry\n$sbj\n";
-      #print "\n";
       for ( my $i = 0; $i < length($sbj); $i++ )
       {
         my $qBase = substr($qry, $i, 1);
@@ -572,11 +670,9 @@ foreach my $id ( keys( %alignByID ) )
         {
           $qBase =~ tr/ACGT/TGCA/;
           $sPosToQBase[$sIdx] = $qBase;
-          #print "  - $sIdx = $qBase\n";
           $sIdx--;  
         }else {
           $sPosToQBase[$sIdx] = $qBase;
-          #print "  - $sIdx = $qBase\n";
           $sIdx++;  
         }
       }
@@ -608,17 +704,27 @@ foreach my $id ( keys( %alignByID ) )
     $qstr =~ s/X/N/g;
     $result->setSubjString( $qstr );
 
-    # Remove duplicates! -- hmmm consider this fully
-    my $ss  = $result->getSubjStart();
-    my $se  = $result->getSubjEnd();
-    my $key =
-          $result->getScore()
-        . $result->getPctDiverge()
-        . $result->getPctInsert()
-        . $result->getPctDelete();
-    next if ( $seen{$key} );
+    # This duplicate removal could potentially remove
+    # a fragmented ( by RM ) alignment.  TODO: Define
+    # what is meant by "duplicate" first.
+    #my $key =
+    #      $result->getScore()
+    #    . $result->getPctDiverge()
+    #    . $result->getPctInsert()
+    #    . $result->getPctDelete();
+    #next if ( $seen{$key} );
+    #$seen{$key}++;
+    my $key =   $result->getQueryName()  . ":"
+              . $result->getQueryStart() . "-" 
+              . $result->getQueryEnd();
+    if ( $seen{$key} ) {
+      $dupsFound++;
+      next;
+    }
     $seen{$key}++;
 
+    my $ss  = $result->getSubjStart();
+    my $se  = $result->getSubjEnd();
     my $addIt           = 0;
     my $covReached      = 1;
     my @samplesToUpdate = ();
@@ -650,17 +756,32 @@ foreach my $id ( keys( %alignByID ) )
       $sampleCount++;
     }
   } # while ( @data )
-  print "   - Selecting elements : " . elapsedTime( 2 ) . "\n";
+  print "   - Selecting instances : " . elapsedTime( "instance_selection" ) . "\n";
 
   my $noCovExamples = 0;
   my $minCovDepth = 10000000000;
   my $maxCovDepth = 0;
+  my $idxStrLen = length($consLen);
   print "  ";
   for ( my $i = 0 ; $i < ( $consLen / 10 ) ; $i++ )
   {
     my $idxPos = ( $i * 10 ) + 1;
     $sampledDepth[$i] = 0 if ( $sampledDepth[$i] eq "" );
-    print "[$idxPos]=$sampledDepth[$i], ";
+    if ( $options{'noColor'} ) {
+      print "[" . sprintf("%$idxStrLen"."s",$idxPos) . "]=" . sprintf("%5s", $sampledDepth[$i]) . ", ";
+    }else {
+      if ( $sampledDepth[$i] >= 10 ) {
+        print "[" . sprintf("%$idxStrLen"."s",$idxPos) . "]=" . sprintf("%5s", $sampledDepth[$i]) . ", ";
+      }elsif (  $sampledDepth[$i] > 0 ) {
+        # Yellow
+        print "[" . sprintf("%$idxStrLen"."s",$idxPos) . "]=" . 
+              "\033[33m" . sprintf("%5s", $sampledDepth[$i]) . "\033[0m" . ", ";
+      }else {
+        # Red
+        print "[" . sprintf("%$idxStrLen"."s",$idxPos) . "]=" . 
+              "\033[31m" . sprintf("%5s", $sampledDepth[$i]) . "\033[0m" . ", ";
+      }
+    }
     if ( ($i+1) % 10 == 0 ) {
       print "\n  ";
     }
@@ -674,17 +795,22 @@ foreach my $id ( keys( %alignByID ) )
   print "    Coverage depth range: $minCovDepth to $maxCovDepth ( from sampled positions )\n";
   print "    $sampleCount of $countInGenome were chosen for the multiple alignment\n";
   print "    $numBadReportedConsLen had differing data about consensus length ( RM artifact )\n";
-  print "    $numDiagMismatch had mismatches to the specified diagnostic sites\n";
+  print "    $dupsFound duplicate alignments (same exact range)\n";
+  if ( @diagSites ) {
+    print "    $numDiagMismatch had mismatches to the specified diagnostic sites\n";
+  }
 
   if ( $noCovExamples )
   {
     print "  *** Some regions are not covered! ***\n";
+    $numNoCov++;
     #warn "Some regions of $id are not covered ( $noCovExamples ).\n";
   }
 
   if ( $minCovDepth < $minDepth )
   {
     print "  *** Some regions did not reach the min coverage depth of $minDepth  ***\n";
+    $numPoorCov++;
     #warn "Some regions of $id are did not reach the min coverage depth of $minDepth.\n";
   }
 
@@ -706,7 +832,6 @@ foreach my $id ( keys( %alignByID ) )
     $class = $2;
   }
   
-  print "Saving output\n";
   $totalBuilt++;
   if ( $options{'includeRef'} ) {
                       #header           => $newHeaders{uc($id)}->{'header'},
@@ -751,12 +876,14 @@ foreach my $id ( keys( %alignByID ) )
 
   print OUT "" . $seedAlign->toString();
   close OUT;
-  print "   - total build time : " . elapsedTime( 3 ) . "\n";
+  print "   - total build time : " . elapsedTime("family_build_time") . "\n";
 }
 print "\n\n";
-print "Total Seeds We Attempted To Build: $totalAttemptedBuilds\n";
-print "Total built: $totalBuilt\n";
-print "Total without alignments: $noAlign\n";
+print "Total Seeds alignments built: $totalBuilt out of $totalAttemptedBuilds\n";
+print "    - Number with poor coverage areas ( < 10bp ): $numPoorCov\n";
+print "    - Number with no coverage areas: $numNoCov\n";
+print "    - Number without any alignments: $noAlign\n";
+print "Total runtime : " . elapsedTime("full_program") . "\n";
 print "\n\n";
 
 # All done
@@ -777,421 +904,6 @@ sub fisherYatesShuffle
     next if $i == $j;
     @$array[ $i, $j ] = @$array[ $j, $i ];
   }
-}
-
-##-------------------------------------------------------------------------##
-##
-##  Use: my = writeHTMLMultAlign( multAln => $multAlignRef,
-##                                    [destination => $filename|$FH],
-##                                    [leftFlankingID => 1],
-##                                    [rightFlankingID => 1] );
-##
-##
-##
-##-------------------------------------------------------------------------##
-my $CLASS = "";
-
-sub writeHTMLMultAlign
-{
-  my %parameters = @_;
-
-  my $method = "writeHTMLMultAlign";
-  croak $CLASS. "::$method() missing multAln parameter!\n"
-      if ( !exists $parameters{'multAln'} );
-
-  my $mAlign = $parameters{'multAln'};
-
-  my $OUT = *STDOUT;
-  if ( defined $parameters{'destination'} )
-  {
-    if ( ref( $parameters{'destination'} ) !~ /GLOB|FileHandle/ )
-    {
-      print $CLASS
-          . "::$method() Opening file "
-          . $parameters{'destination'} . "\n"
-          if ( $DEBUG );
-      open $OUT, $parameters{'destination'}
-          or die $CLASS
-          . "::$method: Unable to open "
-          . "results file: $parameters{'destination'} : $!";
-    } else
-    {
-      $OUT = $parameters{'destination'};
-    }
-  }
-
-  print $OUT <<"END";
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
-        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-<head>
-  <title>Alignments</title>
-  <style type="text/css">
-  font.lowQual {
-    background: #CD5C5C;
-  }
-  font.deletion {
-    background: #FF0000;
-  }
-  font.duplication {
-    background: #0000FF;
-  }
-  font.unknown {
-    background: #FFFF00;
-  }
-  font.dupFlank {
-    background: #C0C0C0;
-  }
-  </style>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-</head>
-END
-
-  # Find max padding.
-  my $maxLeftLen  = 0;
-  my $maxRightLen = 0;
-  my $maxQueryEnd = length( $mAlign->getReferenceSeq() );
-  foreach my $seqNum ( 0 .. $mAlign->getNumAlignedSeqs() - 1 )
-  {
-    my $relLeftLen =
-        length( $mAlign->getLeftFlankingSequence( $seqNum ) ) -
-        $mAlign->getAlignedStart( $seqNum );
-    my $relRightLen =
-        length( $mAlign->getRightFlankingSequence( $seqNum ) ) -
-        ( $maxQueryEnd - $mAlign->getAlignedEnd( $seqNum ) );
-    $maxLeftLen  = $relLeftLen  if ( $maxLeftLen < $relLeftLen );
-    $maxRightLen = $relRightLen if ( $maxRightLen < $relRightLen );
-  }
-
-  ## Calculate Del/Dup candidates
-  my @dupDelCols = ();
-  if ( $parameters{'printDupDelCols'} == 1 )
-  {
-    my $endStartPairs = $mAlign->_getEndStartPairs();
-    foreach my $pair ( @{$endStartPairs} )
-    {
-      if ( abs( $pair->{'refEnd'} - $pair->{'refStart'} ) < 50 )
-      {
-        my $adjStart = 0;
-        my $adjEnd   = 0;
-        my $absStart = $pair->{'refEnd'};
-        my $absEnd   = $pair->{'refStart'};
-        if ( $pair->{'refEnd'} > $pair->{'refStart'} )
-        {
-          $absStart = $pair->{'refStart'};
-          $absEnd   = $pair->{'refEnd'};
-        }
-        $adjStart = $mAlign->getAlignPosFromBPPos( $absStart );
-        $adjEnd   = $mAlign->getAlignPosFromBPPos( $absEnd );
-        print " adjStart = $adjStart adjEnd=$adjEnd\n" if ( $DEBUG );
-        if ( $pair->{'avgGapWidth'} > 30 )
-        {
-          print "Calling a deletion\n";
-
-          # Deletion
-          push @dupDelCols,
-              {
-                'start' => $adjStart,
-                'end'   => $adjEnd,
-                'type'  => "deletion"
-              };
-
-        } elsif ( $pair->{'avgGapWidth'} < 0 )
-        {
-
-          # Duplication
-          print "Calling a duplication\n";
-          my $flnkStart =
-              $mAlign->getAlignPosFromBPPos(
-                                    $absStart - abs( $pair->{'avgGapWidth'} ) );
-          my $flnkEnd = $mAlign->getAlignPosFromBPPos( $absStart - 1 );
-          push @dupDelCols,
-              {
-                'start' => $flnkStart,
-                'end'   => $flnkEnd,
-                'type'  => 'dupFlank'
-              };
-          push @dupDelCols,
-              {
-                'start' => $adjStart,
-                'end'   => $adjEnd,
-                'type'  => "duplication"
-              };
-          $flnkStart = $mAlign->getAlignPosFromBPPos( $absEnd + 1 );
-          $flnkEnd   =
-              $mAlign->getAlignPosFromBPPos(
-                                      $absEnd + abs( $pair->{'avgGapWidth'} ) );
-          push @dupDelCols,
-              {
-                'start' => $flnkStart,
-                'end'   => $flnkEnd,
-                'type'  => 'dupFlank'
-              };
-        } else
-        {
-
-          # Unknown
-          print "Calling an Unknown\n";
-          push @dupDelCols,
-              {
-                'start' => $adjStart,
-                'end'   => $adjEnd,
-                'type'  => "unknown"
-              };
-        }
-      }
-    }
-  }
-
-  ## Calculate low scoring columns
-  my $matrix = SequenceSimilarityMatrix->new();
-  $matrix->parseFromFile(
-      "$RepModelConfig::REPEATMODELER_MATRICES_DIR/wublast/nt/comparison.matrix"
-  );
-  my $columns;
-  my $scoreArray;
-  if ( defined $parameters{'threshold'} )
-  {
-    ( $columns, $scoreArray ) = $mAlign->getLowScoringAlignmentColumns(
-                                           matrix    => $matrix,
-                                           threshold => $parameters{'threshold'}
-    );
-  } else
-  {
-    ( $columns, $scoreArray ) =
-        $mAlign->getLowScoringAlignmentColumns( matrix => $matrix );
-  }
-
-  print $OUT "<PRE>\n";
-
-  # Print out scoreArray just for fun
-  #   find the largest/smallest score
-  my $max = 0;
-  for ( my $j = 0 ; $j <= $#{$scoreArray} ; $j++ )
-  {
-    my $num = sprintf( "%0.1f", $scoreArray->[ $j ] );
-    $max = length( $num ) if ( $max < length( $num ) );
-    $scoreArray->[ $j ] = $num;
-  }
-  my $numCols = $max;
-  my @lines   = ();
-  foreach my $num ( @{$scoreArray} )
-  {
-    my $paddedNum = ' ' x ( $numCols );
-    if ( $num != 0 )
-    {
-      $paddedNum = ' ' x ( $numCols - length( $num ) ) . $num;
-    }
-    for ( my $j = 0 ; $j < $numCols ; $j++ )
-    {
-      $lines[ $j ] .= substr( $paddedNum, $j, 1 );
-    }
-  }
-  my $label = "lowQualScore";
-  my $paddedLabel = $label . " " x ( 30 - length( $label ) );
-  foreach my $line ( @lines )
-  {
-    print $OUT $paddedLabel . ": " . ' ' x ( $maxLeftLen ) . $line . "\n";
-  }
-
-  # First print the consensus sequence
-  my $lineStart = 0;
-  my $name      = "consensus";
-  my $namePad   = 30 - length( $name );
-  my $seq       =
-      $mAlign->consensus(
-                    "$RepModelConfig::REPEATMODELER_MATRICES_DIR/linupmatrix" );
-  print $OUT "<b><i>$name</i></b>"
-      . ' ' x $namePad . ": "
-      . ' ' x ( $maxLeftLen )
-      . "<font color=\"blue\">$seq</font>\n";
-
-  my $name    = "Reference ( " . $mAlign->getReferenceName() . " )";
-  my $namePad = 30 - length( $name );
-  my $seq     = $mAlign->getReferenceSeq();
-  print $OUT "<b><i>$name</i></b>"
-      . ' ' x $namePad . ": "
-      . ' ' x ( $maxLeftLen )
-      . "<font color=\"blue\">$seq</font>\n";
-
-  # Now print the reference and the instances.
-  for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs() ; $i++ )
-  {
-    $name = $mAlign->getAlignedName( $i );
-    if ( length( $name ) > 30 )
-    {
-      $name = substr( $name, 0, 30 );
-    }
-    $namePad = 30 - length( $name );
-
-    my $lfSeq = $mAlign->getLeftFlankingSequence( $i );
-
-    my $seq .=
-        ' ' x
-        ( $maxLeftLen - ( length( $lfSeq ) - $mAlign->getAlignedStart( $i ) ) );
-    if ( $parameters{'leftFlankingID'} eq $i - 1 )
-    {
-      $seq .= "<font color=\"blue\">" . lc( $lfSeq ) . "</font>";
-    } else
-    {
-      $seq .= lc( $lfSeq );
-    }
-
-    # Highlight low scoring columns
-    if ( $parameters{'printDupDelCols'} == 1 )
-    {
-      $seq .= "<b>";
-      my $seqPos = 0;
-      foreach my $col ( @dupDelCols )
-      {
-        my $start = $col->{'start'} - $mAlign->getAlignedStart( $i );
-        my $end   = $col->{'end'} - $mAlign->getAlignedStart( $i );
-        next if ( $start < 0 && $end < 0 );
-        $start = 0 if ( $start < 0 );
-        $end = length( $mAlign->getAlignedSeq( $i ) ) - $start - 1
-            if ( $end < 0 );
-        $seq .=
-            substr( $mAlign->getAlignedSeq( $i ), $seqPos, $start - $seqPos );
-        $seq .= "<font class=\"" . $col->{'type'} . "\">";
-        $seq .=
-            substr( $mAlign->getAlignedSeq( $i ), $start, $end - $start + 1 );
-        $seq .= "</font>";
-        $seqPos = $end + 1;
-      }
-      if ( $seqPos < length( $mAlign->getAlignedSeq( $i ) ) - 1 )
-      {
-        $seq .= substr( $mAlign->getAlignedSeq( $i ), $seqPos );
-      }
-      $seq .= "</b>";
-    } elsif ( $#{$columns} >= 0 )
-    {
-      $seq .= "<b>";
-      my $seqPos = 0;
-      foreach my $col ( @{$columns} )
-      {
-        my $start = $col->[ 0 ] - $mAlign->getAlignedStart( $i );
-        my $end   = $col->[ 1 ] - $mAlign->getAlignedStart( $i );
-        next if ( $start < 0 && $end < 0 );
-        $start = 0 if ( $start < 0 );
-        $end = length( $mAlign->getAlignedSeq( $i ) ) - $start - 1
-            if ( $end < 0 );
-        $seq .=
-            substr( $mAlign->getAlignedSeq( $i ), $seqPos, $start - $seqPos );
-        $seq .= "<font class=\"lowQual\">";
-        $seq .=
-            substr( $mAlign->getAlignedSeq( $i ), $start, $end - $start + 1 );
-        $seq .= "</font>";
-        $seqPos = $end + 1;
-      }
-      if ( $seqPos < length( $mAlign->getAlignedSeq( $i ) ) - 1 )
-      {
-        $seq .= substr( $mAlign->getAlignedSeq( $i ), $seqPos );
-      }
-      $seq .= "</b>";
-    } else
-    {
-      $seq .= "<b>" . $mAlign->getAlignedSeq( $i ) . "</b>";
-    }
-
-    if ( $parameters{'rightFlankingID'} eq $i - 1 )
-    {
-      $seq .=
-            "<font color=\"blue\">"
-          . lc( $mAlign->getRightFlankingSequence( $i ) )
-          . "</font>";
-    } else
-    {
-      $seq .= lc( $mAlign->getRightFlankingSequence( $i ) );
-    }
-
-    print $OUT "<b>$name</b>" . ' ' x $namePad . ": $seq\n";
-  }
-
-  if ( defined $parameters{'printHistogram'} )
-  {
-    print $OUT "\n\n";
-    my @columnSeqs = ();
-    my $maxRows    = 0;
-    foreach my $col ( @{$columns} )
-    {
-      my ( $cons, $seqsRef ) = $mAlign->getAlignmentBlock(
-                                                           start => $col->[ 0 ],
-                                                           end   => $col->[ 1 ],
-                                                           rawSequences => 1
-      );
-      push @columnSeqs, [ sort { length( $b ) <=> length( $a ) } @{$seqsRef} ];
-      $maxRows = $#{$seqsRef} + 1 if ( $maxRows < ( $#{$seqsRef} + 1 ) );
-    }
-    $label = "blockSeqs";
-    $paddedLabel = $label . " " x ( 30 - length( $label ) );
-    for ( my $i = 0 ; $i < $maxRows ; $i++ )
-    {
-      my $seq = " " x ( $maxLeftLen );
-      my $pos = 0;
-      for ( my $j = 0 ; $j <= $#{$columns} ; $j++ )
-      {
-        my $col      = $columns->[ $j ];
-        my $colWidth = $col->[ 1 ] - $col->[ 0 ] + 1;
-        $seq .= " " x ( $col->[ 0 ] - $pos );
-        my $colSeqArray = $columnSeqs[ $j ];
-        my $colSeq      = "";
-        if ( $#{$colSeqArray} >= 0 )
-        {
-          $colSeq = shift @{$colSeqArray};
-          $colSeq = "." if ( $colSeq eq "" );
-        }
-        $seq .= $colSeq . " " x ( $colWidth - length( $colSeq ) );
-        $pos = $col->[ 1 ] + 1;
-      }
-      print $OUT "$paddedLabel: $seq\n";
-    }
-    print $OUT "\n\n";
-    if ( defined $parameters{'newConsBlocks'} )
-    {
-      my $newConsBlocks = $parameters{'newConsBlocks'};
-      $label = "blockSeqCons";
-      $paddedLabel = $label . " " x ( 30 - length( $label ) );
-      my $seq = " " x ( $maxLeftLen );
-      my $pos = 0;
-      for ( my $j = 0 ; $j <= $#{$newConsBlocks} ; $j++ )
-      {
-        my $colWidth =
-            $newConsBlocks->[ $j ]->{'end'} -
-            $newConsBlocks->[ $j ]->{'start'} + 1;
-        $seq .= " " x ( $newConsBlocks->[ $j ]->{'start'} - $pos );
-        my $colSeq = $newConsBlocks->[ $j ]->{'cons'};
-        $seq .=
-              "<font color=\"blue\">" . $colSeq
-            . "</font>"
-            . "*" x ( $colWidth - length( $colSeq ) );
-        $pos = $newConsBlocks->[ $j ]->{'end'} + 1;
-      }
-      print $OUT "$paddedLabel: $seq\n";
-    }
-    if ( defined $parameters{'finalConsensus'} )
-    {
-      $label = "originalCons";
-      $paddedLabel = $label . " " x ( 30 - length( $label ) );
-      my $seq =
-            " " x ( $maxLeftLen )
-          . "<font color=\"red\">"
-          . $mAlign->consensus(
-                     "$RepModelConfig::REPEATMODELER_MATRICES_DIR/linupmatrix" )
-          . "</font>";
-      print $OUT "$paddedLabel: $seq\n";
-      $label = "finalCons";
-      $paddedLabel = $label . " " x ( 30 - length( $label ) );
-      my $seq =
-            " " x ( $maxLeftLen )
-          . "<font color=\"blue\">"
-          . $parameters{'finalConsensus'}
-          . "</font>";
-      print $OUT "$paddedLabel: $seq\n";
-    }
-  }
-
-  print $OUT "</PRE>\n";
-
 }
 
 sub RMClassToDfam {
@@ -1473,7 +1185,7 @@ sub RMClassToDfam {
     'sine/alu' =>
 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter;No-core;L1-dependent;Alu',
     'sine/b2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No-core;L1-dependent;B2',
+'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter;No-core;L1-dependent;B2',
     'sine/7sl' =>
 'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter',
     'sine/trna-5s' =>
@@ -1618,8 +1330,7 @@ sub RMClassToDfam {
   if ( exists $rmToDfamClass{$rmClass} ){
     return $rmToDfamClass{$rmClass};
   }else {
-    warn "Could not identify class \"$rmClass\" -- labeling as \"Unknown\"\n";
-    return "Interspersed_Repeat;Unknown";
+    return "Unknown";
   }
 }
 
