@@ -27,11 +27,6 @@
 
 generateSeedAlignments - Generate a seed alignments from RM *.align output
 
-   TODO:
-   - Store the divergence of the family as determined from these whole
-     genome runs.
-   - Make sure the stockholm contains the minimal fields for import into Dfam
-
 =head1 SYNOPSIS
 
  generateSeedAlignments [-families "<id1> <id2> .."] [-includeRef]
@@ -71,16 +66,6 @@ Reverse engineer seed alignments using the following pipline:
   o Compress the alignment.  We store seed alignments in Dfam using
     A3M.......document this!
 
-
-TODO:
-
-  - What primarily influences the lack of coverage in families?
-	* Is it that when competed through RepeatMasker some
-          related families steal instances?  If so, why doesn't 
-          RepeatModeler's competition with previous round consensi
-          reduce this?
-  - This script should refine the seed alignment/consensus before
-    creating a stockholm file.
 
 
 The options are:
@@ -137,6 +122,21 @@ RepeatMasker, RepeatModeler, Dfam.org
 Robert Hubley <rhubley@systemsbiology.org>
 
 =cut
+
+#
+#TODO:
+#
+#  - What primarily influences the lack of coverage in families?
+#	* Is it that when competed through RepeatMasker some
+#          related families steal instances?  If so, why doesn't 
+#          RepeatModeler's competition with previous round consensi
+#          reduce this?
+#  - This script should refine the seed alignment/consensus before
+#    creating a stockholm file.
+#  - Store the divergence of the family as determined from these whole
+#    genome runs.
+#  - Make sure the stockholm contains the minimal fields for import into Dfam
+#  - Update Classification Translation Table
 
 #
 # Module Dependence
@@ -294,10 +294,19 @@ my ($tfh, $tfilename) = tempfile("tmpGenSeedsXXXXXXXX", DIR=>".",UNLINK => 0);
 for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ ) {
   my $result = $resultCollection->get( $i );
   my $familyName = $result->getSubjName();
+ 
+  # Filter out Simple/Low/Short families
   if ( $familyName =~ /\#Simple|\#Low|short/) {
     $invalid{$i} = 1;
     next;
   }
+
+  # Filter out previous Dfam families ( added to screen out already present families )
+  if ( $familyName =~ /^DF\d\d\d\d\d.*/ ) {
+    $invalid{$i} = 1;
+    next;
+  }
+
   # Calc cons size
   my $consSize = $result->getSubjEnd() + $result->getSubjRemaining();
   if ( ! exists $consSizeByID{$familyName} ) {
