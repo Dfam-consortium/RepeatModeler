@@ -179,6 +179,8 @@ my @getopt_args = (
                     '-fasta',
                     '-msa',
                     '-consensus',
+                    '-consIncludeGaps',
+                    '-consNoHeader',
                     '-name=s',
                     '-trimLeft=s',
                     '-trimRight=s',
@@ -468,15 +470,17 @@ if ( $options{'stockholm'} )
 {
   $mAlign->toFASTA( seqOnly => 1 );
 } elsif ( $options{'consensus'} ) {
-  if ( $options{'consensus'} ) {
+  if ( !$options{'consIncludeGaps'} ) {
     $cons =~ s/-//g;
   }
-  if ( $options{'name'} ) {
-    print ">" . $options{'name'} . "\n$cons\n\n";
-  }elsif ( $mAlign->getReferenceName() ne "" ) {
-    print ">" . $mAlign->getReferenceName() . "\n$cons\n\n";
-  }else {
-    print ">consensus\n";
+  if ( !$options{'consNoHeader'} ) {
+    if ( $options{'name'} ) {
+      print ">" . $options{'name'} . "\n$cons\n\n";
+    }elsif ( $mAlign->getReferenceName() ne "" ) {
+      print ">" . $mAlign->getReferenceName() . "\n$cons\n\n";
+    }else {
+      print ">consensus\n";
+    }
   }
 }elsif ( $options{'msa'} ) {
   if ( exists $options{'includeFlanking'} && exists $options{'genome'} && $options{'includeFlanking'} > 0 ) 
