@@ -3554,10 +3554,10 @@ sub toSTK {
     my $end   = $object->getAlignedEnd( $i );
     my $seq   = '';
     if ( $start > 0 ) {
-      $seq = '.' x ( $start );
+      $seq = '.'x( $start );
     }
     $seq .= $object->getAlignedSeq( $i );
-    $seq =~ s/-/./g;
+    $seq =~ s/[-\s]/./g;
 
     if ( length( $seq ) < $maxSeqLen ) {
       $seq .= '.' x ( $maxSeqLen - length( $seq ) );

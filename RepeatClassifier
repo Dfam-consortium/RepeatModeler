@@ -304,6 +304,9 @@ if ( $seq ) {
             . "       identifiers and resubmit for processing.\n";
       }
     }
+  }else {
+    # just a standard ID no need to fuss
+    print UNC ">$id $desc\n$seq\n";
   }
 }
 close IN;

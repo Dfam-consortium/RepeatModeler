@@ -802,6 +802,9 @@ sub buildConsensus {
       $seqID = $1;
       $start = $2;
       $end   = $3;
+    }else {
+      # We don't have a recognizable identifier
+      $seqID = $id;
     }
 
     if ( $seqID && $start && $end ) {
@@ -825,7 +828,7 @@ sub buildConsensus {
       $malign->setAlignedSeqStart( $i, $adjStart );
       $malign->setAlignedSeqEnd( $i, $adjEnd );
     }
-    else {
+    elsif ( $dbDesc ) {
       warn "Could not parse identifier: $dbDesc\n";
     }
     my $finalID = "$seqID:" . $malign->getAlignedSeqStart( $i ) . "-" . $malign->getAlignedSeqEnd( $i );

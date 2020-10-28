@@ -186,6 +186,7 @@ my @getopt_args = (
                     '-matrix=s',
                     '-genome=s',
                     '-includeFlanking=i',
+                    '-noTemplate',
                     '-cgParam=s',
                     '-taParam=s',
                     '-cgTransParam=s',
@@ -220,6 +221,9 @@ if ( !-s $inputFile )
 
 my $inclRef = 0;
 $inclRef = 1 if ( $options{'i'} );
+
+my $inclTempl = 1;
+$inclTempl = 0 if ( $options{'noTemplate'} );
 
 my $matrixFile;
 my $cgParam;
@@ -452,7 +456,7 @@ if ( $options{'stockholm'} )
   if ( $options{'name'} ) { 
     $mAlign->setReferenceName( $options{'name'} );
   }
-  $mAlign->toSTK( includeTemplate => 1, nuclRF => 1 );
+  $mAlign->toSTK( includeTemplate => $inclTempl, nuclRF => 1 );
 
   # TODO : streamline STK generation.  Perhaps have
   #        MultAln produce a "SeedAlignment" object.
