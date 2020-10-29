@@ -477,7 +477,9 @@ if ( $options{'stockholm'} )
   if ( !$options{'consIncludeGaps'} ) {
     $cons =~ s/-//g;
   }
-  if ( !$options{'consNoHeader'} ) {
+  if ( $options{'consNoHeader'} ) {
+    print "$cons\n";
+  } else {
     if ( $options{'name'} ) {
       print ">" . $options{'name'} . "\n$cons\n\n";
     }elsif ( $mAlign->getReferenceName() ne "" ) {
