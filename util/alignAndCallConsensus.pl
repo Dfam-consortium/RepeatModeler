@@ -7,13 +7,13 @@
 ##      Robert M. Hubley   rhubley@systemsbiology.org
 ##  Description:
 ##      A script to align a consensus to a set of putative
-##      family elements and recall the consensus based on the
+##      family instances and recall the consensus based on the
 ##      linup of all alignments.
 ##
 
 =head1 NAME
 
-alignAndCallConsensus.pl - Align TE consensus to a set of elements and call consensus
+alignAndCallConsensus.pl - Align TE consensus to a set of instances and call consensus
 
 =head1 SYNOPSIS
 
@@ -32,28 +32,28 @@ alignAndCallConsensus.pl - Align TE consensus to a set of elements and call cons
 
         Assumes that a consensus file named "rep" and an elements file 
         named "repseq" ( representative sequences ) exists in the 
-        current working directory. 
+        current working directory.  All defaults will be used to
+        generate a single transitive multiple alignment and a new 
+        consensus.
 
   or
 
     ./alignAndCallConsensus.pl -c mycons.fa -e myinstances.fa
 
 
-  WARNING: This script will backup and overwrite the consensus file, see
-           below for details.
+  This tool was original written by Arian Smit as two different scripts known 
+  affectionately as "dothemsimple.pl" and "dothemultiple.pl".  As part of a 
+  large set of small command line tools this script performs an alignment of 
+  a putative TE family consensus or a set of related TE family consensi to a 
+  representative set of instances for the family(ies).  The alignments are then
+  used to generate a transitively induced multiple alignment ( aka "line up")
+  for the purposes of consensus calling.  The new consensus may then be used 
+  to realign to the instances and another consensus may be called.  In a sense 
+  this is a hill climbing optimisation.  The output consensus may be better 
+  than the input consensus but it still may not be optimal or even stable.  By 
+  applying this method iteratively the consensus will improve and stabilize.
 
-  This tool was original written by Arian Smit and known affectionately
-  as "dothemsimple.pl". As part of a large set of small command line tools
-  this script performs an alignment of a putative TE family consensus to a 
-  representative set of elements for the family.  The alignments are then
-  used to generate a transitively induced multiple alignment ( aka "line up)
-  for the purposes of consensus calling.  In a sense this is a hill climbing
-  optimisation.  The output consensus may be better than the input consensus
-  but it still may not be optimal or even stable.  By applying this method
-  iteratively the consensus will most often stabilize at a local ( and perhaps
-  global ) maximum.
-
-  The tool was written in a way to allow for multiple use cases:
+  The tool was written to support multiple use cases:
 
   Consensus Extension:
      Provided a consensus from a de-novo TE discovery tool, this tool may
@@ -78,6 +78,7 @@ alignAndCallConsensus.pl - Align TE consensus to a set of elements and call cons
           new consensus:        ACTAA-CGTTAGCGAATTACGAGGGCAGNTN
           updated positions:    **** *        *            * *  
 
+
   Iterative Refinement:
      The initial consensus may be rudimentary or simply derived from a
      different representative set.  In this case the new consensus
@@ -86,11 +87,25 @@ alignAndCallConsensus.pl - Align TE consensus to a set of elements and call cons
      iterative fashion until the input consensus matches the output
      conensus.
 
+
+  Subfamily Consensus Building:
+     After performing a subfamily analysis using tools such as Coseg,
+     one often wants to build a formal alignment and consensus for each
+     of a set of related subfamilies.  Typically all starting consensi
+     a used to gather a combined set of instances.  The consenus
+     file contains all of the starting subfamilies.  This script will
+     align each instance to all consensi and assign each one to it's
+     best match. Then each alignment set will be used to calculate a new 
+     cosensus for each family in the same fashion as the single consensus
+     case.
+
+
   Output:
      The program saves the original input consensus file as <filename>.#, where 
      the number begins with '1' and is incremented up until 25 at which time
      the program dies and requires backups be removed before proceeding. The new
      consensus is saved as the original input consensus file name.
+
 
 =head1 DESCRIPTION
 
@@ -688,6 +703,13 @@ unlink "$outdir/out.malign" if ( -e "$outdir/out.malign" );
 
 
 
+#
+# Process the "ali" file produced by Linup and pull out a consensus
+# trimmed based on the extension flags provided by the user and the
+# 'H' padding found in the reference.  Also pull out the sections of
+# the alignment that show some changes, again disregarding changes
+# associated with the H-pads no longer being extended.
+#
 sub processAliFile {
   my $aliFile = shift;
   my $is5ExtDone = shift;
@@ -768,6 +790,10 @@ sub processAliFile {
 }
 
 
+#
+# Read in the consensus file and build up a data structure for use
+# by the main code.
+#
 sub processConFile {
   my $conFile = shift;
 
