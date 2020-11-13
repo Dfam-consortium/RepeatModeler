@@ -21,7 +21,10 @@ alignAndCallConsensus.pl - Align TE consensus to a set of elements and call cons
                  [-d(ivergencemax) #] [-sc(ore) #] [-mi(nmatch) #]
                  [-h(tml)] [-st(ockholm)] [-q(uiet)]
                  [-b(andwidth) #] [-cr(ossmatch)] [-rm(blast)]
-                 [-re(fine)]
+                 [-re(fine)|-re(fine) #> [-fi(lter_overlap)]
+                 [-f(inishedext) <str>] [-ma(trix) <str>]
+                 [-inc(lude_reference) <val>]
+                 [-p(rune) <val>] [-qu(oteprune) <val>]
 
   Example:
 
@@ -35,6 +38,9 @@ alignAndCallConsensus.pl - Align TE consensus to a set of elements and call cons
 
     ./alignAndCallConsensus.pl -c mycons.fa -e myinstances.fa
 
+
+  WARNING: This script will backup and overwrite the consensus file, see
+           below for details.
 
   This tool was original written by Arian Smit and known affectionately
   as "dothemsimple.pl". As part of a large set of small command line tools
@@ -58,6 +64,8 @@ alignAndCallConsensus.pl - Align TE consensus to a set of elements and call cons
      "H" positively (+3).  This has the effect of extending the alignment
      by the number of "H" on either end of the alignment.  This assumes that
      the -elements file contains flanking sequence in advance.
+     NOTE: This will repad the final consensus with the same number of H's
+           that it started with to assist with continuing the extension.
 
        E.g.
 
@@ -78,8 +86,7 @@ alignAndCallConsensus.pl - Align TE consensus to a set of elements and call cons
      iterative fashion until the input consensus matches the output
      conensus.
 
-  OUTPUT:
-
+  Output:
      The program saves the original input consensus file as <filename>.#, where 
      the number begins with '1' and is incremented up until 25 at which time
      the program dies and requires backups be removed before proceeding. The new
@@ -138,17 +145,32 @@ If given 14p35 (37,39,41,43,45,47,49,51,53) #####g.matrix is chosen
  
 =item -f(inishedext) <value>
 
-Default off; given n Zs on an end of the reference, the program wil extend 
-the consensus by n bases and pad the new consensus with n Zs.
--f 5 : 5' extension done (the 5' end won't grow nor get Zs attached)
+Default off; given N 'H's on an end of the reference, the program wil extend 
+the consensus by N bases and pad the new consensus with N 'H's.
+-f 5 : 5' extension done (the 5' end won't grow nor get 'H's attached)
 -f 3 : 3' extension done
 -f b : both extensions done
+
+=item -inc(lude_reference)
+
+Include the supplied consensus sequence in the multiple alignment.  Used in cases
+were the starting consnesus is a single instance of the family.
+
+=item -p(rune) # or "#n#"
+
+Prunes the consensus sequence on either side to the point that more than # 
+sequences are aligned. If the string form "#n#" is used ....
+
+=item -qu(oteprune) #
+
+Same as prune except that instead of pruning to the point that more than #
+sequences are aligned it prunes until the number of aligned sequences increases
+by >= # times.  Only checks the first and last 100bp and when 3 or more seqs
+join.
 
 =item -h(tml)       
 
 Generate an HTML visualization of the alignment using viewMSA.pl. 
-NOTE: This can be a slow process for large alignments and can be
-easily be called outside this script.
 
 =item -st(ockholm)     
 
@@ -157,6 +179,21 @@ Creates a Stockholm format (.stk) file on top of the normal Linup alignment file
 =item -rm(blast)
 
 Use RMBlast instead of cross_match
+
+=item -re(fine) or -re(fine) <value>
+
+Iterate the process of aligning the derived consensus to the set
+of instance sequences.  This is a simple optimisation step which 
+(like EM) which typically stabilizes after a small number of
+iterations.  The default is to attempt 5 iterations but a higher
+value may be specified with this option.
+
+=item -fi(lter_overlap)
+
+When a single sequence in the elements file produces multiple sub
+alignments to the consensus, this option will remove any sub alignment
+which overlaps the same consensus range *or* the same sequence
+range as a higher scoring sub alignment.
 
 =back
 
@@ -199,10 +236,10 @@ my $Version = 0.1;
 #
 # Paths
 #
-my $phrapDir = "/usr/local/bin/phrap";
+my $phrapDir = "/usr/local/phrap";
 my $matrixDir = "$FindBin::RealBin/../Matrices";
 my $RMBLAST_DIR = $RepModelConfig::configuration->{'RMBLAST_DIR'}->{'value'};
-my $defaultEngine = "rmblast";
+my $defaultEngine = "crossmatch";
 
 #
 # Option processing
@@ -214,20 +251,24 @@ my $defaultEngine = "rmblast";
 my @getopt_args = (
                     '-consensus|c=s',
                     '-elements|e=s',
-                    '-divergencemax|d=s',
+                    '-divergencemax=s', 
                     '-finishedext|f=s',
                     '-matrix|ma=s',
                     '-minmatch|mi=s',
                     '-score|sc=s',
                     '-stockholm|st',
                     '-outdir=s',
+                    '-include_reference|inc',
+                    '-prune|p=s',
+                    '-quoteprune|qu=s',
                     '-html|h',
                     '-quiet|q',
-                    '-refine|re',
+                    '-refine|re:s',
                     '-bandwidth|b=s',
                     '-crossmatch|cr',
                     '-rmblast|rm',
-                    '-onlyBestAlignment',
+                    '-filter_overlapping|fi',
+                    '-onlyBestAlignment', # Deprecated, now 'filter_overlapping'
 );
 my %options = ();
 Getopt::Long::config( "noignorecase", "bundling_override" );
@@ -245,6 +286,17 @@ sub usage {
 # Output directory
 my $outdir = cwd;
 
+#
+# Process the consensus file:
+#    - Unless specifified default to "rep"
+#
+#    - If it contains more than one sequence we assume that we are 
+#      in a mode to compete and build several subfamilies against each
+#      other ( aka. dothemmultiple ).
+#
+#    - If a consensus sequence contains the suffix "#buffer" it is treated
+#      as a decoy for attracting instances and will not be refined.
+#      
 my $conFile = "rep";
 if ( exists $options{'consensus'} ) {
   if ( -s $options{'consensus'} ) {
@@ -260,6 +312,21 @@ if ( exists $options{'consensus'} ) {
   print "\n\nDefault consensus file \"rep\" is missing or empty! See -c option for details.\n\n";
   exit(1);
 }
+my ( $numRefineableCons, $numBuffers, $consRecs ) = &processConFile( $conFile );
+if ( $numRefineableCons == 0 && $numBuffers > 0 ) {
+  print "\n\nThe consensus file only contains buffer sequences.  There must be at least one non-buffer sequence.\n\n";
+  exit(1);
+}
+
+# Check to see if there are already some previous runs in this directory.
+my $firstFreeBackupIdx = 0;
+for ( my $i = 1; $i < 25; $i++ ) {
+  if ( ! -e "$conFile.$i" ) {
+    $firstFreeBackupIdx = $i;
+    last;
+  }
+}
+
 
 # Override all other methods at picking an outdir if this option is provided.
 $outdir = $options{'outdir'} if ( $options{'outdir'} );
@@ -276,7 +343,7 @@ if ( exists $options{'elements'} ) {
   }
 }elsif ( ! -s $elesFile )
 {
-  print "\n\nDefault elements file \"rep\" is missing or empty! See -c option for details.\n\n";
+  print "\n\nDefault elements file \"repseq\" is missing or empty! See -e option for details.\n\n";
   exit(1);
 }
 
@@ -333,28 +400,82 @@ if ( ! -s "$matrixPath/$matSpec" ) {
 
 my $minmatch  = 7;
 $minmatch = $options{'minmatch'} if ( exists $options{'minmatch'} );
+
 my $minscore = 200;
 $minscore = $options{'minscore'} if ( exists $options{'minscore'} );
+
 my $bandwidth = 40;
 $bandwidth = $options{'bandwidth'} if ( exists $options{'bandwidth'} );
+
 my $maxdiv = 60;
 $maxdiv = $options{'divergencemax'} if ( exists $options{'divergencemax'} );
+
+my $maxRefineIterations = 5;
+$maxRefineIterations = $1 if ( exists $options{'refine'} && $options{'refine'} =~ /(\d+)/ );
+
+my ($ext5done, $ext3done) = ();
+if ($options{'finishedext'}) {
+  if ($options{'finishedext'} =~ /^5/) {
+    $ext5done = 1;
+  } elsif ($options{'finishedext'} =~ /^3/) {
+    $ext3done = 1;
+  } elsif($options{'finishedext'} =~ /^[bB]/) {
+    $ext3done = 1;
+    $ext5done = 1;
+  } else {
+    die "-f $options{'finishedext'} not recognized\n";
+  }
+}
+
+my $prunecutoff = 0;
+my $pruneratio = 0;
+my $npad = 0;
+# the alignment of sequences with Npads at query termini and Hpads at
+# consensus termini often involves Ns aligning to the real consensi termini
+# due to the attraction of the Hpads (N vs H scores 7 like anything else)
+# these should not count to the number of people aligned at those positions
+if ($options{'prune'}) {
+  $prunecutoff = $options{'prune'};
+  if ($prunecutoff =~ s/[nN](\d+)$//) {
+    $npad = $1;
+  }
+}
+if ($options{'quoteprune'}) {
+  $pruneratio = $options{'quoteprune'};
+  if ($pruneratio =~ s/[nN](\d+)$//) {
+    $npad = $1 unless $npad;
+  }
+}
+
 
 ##
 ## Main
 ##
 unless ( $options{'quiet'} ) {
   print "##\n";
-  print "## alignAndCallConsensus (aka dothemsimple)\n";
+  print "## alignAndCallConsensus (aka dothemsimple/dothemultiple)\n";
+  print "## Version $Version\n";
   print "##\n";
+  if ( $numRefineableCons > 1 ) {
+    print "# Multiple Subfamily Mode ";
+  }else {
+    print "# Single Family Mode ";
+  }
+  if ( $numBuffers > 0 ) {
+    print "[ $numBuffers buffer sequence(s) ]";
+  }
+  print "\n";
   print "# Engine: $engine  Matrix: $matSpec, Bandwidth: $bandwidth,\n";
   print "#                  Minmatch: $minmatch, Minscore: $minscore,\n";
   print "#                  Maxdiv: $maxdiv, GapInit: $gapInit,\n";
   print "#                  InsGapExt: $insGapExt, DelGapExt: $delGapExt\n";
   if ( $options{'refine'} ) {
-    print "#                  Refine: true\n";
+    print "# Refine: max $maxRefineIterations iterations\n";
   }else {
-    print "#                  Refine: false\n";
+    print "# Refine: false\n";
+  }
+  if ( $firstFreeBackupIdx > 1 ) {
+    print "# Starting Round Index: $firstFreeBackupIdx\n";
   }
 }
 
@@ -388,6 +509,7 @@ $searchEngineN->setQuery( $elesFile );
 $searchEngineN->setSubject( $conFile );
 
 my $iterations = 0;
+my $backupIdx = 1;
 while ( 1 ) { 
 
   unless ( $engine eq "crossmatch" ) {
@@ -403,41 +525,79 @@ while ( 1 ) {
   {
     print STDERR "Search Parameters: " . $searchEngineN->getParameters() . "\n";
     die "\nERROR from search engine (", $? >> 8, ") \n";
-  } else
-  {
-    # Sort the results collection
-    $resultCollection->sort(
-      sub ($$) {
-        $_[ 1 ]->getScore() <=> $_[ 0 ]->getScore();
-       }
-    );
+  } 
+
+  # Sort the results collection
+  $resultCollection->sort(
+    sub ($$) {
+      $_[ 1 ]->getScore() <=> $_[ 0 ]->getScore();
+     }
+  );
  
-    open OUT,">$outdir/out" or die "could not open 'out' for writing\n";
+  my $changedCnt = 0;
+  foreach my $consID ( keys(%{$consRecs}) ) {
+    next if ( $consRecs->{$consID}->{'stable'} == 1 );
+    next if ( $consRecs->{$consID}->{'buffer'} == 1 );
+    unless ( $options{'quiet'} ) {
+      print "-----\n";
+      print "Working on consensus: $consID\n";
+    }
     my $removedMinDiv = 10000;
     my $removedMaxDiv = 0;
     my $removedDivCount = 0;
     my $removedDupCount = 0;
     my %queryIDUsed = ();
+ 
+    open OUT,">$outdir/$consID.out" or die "could not open \'$consID.out\' for writing\n";
+
+    my $finalAlignCnt = 0;
     for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
       my $resultRef = $resultCollection->get( $k );
-      if ( $resultRef->getPctDiverge() <= $maxdiv ) {
-        if ( $options{'onlyBestAlignment'} )
-        {
-          if ( exists $queryIDUsed{$resultRef->getQueryName()} ) {
-            $removedDupCount++;
-            next;
+      if ( $resultRef->getSubjName() eq $consID ) {
+        if ( $resultRef->getPctDiverge() <= $maxdiv ) {
+          # 'onlyBestAlignment' is deprecated
+          if ( $options{'filter_overlapping'} || $options{'onlyBestAlignment'} )
+          {
+            if ( exists $queryIDUsed{$resultRef->getQueryName()} ) {
+              my $overlap = 0;
+              foreach my $existingRange ( @{$queryIDUsed{$resultRef->getQueryName()}} ) {
+                my $eQStart = $existingRange->[0];
+                my $eQEnd = $existingRange->[1];
+                my $eSStart = $existingRange->[2];
+                my $eSEnd = $existingRange->[3];
+                my $cQStart = $resultRef->getQueryStart();
+                my $cQEnd = $resultRef->getQueryEnd();
+                my $cSStart = $resultRef->getSubjStart();
+                my $cSEnd = $resultRef->getSubjEnd();
+                if ( ($cQStart >= $eQStart && $cQStart <= $eQEnd) ||
+                     ($cQEnd >= $eQStart && $cQEnd <= $eQEnd) ||
+                     ($cQStart < $eQStart && $cQEnd > $eQEnd) ||
+                     ($cSStart >= $eSStart && $cSStart <= $eSEnd) ||
+                     ($cSEnd >= $eSStart && $cSEnd <= $eSEnd) ||
+                     ($cSStart < $eSStart && $cSEnd > $eSEnd) ) {
+                  $overlap = 1;
+                  $removedDupCount++;
+                  last;
+                }
+              }
+              next if ( $overlap );
+            }else {
+              $queryIDUsed{$resultRef->getQueryName()} = [];
+            }
+            push @{$queryIDUsed{$resultRef->getQueryName()}}, 
+                    [$resultRef->getQueryStart(), $resultRef->getQueryEnd(), $resultRef->getSubjStart(), $resultRef->getSubjEnd()];
+            print OUT "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
+          }else {
+            print OUT "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
           }
-          $queryIDUsed{$resultRef->getQueryName()}++;
-          print OUT "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
+          $finalAlignCnt++;
         }else {
-          print OUT "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
+          $removedDivCount++;
+          $removedMinDiv = $resultRef->getPctDiverge() if ( $resultRef->getPctDiverge() < $removedMinDiv);
+          $removedMaxDiv = $resultRef->getPctDiverge() if ( $resultRef->getPctDiverge() > $removedMaxDiv);
         }
-      }else {
-        $removedDivCount++;
-        $removedMinDiv = $resultRef->getPctDiverge() if ( $resultRef->getPctDiverge() < $removedMinDiv);
-        $removedMaxDiv = $resultRef->getPctDiverge() if ( $resultRef->getPctDiverge() > $removedMaxDiv);
-      }
-    }
+      } # if ( $resultRef->getSubjName() eq $consID )...
+    } # for ( my $k = 0; $k < $resultCollection->size....
     if ( $removedDivCount > 0 && ! $options{'quiet'} ){
       print "# Removed $removedDivCount high divegence alignments ranging from: $removedMinDiv - $removedMaxDiv divergence\n";
     }
@@ -445,84 +605,126 @@ while ( 1 ) {
       print "# Removed $removedDupCount alignments to that match the same repseq instance\n";
     }
     close OUT;
-  }
+
+    if ( $finalAlignCnt < 2 ) {
+      print "Only $finalAlignCnt repseq members aligned to $consID in this round.  Cannot generate\n" .
+            "a new consensus with this many instances\n"; 
+      $consRecs->{$consID}->{'stable'} = 1;
+      next;
+    }
   
-  # Creating new ali file
-  system "$FindBin::RealBin/Linup -i $outdir/out > $outdir/ali";
+    # Creating new ali file
+    my $includeRef = "";
+    $includeRef = "-i" if ( $options{'include_reference'} );
+    system("$FindBin::RealBin/Linup $includeRef $outdir/$consID.out > $outdir/$consID.ali");
   
-  if ( $options{'html'} ){
-    system "$FindBin::RealBin/viewMSA.pl -order start -malign $outdir/out.malign";
-    #system "cp MultipleAlignment.html ~/public_html";
-  }
+    if ( $options{'html'} ){
+      system "$FindBin::RealBin/viewMSA.pl -order start -malign $outdir/out.malign";
+      system "mv MultipleAlignment.html $consID.html";
+    }
   
-  if ( $options{'stockholm'} ) {
-    system "$FindBin::RealBin/Linup -i $outdir/out ~/Matrices/linupmatrix -stockholm > $outdir/ali.stk";
-  }
+    if ( $options{'stockholm'} ) {
+      system "$FindBin::RealBin/Linup $includeRef $outdir/$consID.out ~/Matrices/linupmatrix -stockholm > $outdir/$consID.stk";
+    }
   
-  unless ( $options{'quiet'} ) {
-  print "-----\n";
-  system "$FindBin::RealBin/checkfordifsinalis $outdir/ali";
-  system "$FindBin::RealBin/scoretotal.pl $outdir/out";
-  system "$FindBin::RealBin/CntSubst -cg $outdir/out | grep kimura";
-  print "-----\n";
-  }
+    unless ( $options{'quiet'} ) {
+      system "$FindBin::RealBin/scoretotal.pl $outdir/$consID.out";
+      my $kimura = `$FindBin::RealBin/CntSubst -cg $outdir/$consID.out | grep kimura`;
+      $kimura = $1 if ( $kimura =~ /average kimura-subst: (\S+)/ );
+      print "Kimura Divergence: $kimura\n";
+    }
   
-  # 
-  # Determine if H-padding was used and how long the pads were
-  #
-  my $original = `cat $conFile`;
-  $original =~ s/^(>.+\n)//;
-  my $faline = $1;
-  $original =~ s/[\s]+//g; # should eliminate the line break at the end too                    
-  my $h1 = "";
-  my $h2 = "";
-  if ($original =~ s/^([hH]+)(\S+?)([hH]*)$/$2/ ) {
-    $h1 = $1;
-    $h2 = $3 if $3;
-  } elsif ($original =~ s/^(\S+?)([hH]*)$/$1/ ) {
-    $h2 = $2 if $2;
+
+    ##
+    ##
+    ##
+    my ($newcons, $diffStr) = processAliFile("$outdir/$consID.ali", $ext5done, $ext3done);
+    
+    if ($newcons eq $consRecs->{$consID}->{'seq'}) {
+      print "Changes: **unchanged**\n" unless ( $options{'quiet'} );
+      $consRecs->{$consID}->{'stable'} = 1;
+    }else {
+      print "Changes:\n$diffStr\n" unless ( $options{'quiet'} );
+      $changedCnt++;
+      $consRecs->{$consID}->{'seq'} = $newcons;
+      $consRecs->{$consID}->{'iteration'}++;
+    }
+    unless ( $options{'quiet'} ) {
+      print ">$consID\n$newcons\n";
+      print "-----\n";
+    }
+  
+  } # foreach my $consID...
+
+  $iterations++;
+
+  if ( $changedCnt ) {
+    while ( -e "$conFile.$backupIdx" ) {
+      $backupIdx++;
+    }
+    rename "$conFile", "$conFile.$backupIdx";
+    open OUT, ">$conFile" or die "Could not open up $conFile for writing!\n";
+    foreach my $consID ( keys(%{$consRecs}) ) {
+      print OUT ">$consID\n" . "H"x($consRecs->{$consID}->{'leftHPad'}) . 
+                "\n" . $consRecs->{$consID}->{'seq'} . "\n" . 
+                "H"x($consRecs->{$consID}->{'rightHPad'}) . "\n"; 
+    }
+    close OUT;
   }
 
-  my ($ext5done, $ext3done) = ();
-  if ($options{'finishedext'}) {
-    if ($options{'finishedext'} =~ /^5/) {
-      $ext5done = 1;
-    } elsif ($options{'finishedext'} =~ /^3/) {
-      $ext3done = 1;
-    } elsif($options{'finishedext'} =~ /^[bB]/) {
-      $ext3done = 1;
-      $ext5done = 1;
-    } else {
-      die "-f $options{'finishedext'} not recognized\n";
-    }
+  last if ( ! $options{'refine'} || $changedCnt == 0 );
+
+  if ( $iterations >= $maxRefineIterations ) {
+    print "Consensus still changing after $maxRefineIterations iterations...giving up.\n" unless ( $options{'quiet'} );
+    last;
   }
+}
   
-  #not all Hs may have been aligned to, so calculate length on each site                       
+# cleanup
+foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
+  unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
+}
+unlink "$outdir/out.malign" if ( -e "$outdir/out.malign" );
+
+
+
+sub processAliFile {
+  my $aliFile = shift;
+  my $is5ExtDone = shift;
+  my $is3ExtDone = shift;
+
+  open ALI,"<$aliFile" or die "\n\nCould not open ali file \'$aliFile\' for reading!\n\n";
+
   my ($newcons,$Hleft,$Hright) = ();
   my (@consbit, $consline) = ();
   my $consbit;
-  open (IN, "$outdir/ali") or die;
-  while (<IN>) {
+  my $diffStr = "";
+  while (<ALI>) {
+    # consensus     1 TCTTCTGATT----GGTTGGTGGTGAGGTAA-------CA-G...
     if (/^consensus\s+\d+\s+(\S+)/) {
-      $newcons .= $1;
-      $consbit = $1;
+      $newcons .= $1; 
+      $consbit = $1;  # Save for comparison of sequences
       $newcons =~ tr/-//d;
       $consline = $_;
       chomp $consline;
+    # ref:rep       1 HHHHHTGATT----GGTTGGTGGTGAGGTAA-------CA-G...
     } elsif (/^(ref\:\S+\s+\d+\s+)(\S+)/) {
       my $spacelen = length $1;
       my $refbit = $2;
       if ($refbit ne $consbit) {
-        if ( $ext5done && /^ref\:\S+\s+(\d+)\s+(H+)/ ) {
-          if ($1 <= length $h1) { # so we're not at the end of the seq
-            $Hleft = length $2;
-            $newcons =~ s/^\w{$Hleft}//;
-          }
+        if ( $is5ExtDone && /^ref\:\S+\s+(\d+)\s+(H+)[ACGTN]/ ) {
+          # We were done with 5'extension previously.  Any alignment
+          # to H's in this round are purely for anchoring purposes and
+          # should not contribute the consensus.
+          $Hleft = length $2;
+          $newcons =~ s/^\w{$Hleft}//;
+          # Now that we are done with extension only record differences
+          # if they occur after the H padding.
           my ($tempcons,$tempref) = ($consbit,$refbit);
           $tempcons =~ s/^\w{$Hleft}//;
-          $tempref =~ s/^Z+//;
+          $tempref =~ s/^H+//;
           next if $tempcons eq $tempref;
-        } elsif ($ext3done) {
+        } elsif ($is3ExtDone) {
           if ($Hright && /^ref\:\S+\s+\d+\s+(H+)\s/ ) {
             $Hright += length $1;
             next;
@@ -554,39 +756,108 @@ while ( 1 ) {
             $midline .= '?';
           }
         }
-        #print "$consline\n$midline\n$_\n";
+        $diffStr .= "$consline\n$midline\n$_\n";
       }
     }
   }
-  
-  $newcons =~ s/(\w){$Hright}$// if $Hright && $ext3done;
-  if ($newcons eq $original) {
-    print "Consensus unchanged\n" unless ( $options{'quiet'} );
-    last;
-  } else {
-    my $backupIdx = 1;
-    while ( -e "$conFile.$backupIdx" && $backupIdx < 25 ) {
-      $backupIdx++;
-    }
-    if ( $backupIdx == 25 ) {
-      die "The number of saved consensus files ( $conFile ) has exceded 25!  Please remove old backups before proceeding\n";
-    }
-    rename "$conFile", "$conFile.$backupIdx";
-    open OUT, ">$conFile" or die;
-    print OUT "$faline$h1\n$newcons\n$h2\n";
-    close OUT;
-  }
-  last if ( ! $options{'refine'} );
-  $iterations++;
-  if ( $iterations >= 5 ) {
-    print "Consensus still changing after 5 iterations...giving up.\n" unless ( $options{'quiet'} );
-    last;
-  }
+  close ALI;
+  $newcons =~ s/(\w){$Hright}$// if $Hright && $is3ExtDone;
+ 
+  return( $newcons, $diffStr );
+
 }
-  
-# cleanup
-foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
-  unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
+
+
+sub processConFile {
+  my $conFile = shift;
+
+  open CON,"<$conFile" or die "\n\nCould not open consensus file \'$conFile\' for reading!\n\n";
+  my $numRefineableCons = 0;
+  my $numBuffers = 0;
+  my %consRecs = ();
+  my $id;
+  my $seq;
+  while (<CON>) {
+    if ( /^>(\S+)/ ) {
+      my $tID = $1;
+      if ( $seq ) {
+        my $isBuffer = 0;
+        if ( $id =~ /.*\#buffer/i ) {
+          $numBuffers++;
+          $isBuffer = 1;
+        }else {
+          $numRefineableCons++;
+        }
+        if ( exists $consRecs{$id} ) {
+          die "\n\nConsensus file contains a duplicate ID = \'$id\'.\n\n";
+        }
+        my $leftHPad = 0;
+        my $rightHPad = 0;
+        if ( $seq =~ /^(H+)(\S+?)(H*)$/ ) {
+          $leftHPad = length($1);
+          $rightHPad = length($3) if ( $3 );
+          $seq = $2;
+        }elsif ( $seq =~ /^(\S+?)(H*)$/ ) {
+          $rightHPad = length($2) if ( $2 );
+          $seq = $1;
+        }
+        if ( $seq !~ /^(H*)[ACGTRYMKSWN]+(H*)$/ )
+        {
+          die "\n\nConsensus $id contains characters that are not supported.  Currently\n" .
+              "this program supports the use of ACGT an the IUB codes RYMKSWN.  Please\n" .
+              "correct the sequence and rerun.\n\n";
+        }
+        $consRecs{$id} = { 'seq' => $seq, 
+                           'buffer' => $isBuffer,
+                           'iteration' => 0,
+                           'stable' => 0,
+                           'leftHPad' => $leftHPad,
+                           'rightHPad' => $rightHPad };
+      }
+      $id = $tID;
+      $seq = "";
+      next;
+    }
+    s/[\n\r\s]//g;
+    $seq .= uc($_);
+  }
+  if ( $seq ) {
+    my $isBuffer = 0;
+    if ( $id =~ /.*\#buffer/i ) {
+      $numBuffers++;
+      $isBuffer = 1;
+    }else {
+      $numRefineableCons++;
+    }
+    if ( exists $consRecs{$id} ) {
+      die "\n\nConsensus file contains a duplicate ID = \'$id\'.\n\n";
+    }
+    my $leftHPad = 0;
+    my $rightHPad = 0;
+    if ( $seq =~ /^(H+)(\S+?)(H*)$/ ) {
+      $leftHPad = length($1);
+      $rightHPad = length($3) if ( $3 );
+      $seq = $2;
+    }elsif ( $seq =~ /^(\S+?)(H*)$/ ) {
+      $rightHPad = length($2) if ( $2 );
+      $seq = $1;
+    }
+    if ( $seq !~ /^(H*)[ACGTRYMKSWN]+(H*)$/ )
+    {
+      die "\n\nConsensus $id contains characters that are not supported.  Currently\n" .
+          "this program supports the use of ACGT an the IUB codes RYMKSWN.  Please\n" .
+          "correct the sequence and rerun.\n\n";
+    }
+    $consRecs{$id} = { 'seq' => $seq, 
+                       'buffer' => $isBuffer,
+                       'iteration' => 0,
+                       'stable' => 0,
+                       'leftHPad' => $leftHPad,
+                       'rightHPad' => $rightHPad };
+  }
+  close CON;
+
+  return( $numRefineableCons, $numBuffers, \%consRecs );
 }
 
 1;

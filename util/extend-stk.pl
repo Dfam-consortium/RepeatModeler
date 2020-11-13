@@ -310,15 +310,7 @@ for ( my $i = 0 ; $i < $stockholmColl->size() ; $i++ ) {
 
   print "Refining consensus...\n";
   my $maxIter = 10;
-  while ( $newCons ne $prevCons ) {
-    $prevCons = $newCons;
-    # Refining consensus
-    system("$FindBin::Bin/alignAndCallConsensus.pl -c $tdir/repam-newrep.fa -e $tdir/repam-repseq.fa -st -q");
-    $newCons = readConsensusFromFile("$tdir/repam-newrep.fa");
-    print "   Iteration " . ( 11 - $maxIter ) . " new cons len = " . length($newCons) . "\n";
-    $maxIter--;
-    last if ( $maxIter == 0 );
-  }
+  system("$FindBin::Bin/alignAndCallConsensus.pl -c $tdir/repam-newrep.fa -e $tdir/repam-repseq.fa -refine $maxIter -st -q");
 
   # Now rebuild the stockholm entry and save to ...
   my $singleSeedColl = SeedAlignmentCollection->new();
