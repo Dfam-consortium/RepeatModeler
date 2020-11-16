@@ -135,6 +135,9 @@ use strict;
 use FindBin;
 use Getopt::Long;
 use Data::Dumper;
+use Cwd;
+use File::Spec;
+use File::Basename;
 
 # RepeatModeler Libraries
 use lib $FindBin::RealBin;
@@ -220,6 +223,10 @@ if ( !-s $inputFile )
   print "\nCannot locate file!: $inputFile\n\n";
   usage();
 }
+my $inputFileDir = cwd;
+my($filename, $dirs, $suffix) = fileparse($inputFile);
+$inputFileDir = $dirs;
+
 
 my $inclRef = 0;
 $inclRef = 1 if ( $options{'i'} );
@@ -517,7 +524,7 @@ if ( $options{'stockholm'} )
 }
 #print stderr "Avg Kimura Div: $avgDiv\n";
 
-$mAlign->serializeOUT( "out.malign" );
+$mAlign->serializeOUT( "$inputFileDir/out.malign" );
 
 
 ################################### SUBROUTINES ###################################

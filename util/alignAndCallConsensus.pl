@@ -19,11 +19,11 @@ alignAndCallConsensus.pl - Align TE consensus to a set of instances and call con
 
   alignAndCallConsensus.pl [-c(onsensus) <*.fa>] [-e(lements) <*.fa>] 
                  [-d(ivergencemax) #] [-sc(ore) #] [-mi(nmatch) #]
-                 [-h(tml)] [-st(ockholm)] [-q(uiet)]
                  [-b(andwidth) #] [-cr(ossmatch)] [-rm(blast)]
-                 [-re(fine)|-re(fine) #> [-fi(lter_overlap)]
                  [-f(inishedext) <str>] [-ma(trix) <str>]
-                 [-inc(lude_reference) <val>]
+                 [-h(tml)] [-st(ockholm)] [-q(uiet)]
+                 [-re(fine)|-re(fine) #> [-fi(lter_overlap)]
+                 [-inc(lude_reference)] [-outdir <val]
                  [-p(rune) <val>] [-qu(oteprune) <val>]
                  [-int(eractive)] [-help]
 
@@ -179,6 +179,7 @@ sequences are aligned. If the string form "#n#" is used ....
 
 =item -qu(oteprune) #
 
+TODO: NOT IMPLEMENTED
 Same as prune except that instead of pruning to the point that more than #
 sequences are aligned it prunes until the number of aligned sequences increases
 by >= # times.  Only checks the first and last 100bp and when 3 or more seqs
@@ -247,7 +248,7 @@ use SearchResult;
 use SearchResultCollection;
 
 # Program version
-my $Version = 0.1;
+my $Version = 0.2;
 
 #
 # Paths
@@ -351,6 +352,9 @@ for ( my $i = 1; $i < 25; $i++ ) {
 $outdir = $options{'outdir'} if ( $options{'outdir'} );
 # Assumption below is that the directory doesn't already include trailing "/"
 $outdir =~ s/\/$//g;
+if ( ! -d $outdir ) {
+  die "\n\nOutput directory $outdir doesn't exist!\n\n";
+}
 
 my $elesFile = "repseq";
 if ( exists $options{'elements'} ) {
@@ -460,6 +464,7 @@ if ($options{'prune'}) {
   }
 }
 if ($options{'quoteprune'}) {
+  die "quoteprune is NOT implemented...\n";
   $pruneratio = $options{'quoteprune'};
   if ($pruneratio =~ s/[nN](\d+)$//) {
     $npad = $1 unless $npad;
@@ -545,6 +550,9 @@ while ( 1 ) {
     print STDERR "Search Parameters: " . $searchEngineN->getParameters() . "\n";
     die "\nERROR from search engine (", $? >> 8, ") \n";
   } 
+  if ( $engine eq "crossmatch" && -e "$elesFile.log" ) {
+    unlink("$elesFile.log");
+  }
 
   # Sort the results collection
   $resultCollection->sort(
