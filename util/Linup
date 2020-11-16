@@ -44,6 +44,7 @@ Linup -
                         [-trimLeft #] [-trimRight #] [-name familyname]
                         [-normalizeCoord] [-showScore] 
                         [-includeFlanking # -genome <2bit_file>]
+                        [-malignOut <file>]
                         [-stockholm | -msf | 
                          -consensus | -msa
                          -fasta ]
@@ -113,6 +114,12 @@ regardless of available flanking bases using the "-" to pad out
 any differences.  The amount of available sequence is dependent 
 on what is in the -genome file.
 
+=item -malignOut <file>
+
+Serialize the state of the MultAln object to file.  May be read
+back in as input at a later time or used to by utilities that 
+support MultAln.
+
 =back
 
 =head1 SEE ALSO
@@ -178,6 +185,7 @@ my @getopt_args = (
                     '-i',
                     '-stockholm',
                     '-showScore',
+                    '-malignOut=s',
                     '-msf',
                     '-fasta',
                     '-msa',
@@ -524,7 +532,9 @@ if ( $options{'stockholm'} )
 }
 #print stderr "Avg Kimura Div: $avgDiv\n";
 
-$mAlign->serializeOUT( "$inputFileDir/out.malign" );
+if ( $options{'malignOut'} ) {
+  $mAlign->serializeOUT( $options{'malignOut'} );
+}
 
 
 ################################### SUBROUTINES ###################################

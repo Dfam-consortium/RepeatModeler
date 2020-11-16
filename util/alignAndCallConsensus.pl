@@ -231,8 +231,8 @@ Robert Hubley <rhubley@systemsbiology.org>
 #
 use strict;
 use FindBin;
-use lib $FindBin::Bin;
-use lib "$FindBin::Bin/../";
+use lib $FindBin::RealBin;
+use lib "$FindBin::RealBin/../";
 use Data::Dumper;
 use Getopt::Long;
 use Cwd;
@@ -769,12 +769,13 @@ while ( 1 ) {
     # Creating new ali file
     my $includeRef = "";
     $includeRef = "-i" if ( $options{'include_reference'} );
-    system("$FindBin::RealBin/Linup $includeRef $outdir/$consID.out > $outdir/$consID.ali");
+    system("$FindBin::RealBin/Linup $includeRef -malignOut $outdir/$consID.malign $outdir/$consID.out > $outdir/$consID.ali");
   
     if ( $options{'html'} ){
-      system "$FindBin::RealBin/viewMSA.pl -order start -malign $outdir/out.malign";
+      system "$FindBin::RealBin/viewMSA.pl -order start -malign $outdir/$consID.malign";
       system "mv MultipleAlignment.html $consID.html";
     }
+    unlink "$outdir/$consID.malign" if ( -e "$outdir/$consID.malign" );
   
     if ( $options{'stockholm'} ) {
       system "$FindBin::RealBin/Linup $includeRef $outdir/$consID.out ~/Matrices/linupmatrix -stockholm > $outdir/$consID.stk";
@@ -897,7 +898,6 @@ while ( 1 ) {
 foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
   unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
 }
-unlink "$outdir/out.malign" if ( -e "$outdir/out.malign" );
 
 
 
