@@ -17,7 +17,7 @@ alignAndCallConsensus.pl - Align TE consensus to a set of instances and call con
 
 =head1 SYNOPSIS
 
-  alignAndCallConsensus.pl [-c(onsensus) <*.fa>] [-e(lements) <*.fa>] 
+  alignAndCallConsensus.pl -c(onsensus) <*.fa> -e(lements) <*.fa> | -de(faults)
                  [-d(ivergencemax) #] [-sc(ore) #] [-mi(nmatch) #]
                  [-b(andwidth) #] [-cr(ossmatch)] [-rm(blast)]
                  [-f(inishedext) <str>] [-ma(trix) <str>]
@@ -29,7 +29,7 @@ alignAndCallConsensus.pl - Align TE consensus to a set of instances and call con
 
   Example:
 
-    ./alignAndCallConsensus.pl
+    ./alignAndCallConsensus.pl -defaults
 
         Assumes that a consensus file named "rep" and an elements file 
         named "repseq" ( representative sequences ) exists in the 
@@ -248,7 +248,7 @@ use SearchResult;
 use SearchResultCollection;
 
 # Program version
-my $Version = 0.2;
+my $Version = 0.3;
 
 #
 # Paths
@@ -269,6 +269,7 @@ my @getopt_args = (
                     '-consensus|c=s',
                     '-elements|e=s',
                     '-divergencemax=s', 
+                    '-defaults|de',
                     '-finishedext|f=s',
                     '-matrix|ma=s',
                     '-minmatch|mi=s',
@@ -301,7 +302,9 @@ sub usage {
   exit( 1 );
 }
 
-usage() if ( $options{'help'} );
+usage() unless ( ! $options{'help'} && (
+                 $options{'defaults'} || ( $options{'consensus'} && $options{'elements'} )));
+
 
 # Output directory
 my $outdir = cwd;
@@ -576,6 +579,7 @@ while ( 1 ) {
     for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
       my $resultRef = $resultCollection->get( $k );
       my $sName = $consRecs->{$resultRef->getSubjName()};
+      $sName = $1 if ( $sName =~ /(\S+)\#.*/ );
       next if ( $consRecs->{$sName}->{'buffer'} == 1 );
       my $qName = $resultRef->getQueryName();
       my $qStart = $resultRef->getQueryStart();
@@ -655,7 +659,14 @@ while ( 1 ) {
       rename "$conFile", "$conFile.$backupIdx";
       open OUT, ">$conFile" or die "Could not open up $conFile for writing!\n";
       foreach my $consID ( keys(%{$consRecs}) ) {
-        print OUT ">$consID\n" . $consRecs->{$consID}->{'seq'} . "\n"; 
+        print OUT ">$consID";
+        if ( $consRecs->{$consID}->{'class'} ne "" ) {
+          print OUT "#" . $consRecs->{$consID}->{'class'};
+        }
+        if ( $consRecs->{$consID}->{'desc'} ne "" ) { 
+          print OUT "  " . $consRecs->{$consID}->{'desc'};
+        }
+        print OUT "\n" . $consRecs->{$consID}->{'seq'} . "\n"; 
       }
       close OUT;
     }
@@ -705,7 +716,9 @@ while ( 1 ) {
     my $finalAlignCnt = 0;
     for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
       my $resultRef = $resultCollection->get( $k );
-      if ( $resultRef->getSubjName() eq $consID ) {
+      my $sName = $resultRef->getSubjName();
+      my $sName = $1 if ( $sName =~ /(\S+)\#.*/ );
+      if ( $sName eq $consID ) {
         
         if ( $resultRef->getPctDiverge() <= $maxdiv ) {
           # 'onlyBestAlignment' is deprecated
@@ -881,7 +894,14 @@ while ( 1 ) {
     rename "$conFile", "$conFile.$backupIdx";
     open OUT, ">$conFile" or die "Could not open up $conFile for writing!\n";
     foreach my $consID ( keys(%{$consRecs}) ) {
-      print OUT ">$consID\n" . $consRecs->{$consID}->{'seq'} . "\n"; 
+      print OUT ">$consID";
+      if ( $consRecs->{$consID}->{'class'} ne "" ) {
+        print OUT "#" . $consRecs->{$consID}->{'class'};
+      }
+      if ( $consRecs->{$consID}->{'desc'} ne "" ) { 
+        print OUT "  " . $consRecs->{$consID}->{'desc'};
+      }
+      print OUT "\n" . $consRecs->{$consID}->{'seq'} . "\n"; 
     }
     close OUT;
   }
@@ -1004,21 +1024,26 @@ sub processConFile {
   my $conFile = shift;
 
   open CON,"<$conFile" or die "\n\nCould not open consensus file \'$conFile\' for reading!\n\n";
-  my $numRefineableCons = 0;
   my $numBuffers = 0;
   my %consRecs = ();
   my $id;
   my $seq;
+  my $desc;
+  my $class;
   while (<CON>) {
-    if ( /^>(\S+)/ ) {
+    if ( /^>(\S+)\s+(.*)$/ ) {
       my $tID = $1;
+      my $tDesc = $2;
+      $class = "";
       if ( $seq ) {
         my $isBuffer = 0;
-        if ( $id =~ /.*\#buffer/i ) {
-          $numBuffers++;
-          $isBuffer = 1;
-        }else {
-          $numRefineableCons++;
+        if ( $id =~ /(\S+)\#(\S+)/ ) {
+          $id = $1;
+          $class = $2;
+          if ( $class =~ /buffer/i ) {
+            $numBuffers++;
+            $isBuffer = 1;
+          }
         }
         if ( exists $consRecs{$id} ) {
           die "\n\nConsensus file contains a duplicate ID = \'$id\'.\n\n";
@@ -1044,6 +1069,8 @@ sub processConFile {
               "correct the sequence and rerun. Problems: $problems\n\n";
         }
         $consRecs{$id} = { 'seq' => $seq, 
+                           'class' => $class,
+                           'desc' => $desc,
                            'buffer' => $isBuffer,
                            'iteration' => 0,
                            'stable' => 0,
@@ -1051,19 +1078,25 @@ sub processConFile {
                            'rightHPad' => $rightHPad };
       }
       $id = $tID;
+      $desc = $tDesc;
       $seq = "";
       next;
     }
     s/[\n\r\s]//g;
     $seq .= uc($_);
   }
+  close CON;
+  
+  # Trailing case
   if ( $seq ) {
     my $isBuffer = 0;
-    if ( $id =~ /.*\#buffer/i ) {
-      $numBuffers++;
-      $isBuffer = 1;
-    }else {
-      $numRefineableCons++;
+    if ( $id =~ /(\S+)\#(\S+)/ ) {
+      $id = $1;
+      $class = $2;
+      if ( $class =~ /buffer/i ) {
+        $numBuffers++;
+        $isBuffer = 1;
+      }
     }
     if ( exists $consRecs{$id} ) {
       die "\n\nConsensus file contains a duplicate ID = \'$id\'.\n\n";
@@ -1089,13 +1122,16 @@ sub processConFile {
           "correct the sequence and rerun. Problems: $problems\n\n";
     }
     $consRecs{$id} = { 'seq' => $seq, 
+                       'class' => $class,
+                       'desc' => $desc,
                        'buffer' => $isBuffer,
                        'iteration' => 0,
                        'stable' => 0,
                        'leftHPad' => $leftHPad,
                        'rightHPad' => $rightHPad };
   }
-  close CON;
+ 
+  my $numRefineableCons = scalar(keys(%consRecs))-$numBuffers;
 
   return( $numRefineableCons, $numBuffers, \%consRecs );
 }
