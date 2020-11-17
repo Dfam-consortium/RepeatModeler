@@ -314,8 +314,8 @@ for ( my $i = 0 ; $i < $stockholmColl->size() ; $i++ ) {
 
   # Now rebuild the stockholm entry and save to ...
   my $singleSeedColl = SeedAlignmentCollection->new();
-  open my $INN, "<$tdir/ali.stk"
-    or die "Could not open up stockholm file $tdir/ali.stk for reading!\n";
+  open my $INN, "<$tdir/repam-newrep.stk"
+    or die "Could not open up stockholm file $tdir/repam-newrep.stk for reading!\n";
   $singleSeedColl->read_stockholm( $INN );
   close $INN;
   my $finalAlign   = $singleSeedColl->get( 0 );
