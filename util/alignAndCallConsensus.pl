@@ -248,7 +248,7 @@ use SearchResult;
 use SearchResultCollection;
 
 # Program version
-my $Version = 0.3;
+my $Version = 0.4;
 
 #
 # Paths
@@ -428,7 +428,7 @@ my $minmatch  = 7;
 $minmatch = $options{'minmatch'} if ( exists $options{'minmatch'} );
 
 my $minscore = 200;
-$minscore = $options{'minscore'} if ( exists $options{'minscore'} );
+$minscore = $options{'score'} if ( exists $options{'score'} );
 
 my $bandwidth = 40;
 $bandwidth = $options{'bandwidth'} if ( exists $options{'bandwidth'} );
@@ -678,7 +678,6 @@ while ( 1 ) {
             . "-parse_seqids -dbtype nucl -in $conFile >& /dev/null ");
     }
  
-    #print STDERR "Search Parameters: " . $searchEngineN->getParameters() . "\n";
     ( $status, $resultCollection ) = $searchEngineN->search();
     if ( $status )
     {
@@ -698,6 +697,7 @@ while ( 1 ) {
   # Loop over all consensi
   #
   my $changedCnt = 0;
+  my %filterIndices = ();
   foreach my $consID ( keys(%{$consRecs}) ) {
     next if ( $consRecs->{$consID}->{'stable'} == 1 );
     next if ( $consRecs->{$consID}->{'buffer'} == 1 );
@@ -711,13 +711,14 @@ while ( 1 ) {
     my $removedDupCount = 0;
     my %queryIDUsed = ();
  
-    open OUT,">$outdir/$consID.out" or die "could not open \'$consID.out\' for writing\n";
 
     my $finalAlignCnt = 0;
+    # Create a new collection for the filtered set so that we may later sort it
+    my $newResultCollection = SearchResultCollection->new();
     for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
       my $resultRef = $resultCollection->get( $k );
       my $sName = $resultRef->getSubjName();
-      my $sName = $1 if ( $sName =~ /(\S+)\#.*/ );
+      $sName = $1 if ( $sName =~ /(\S+)\#.*/ );
       if ( $sName eq $consID ) {
         
         if ( $resultRef->getPctDiverge() <= $maxdiv ) {
@@ -746,15 +747,16 @@ while ( 1 ) {
                   last;
                 }
               }
+              $filterIndices{$k} = 1;
               next if ( $overlap );
             }else {
               $queryIDUsed{$resultRef->getQueryName()} = [];
             }
             push @{$queryIDUsed{$resultRef->getQueryName()}}, 
                     [$resultRef->getQueryStart(), $resultRef->getQueryEnd(), $resultRef->getSubjStart(), $resultRef->getSubjEnd()];
-            print OUT "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
+            $newResultCollection->add($resultRef);
           }else {
-            print OUT "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
+            $newResultCollection->add($resultRef);
           }
           $finalAlignCnt++;
         }else {
@@ -764,13 +766,31 @@ while ( 1 ) {
         }
       } # if ( $resultRef->getSubjName() eq $consID )...
     } # for ( my $k = 0; $k < $resultCollection->size....
+
+    # Sort the remaining results collection and save in sorted
+    # order to $consID.out
+    $newResultCollection->sort(
+      sub ($$) {
+        $_[ 0 ]->getQueryName() <=> $_[ 1 ]->getQueryName() ||
+        $_[ 0 ]->getQueryStart() <=> $_[ 1 ]->getQueryStart() ||
+        $_[ 1 ]->getQueryEnd() <=> $_[ 0 ]->getQueryEnd();
+       }
+    );
+    open OUT,">$outdir/$consID.out" or die "could not open \'$consID.out\' for writing\n";
+    for ( my $k = 0 ; $k < $newResultCollection->size() ; $k++ ) {
+      my $resultRef = $newResultCollection->get( $k );
+      print OUT "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
+    }
+    close OUT;
+    $newResultCollection = undef;
+    
+
     if ( $removedDivCount > 0 && ! $options{'quiet'} ){
       print "# Removed $removedDivCount high divegence alignments ranging from: $removedMinDiv - $removedMaxDiv divergence\n";
     }
     if ( $removedDupCount > 0 && ! $options{'quiet'} ){
       print "# Removed $removedDupCount alignments to that match the same repseq instance\n";
     }
-    close OUT;
 
     if ( $finalAlignCnt < 2 ) {
       print "Only $finalAlignCnt repseq members aligned to $consID in this round.  Cannot generate\n" .
@@ -811,7 +831,7 @@ while ( 1 ) {
       $consRecs->{$consID}->{'stable'} = 1;
 
       unless ( $options{'quiet'} ) {
-        print ">$consID\n$newcons\n";
+        #print ">$consID\n$newcons\n";
         print "-----\n";
       }
 
@@ -876,7 +896,7 @@ while ( 1 ) {
       }
   
       unless ( $options{'quiet'} ) {
-        print ">$consID\n$newcons\n";
+        #print ">$consID\n$newcons\n";
         print "-----\n";
       }
 
@@ -885,6 +905,33 @@ while ( 1 ) {
   
   } # foreach my $consID...
 
+  # If we have multiple consensi we have to generate an additional file
+  # containing all the alignments in one file.
+  if ( $numRefineableCons > 1 ) { 
+    my $newResultCollection = SearchResultCollection->new();
+    for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
+      next if ( exists $filterIndices{$k} );
+      my $resultRef = $resultCollection->get( $k );
+      $newResultCollection->add($resultRef);
+    }
+    %filterIndices = ();
+
+    $newResultCollection->sort(
+      sub ($$) {
+        $_[ 0 ]->getQueryName() <=> $_[ 1 ]->getQueryName() ||
+        $_[ 0 ]->getQueryStart() <=> $_[ 1 ]->getQueryStart() ||
+        $_[ 1 ]->getQueryEnd() <=> $_[ 0 ]->getQueryEnd();
+       }
+    );
+    open OUT,">$outdir/$conFile.out" or die "could not open \'$conFile.out\' for writing\n";
+    for ( my $k = 0 ; $k < $newResultCollection->size() ; $k++ ) {
+      my $resultRef = $newResultCollection->get( $k );
+      print OUT "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
+    }
+    close OUT;
+    $newResultCollection = undef;
+  }
+ 
   $iterations++;
 
   if ( $changedCnt ) {
