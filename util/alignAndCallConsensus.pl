@@ -248,7 +248,7 @@ use SearchResult;
 use SearchResultCollection;
 
 # Program version
-my $Version = 0.4;
+my $Version = 0.5;
 
 #
 # Paths
@@ -1070,6 +1070,7 @@ sub processAliFile {
 sub processConFile {
   my $conFile = shift;
 
+  my($filename, $dirs, $suffix) = fileparse($conFile);
   open CON,"<$conFile" or die "\n\nCould not open consensus file \'$conFile\' for reading!\n\n";
   my $numBuffers = 0;
   my %consRecs = ();
@@ -1094,6 +1095,9 @@ sub processConFile {
         }
         if ( exists $consRecs{$id} ) {
           die "\n\nConsensus file contains a duplicate ID = \'$id\'.\n\n";
+        }
+        if ( $id eq $filename ) {
+          die "\n\nConsensus file contains a identifier with the same name as the file $id!\n\n";
         }
         my $leftHPad = 0;
         my $rightHPad = 0;
@@ -1147,6 +1151,9 @@ sub processConFile {
     }
     if ( exists $consRecs{$id} ) {
       die "\n\nConsensus file contains a duplicate ID = \'$id\'.\n\n";
+    }
+    if ( $id eq $filename ) {
+      die "\n\nConsensus file contains a identifier with the same name as the file $id!\n\n";
     }
     my $leftHPad = 0;
     my $rightHPad = 0;
