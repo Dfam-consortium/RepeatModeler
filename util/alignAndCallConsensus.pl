@@ -327,7 +327,7 @@ if ( exists $options{'consensus'} ) {
     my($filename, $dirs, $suffix) = fileparse($options{'consensus'});
     $outdir = $dirs;
   }else {
-    print "\n\nConsensus file \"$conFile\" is missing or empty! Use '-help' for option help.\n\n";
+    print "\n\nConsensus file \"$options{'consensus'}\" is missing or empty! Use '-help' for option help.\n\n";
     exit(1);
   }
 }elsif ( ! -s $conFile )
@@ -364,7 +364,7 @@ if ( exists $options{'elements'} ) {
   if ( -s $options{'elements'} ) {
     $elesFile = $options{'elements'}; 
   }else {
-    print "\n\nElements file \"$elesFile\" is missing or empty!\n\n";
+    print "\n\nElements file \"$options{'elements'}\" is missing or empty!\n\n";
     exit(1);
   }
 }elsif ( ! -s $elesFile )
