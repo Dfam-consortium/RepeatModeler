@@ -57,6 +57,11 @@ or
                       -malign *.malign
 
 
+or
+
+  viewMSA [-version] [-useOld]
+                      -stockholm *.stk
+
 
 =head1 DESCRIPTION
 
@@ -167,6 +172,7 @@ my @getopt_args = (
                     '-malign=s',
                     '-order=s',
                     '-clustalTree=s',
+                    '-stockholm=s',
 );
 
 my %options = ();
@@ -231,7 +237,7 @@ if ( $options{'search_results'} ) {
   $refInput = MultAln::Query if ( $staticQuery );
 
 }
-elsif ( !$options{'malign'} ) {
+elsif ( !$options{'malign'} && !$options{'stockholm'} ) {
   my $refSeqFile;
   my $compSeqFile;
   if ( !$options{'sequences'} ) {
@@ -287,6 +293,16 @@ if ( $resultCollection && $resultCollection->size() > 0 ) {
   }
   $malign = MultAln->new( searchCollection          => $resultCollection,
                           searchCollectionReference => $refInput, );
+}
+elsif ( $options{'stockholm'} ) {
+  my $inputFile = $options{'stockholm'};
+
+  open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
+  my $seedAlign = SeedAlignment->new();
+  $seedAlign->read_stockholm( $IN );
+  close $IN;
+
+  $malign = MultAln->new( seedAlignment => $seedAlign );
 }
 elsif ( $options{'malign'} ) {
   $malign = MultAln->new();
