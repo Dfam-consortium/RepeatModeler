@@ -95,7 +95,8 @@ my $Version = 0.1;
 #
 # Paths
 #
-my $RepeatAfterMeDir = "/home/rh105648e/RepeatAfterMe";
+#my $RepeatAfterMeDir = "/home/rh105648e/RepeatAfterMe";
+my $RepeatAfterMeDir = "/home/rhubley/projects/RepeatAfterMe";
 
 
 # Option processing

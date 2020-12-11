@@ -698,7 +698,7 @@ while ( 1 ) {
   #
   my $changedCnt = 0;
   my %filterIndices = ();
-  foreach my $consID ( keys(%{$consRecs}) ) {
+  foreach my $consID ( sort { $consRecs->{$a}->{'order'} <=> $consRecs->{$b}->{'order'} } keys(%{$consRecs}) ) {
     next if ( $consRecs->{$consID}->{'stable'} == 1 );
     next if ( $consRecs->{$consID}->{'buffer'} == 1 );
     unless ( $options{'quiet'} ) {
@@ -826,6 +826,8 @@ while ( 1 ) {
     #
     my ($newcons, $hAlignLeft, $hAlignRight, $diffStr) = processAliFile("$outdir/$consID.ali", $ext5done, $ext3done);
     
+    my $leftHPad = "H"x($consRecs->{$consID}->{'leftHPad'});
+    my $rightHPad = "H"x($consRecs->{$consID}->{'rightHPad'});
     if ($newcons eq $consRecs->{$consID}->{'seq'}) {
       print "Changes: **unchanged**\n" unless ( $options{'quiet'} );
       $consRecs->{$consID}->{'stable'} = 1;
@@ -834,11 +836,11 @@ while ( 1 ) {
         #print ">$consID\n$newcons\n";
         print "-----\n";
       }
+      # Add back the H pads for anchoring purposes only
+      $newcons = $leftHPad."\n".$newcons."\n".$rightHPad;
 
     }else {
       print "Changes:\n$diffStr\n" unless ( $options{'quiet'} );
-      my $leftHPad = "H"x($consRecs->{$consID}->{'leftHPad'});
-      my $rightHPad = "H"x($consRecs->{$consID}->{'rightHPad'});
       $changedCnt++;
       $consRecs->{$consID}->{'iteration'}++;
 
@@ -1073,6 +1075,7 @@ sub processConFile {
   my($filename, $dirs, $suffix) = fileparse($conFile);
   open CON,"<$conFile" or die "\n\nCould not open consensus file \'$conFile\' for reading!\n\n";
   my $numBuffers = 0;
+  my $idx = 1;
   my %consRecs = ();
   my $id;
   my $seq;
@@ -1098,6 +1101,10 @@ sub processConFile {
         }
         if ( $id eq $filename ) {
           die "\n\nConsensus file contains a identifier with the same name as the file $id!\n\n";
+        }
+        # LEGACY "Z" padding.
+        if ( $seq =~ /^Z+/ || $seq =~ /.*Z+$/ ) {
+          $seq =~ s/Z/H/g;
         }
         my $leftHPad = 0;
         my $rightHPad = 0;
@@ -1126,7 +1133,9 @@ sub processConFile {
                            'iteration' => 0,
                            'stable' => 0,
                            'leftHPad' => $leftHPad,
-                           'rightHPad' => $rightHPad };
+                           'rightHPad' => $rightHPad,
+                           'order' => $idx };
+        $idx++;
       }
       $id = $tID;
       $desc = $tDesc;
@@ -1182,7 +1191,9 @@ sub processConFile {
                        'iteration' => 0,
                        'stable' => 0,
                        'leftHPad' => $leftHPad,
-                       'rightHPad' => $rightHPad };
+                       'rightHPad' => $rightHPad,
+                       'order' => $idx };
+    $idx++;
   }
  
   my $numRefineableCons = scalar(keys(%consRecs))-$numBuffers;

@@ -1577,12 +1577,12 @@ sub _importAlignedSeqs {
     }
 
     my $refStart = 0;
-    if ( $sequence =~ /^(\.+)/ ) {
+    if ( $sequence =~ /^([\.\s\-]+)/ ) {
       $refStart = length( $1 );
       $sequence = substr( $sequence, $refStart );
     }
 
-    if ( $sequence =~ /([^\.])(\.+)$/ ) {
+    if ( $sequence =~ /([^\.\s\-])([\.\s\-]+)$/ ) {
       $sequence = substr( $sequence, 0, length( $sequence ) - length( $2 ) );
     }
     my $refEnd = length( $sequence ) + $refStart - 1;
@@ -4501,7 +4501,7 @@ sub buildConsensusFromArray {
   }
 
   #
-  # Build up a profile of these multiply aligned sequences
+  # Build up a profile of these multiply aligned equences
   #
   my $sequences = $parameters{'sequences'};
   my @profile   = ();
