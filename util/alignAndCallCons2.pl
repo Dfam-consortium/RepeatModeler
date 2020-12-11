@@ -1,112 +1,35 @@
 #!/usr/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
-##      @(#) alignAndCallConsensus.pl
+##      @(#) alignAndCallCons2.pl
 ##  Author:
-##      Arian Smit         asmit@systemsbiology.org
 ##      Robert M. Hubley   rhubley@systemsbiology.org
+##      Arian Smit         asmit@systemsbiology.org
 ##  Description:
-##      A script to align a consensus to a set of putative
-##      family instances and recall the consensus based on the
-##      linup of all alignments.
+##      A script to generate a MSA from a set of TE copies and call
+##      a new consensus.
 ##
 
 =head1 NAME
 
-alignAndCallConsensus.pl - Align TE consensus to a set of instances and call consensus
+alignAndCallCons2.pl - Align TE instances and call consensus
 
 =head1 SYNOPSIS
 
-  alignAndCallConsensus.pl -c(onsensus) <*.fa> -e(lements) <*.fa> | -de(faults)
-                 [-d(ivergencemax) #] [-sc(ore) #] [-mi(nmatch) #]
-                 [-b(andwidth) #] [-cr(ossmatch)] [-rm(blast)]
-                 [-f(inishedext) <str>] [-ma(trix) <str>]
-                 [-h(tml)] [-st(ockholm)] [-q(uiet)]
-                 [-re(fine)|-re(fine) #> [-fi(lter_overlap)]
-                 [-inc(lude_reference)] [-outdir <val]
-                 [-p(rune) <val>] [-qu(oteprune) <val>]
-                 [-int(eractive)] [-help]
+  alignAndCallCons2.pl -e(lements) <*.fa> | -de(faults) 
+                      [-help]
 
   Example:
 
-    ./alignAndCallConsensus.pl -defaults
+    ./alignAndCallCons2.pl -de
 
-        Assumes that a consensus file named "rep" and an elements file 
-        named "repseq" ( representative sequences ) exists in the 
-        current working directory.  All defaults will be used to
-        generate a single transitive multiple alignment and a new 
-        consensus.
+        Assumes that a file named "repseq" exists and contains
+        all the sequences to be aligned.  This is a deprecated option
+        will eventually be removed in favor of the -e parameter.
 
   or
 
-    ./alignAndCallConsensus.pl -c mycons.fa -e myinstances.fa
-
-
-  This tool was original written by Arian Smit as two different scripts known 
-  affectionately as "dothemsimple.pl" and "dothemmultiple.pl".  As part of a 
-  large set of small command line tools this script performs an alignment of 
-  a putative TE family consensus or a set of related TE family consensi to a 
-  representative set of instances for the family(ies).  The alignments are then
-  used to generate a transitively induced multiple alignment ( aka "line up")
-  for the purposes of consensus calling.  The new consensus may then be used 
-  to realign to the instances and another consensus may be called.  In a sense 
-  this is a hill climbing optimisation.  The output consensus may be better 
-  than the input consensus but it still may not be optimal or even stable.  By 
-  applying this method iteratively the consensus will improve and stabilize.
-
-  The tool was written to support multiple use cases:
-
-  Consensus Extension:
-     Provided a consensus from a de-novo TE discovery tool, this tool may
-     be used to manually extend a consensus sequence.  The "H" IUB code
-     has been repurposed for this task.  By prefixing/suffxing "H" characters
-     to the input consensus, flanking bases may be pulled into the final 
-     alignment. The matrices used by this utility score any match to an
-     "H" positively (+3).  This has the effect of extending the alignment
-     by the number of "H" on either end of the alignment.  This assumes that
-     the -elements file contains flanking sequence in advance.
-     NOTE: This will repad the final consensus with the same number of H's
-           that it started with to assist with continuing the extension.
-
-       E.g.
-
-          initial consensus:    HHHHAACGTTAGCGGATTACGAGGGCAHHHH
-          elements:             AATAAACGTTAGCGGATTACGAGGGCAGATA
-                                ACTAA-CGTAAGCGAATTACGA-GGCAGCTC
-                                ACTAA-CGTTAGCGAATTACGAGGGCAGTTG
-                                ACTAA-CGTTAGCGAATTACGAGGGCAGGTT
-
-          new consensus:        ACTAA-CGTTAGCGAATTACGAGGGCAGNTN
-          updated positions:    **** *        *            * *  
-
-
-  Iterative Refinement:
-     The initial consensus may be rudimentary or simply derived from a
-     different representative set.  In this case the new consensus
-     output at the end of the the run may differ from the original.  In
-     this case this tool may be re-run on the updated consensus in an
-     iterative fashion until the input consensus matches the output
-     conensus.
-
-
-  Subfamily Consensus Building:
-     After performing a subfamily analysis using tools such as Coseg,
-     one often wants to build a formal alignment and consensus for each
-     of a set of related subfamilies.  Typically all starting consensi
-     a used to gather a combined set of instances.  The consenus
-     file contains all of the starting subfamilies.  This script will
-     align each instance to all consensi and assign each one to it's
-     best match. Then each alignment set will be used to calculate a new 
-     cosensus for each family in the same fashion as the single consensus
-     case.
-
-
-  Output:
-     The program saves the original input consensus file as <filename>.#, where 
-     the number begins with '1' and is incremented up until 25 at which time
-     the program dies and requires backups be removed before proceeding. The new
-     consensus is saved as the original input consensus file name.
-
+    ./alignAndCallCons2.pl -e myinstances.fa
 
 =head1 DESCRIPTION
 
@@ -114,103 +37,10 @@ The options are:
 
 =over 4
 
-=item -c(onsensus) <*.fa> 
-
-A FASTA file containing a single consensus sequence for a TE family. In 
-addition to the standard nucleotide characters the consensus may contain
-a limited IUB code set: N, R, Y, M, K, S, and W.  The weakly specified 
-IUB codes W,H,B,V and D are reserved for other uses.  
-
-The consensus may be optionally padded on either side (5'/3') with the 
-special purpose "H" pad character.  Using a special matrices which score
-positively any match to an "H", this utility is able to pull in flanking
-sequence into the alignments.  Default: If this option is not provided
-the file "rep" in the current working directory is assumed to be the
-consensus file.
-
 =item -e(lements) <*.fa>
 
 A multi-sequence FASTA file containing sequences believed to be elements of 
-a single TE family.  Sequences may (and often should) contain flanking sequence
-for possible extension using the "H" padding character (see consensus parameter).
-Default: If this option is not provided the file "repseq" in the current
-working directory is assumed to be the elements file.
-
-
-=item -d(ivergencemax) #
- 
-Filters aligned element sequences above this % divergence. Default: 60 
-
-=item -sc(ore) #
-
-The minimum aligned score. Default: 200
-
-=item -mi(nmatch) #
-
-The minimum word size for the alignment algorithm. Default: 7
-
-=item -b(andwidth) #
-
-The alignment bandwidth for cross_match ( or equivalent x-drop cutoffs for rmblast )
-Default: 40
-
-=item -ma(trix) <value>
-
-Default 25; If a number 14,18,20 or 25 is given the matrix ##p41g.matrix is chosen.
-If given 14p35 (37,39,41,43,45,47,49,51,53) #####g.matrix is chosen
- 
-=item -f(inishedext) <value>
-
-Default off; given N 'H's on an end of the reference, the program wil extend 
-the consensus by N bases and pad the new consensus with N 'H's.
--f 5 : 5' extension done (the 5' end won't grow nor get 'H's attached)
--f 3 : 3' extension done
--f b : both extensions done
-
-=item -inc(lude_reference)
-
-Include the supplied consensus sequence in the multiple alignment.  Used in cases
-were the starting consnesus is a single instance of the family.
-
-=item -p(rune) # or "#n#"
-
-Prunes the consensus sequence on either side to the point that more than # 
-sequences are aligned. If the string form "#n#" is used ....
-
-=item -qu(oteprune) #
-
-TODO: NOT IMPLEMENTED
-Same as prune except that instead of pruning to the point that more than #
-sequences are aligned it prunes until the number of aligned sequences increases
-by >= # times.  Only checks the first and last 100bp and when 3 or more seqs
-join.
-
-=item -h(tml)       
-
-Generate an HTML visualization of the alignment using viewMSA.pl. 
-
-=item -st(ockholm)     
-
-Creates a Stockholm format (.stk) file on top of the normal Linup alignment file
-
-=item -rm(blast)
-
-Use RMBlast instead of cross_match
-
-=item -re(fine) or -re(fine) <value>
-
-Iterate the process of aligning the derived consensus to the set
-of instance sequences.  This is a simple optimisation step which 
-(like EM) which typically stabilizes after a small number of
-iterations.  The default is to attempt 5 iterations but a higher
-value may be specified with this option.
-
-=item -fi(lter_overlap)
-
-When a single sequence in the elements file produces multiple sub
-alignments to the consensus, this option will remove any sub alignment
-which overlaps the same consensus range *or* the same sequence
-range as a higher scoring sub alignment.
+a single TE family.  
 
 =back
 
@@ -248,7 +78,7 @@ use SearchResult;
 use SearchResultCollection;
 
 # Program version
-my $Version = 0.6;
+my $Version = 0.1;
 
 #
 # Paths
