@@ -50,8 +50,8 @@ foreach my $file (@ARGV) {
   print "Query name  BeginAlign HitName     length    i     v  " 
         ."gaps  diverg JC  Kimura\n" unless ( $opt_sum );
   if ($opt_cg) {
-    open (IN, $file);
-    open (OUT, ">$file.CGmodified");
+    open IN, "<$file" or die;
+    open OUT, ">$file.CGmodified" or die;
     my $print = 0;
     my $diffline;
     while (<IN>) {
@@ -94,9 +94,12 @@ foreach my $file (@ARGV) {
       }
     }
     $file .= '.CGmodified';
+    close IN;
+    close OUT;
   }
 
-  my ($queryname, $beginalign, $hitname, $length, $transitions, $transversions, $indels, $divergence, $jukes, $kimura);
+  my ($queryname, $beginalign, $hitname, $transitions, $transversions, $indels, $divergence, $jukes, $kimura);
+  my $length = 0;
   format STDOUT =
 @<<<<<<<<<<<<< @######## @<<<<<<<<<<  @####  @###  @###  @##  @#.###  @#.### @#.###
 $queryname, $beginalign, $hitname, $length, $transitions, $transversions, $indels, $divergence, $jukes, $kimura
@@ -107,7 +110,7 @@ $queryname, $beginalign, $hitname, $length, $transitions, $transversions, $indel
   my ($count, $count2, $querynumber);
   my %counted = ();
   my $last = "";
-  open (FILE, $file);
+  open FILE, "<$file" or die;
   while (<FILE>) {
     last if /^find matches/;
     if ($count2) {
@@ -126,9 +129,6 @@ $queryname, $beginalign, $hitname, $length, $transitions, $transversions, $indel
     }
     if ($count && /$queryname/) {
       my @queryfield = split;
-if ( @queryfield < 3 ) {
-  print "Strange line: $_\n";
-}
       # length usually increments with 50, except at end of
       # alignment: this is not the length of the target or query
       # sequence, but the length of the alignment

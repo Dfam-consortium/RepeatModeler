@@ -248,7 +248,7 @@ use SearchResult;
 use SearchResultCollection;
 
 # Program version
-my $Version = 0.6;
+my $Version = 0.7;
 
 #
 # Paths
@@ -858,7 +858,7 @@ while ( 1 ) {
         chomp $answer;
         if ($answer eq 's') {
            # Do not keep changes
-           $newcons = $consRecs->{$consID}->{'seq'};
+           $newcons = $leftHPad."\n".$consRecs->{$consID}->{'seq'}."\n".$rightHPad;
         } else {
  
           if ($answer eq 'c') {
@@ -1006,16 +1006,19 @@ sub processAliFile {
       if ( $refbit =~ /^(H+)[ACGTNRYMKSW-]/ ) {
         $Hleft = length($1);
       }
-      if ( $refbit =~ /[ACGTNRYMKSW-](H+)\s*$/ ) {
-        $Hright = length($1);
-      }
+      # Could span multiple stanzas
+      #if ( $refbit =~ /[ACGTNRYMKSW-](H+)\s*$/ ) {
+      #  $Hright = length($1);
+      #}
       if ($refbit ne $consbit) {
         if ( $is5ExtDone && /^ref\:\S+\s+(\d+)\s+(H+)[ACGTN]/ ) {
           # We were done with 5'extension previously.  Any alignment
           # to H's in this round are purely for anchoring purposes and
           # should not contribute the consensus.
+# print "Chewing off H aligned left\nwas:$newcons\nnow:";
           $Hleft = length $2;
           $newcons =~ s/^\w{$Hleft}//;
+# print "$newcons\n";
           # Now that we are done with extension only record differences
           # if they occur after the H padding.
           my ($tempcons,$tempref) = ($consbit,$refbit);
@@ -1059,7 +1062,9 @@ sub processAliFile {
     }
   }
   close ALI;
+# print "Chewing off H aligned right \nwas:$newcons\nnow:" if ( $is3ExtDone);
   $newcons =~ s/(\w){$Hright}$// if $Hright && $is3ExtDone;
+# print "$newcons\n" if ( $is3ExtDone );
  
   return( $newcons, $Hleft, $Hright, $diffStr );
 }
