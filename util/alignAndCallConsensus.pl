@@ -1169,6 +1169,10 @@ sub processConFile {
     if ( $id eq $filename ) {
       die "\n\nConsensus file contains a identifier with the same name as the file $id!\n\n";
     }
+    # LEGACY "Z" padding.
+    if ( $seq =~ /^Z+/ || $seq =~ /.*Z+$/ ) {
+      $seq =~ s/Z/H/g;
+    }
     my $leftHPad = 0;
     my $rightHPad = 0;
     if ( $seq =~ /^(H+)(\S+?)(H*)$/ ) {
