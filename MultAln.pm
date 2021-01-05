@@ -1242,7 +1242,10 @@ sub kimuraDivergence {
     $totDiv += $object->getAlignedDiv( $n );
     $sumDiv += ( $transI + $transV );
   }
-  my $avgDiv = sprintf( "%0.2f", ( $totDiv / $hits ) );
+  my $avgDiv = 0;
+  if ( $hits > 0 ) {
+    $avgDiv = sprintf( "%0.2f", ( $totDiv / $hits ) );
+  }
   return ( $sumDiv, $totDiv, $avgDiv );
 }
 

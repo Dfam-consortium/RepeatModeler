@@ -17,6 +17,7 @@ alignAndCallCons2.pl - Align TE instances and call consensus
 =head1 SYNOPSIS
 
   alignAndCallCons2.pl -e(lements) <*.fa> | -de(faults) 
+                       [-di|align]
                       [-help]
 
   Example:
@@ -99,6 +100,7 @@ my $defaultEngine = "crossmatch";
 my @getopt_args = (
                     '-elements|e=s',
                     '-defaults|de',
+                    '-dialign|di',
                     '-help' );
 my %options = ();
 Getopt::Long::config( "noignorecase", "bundling_override" );
@@ -112,8 +114,8 @@ sub usage {
   exit( 1 );
 }
 
-usage() unless ( ! $options{'help'} && (
-                 $options{'defaults'} || ( $options{'consensus'} && $options{'elements'} )));
+usage() unless ( ! $options{'help'} && 
+                 ($options{'defaults'} || $options{'elements'} ));
 
 
 # Output directory
@@ -142,12 +144,21 @@ if ( exists $options{'elements'} ) {
 }
 
 
-my $cmd = "$mafftDir/mafft --localpair --maxiterate 1000 $elesFile > $outdir/mafft.out";
-system($cmd);
+my $cmd;
+if (  $options{'dialign'} ) {
+  $ENV{'DIALIGN2_DIR'} = "/usr/local/dialign-2.2.1/dialign2_dir";
+  $cmd = "/usr/local/dialign-2.2.1/dialign2-2 -n -fa -fn dialign $elesFile";
+  system($cmd);
+  system("mv dialign.fa $outdir/align.raw");
+}else {
+  $cmd = "$mafftDir/mafft --localpair --maxiterate 1000 $elesFile > mafft.fa";
+  system($cmd);
+  system("mv mafft.fa $outdir/align.raw");
+}
 
-$cmd = "$FindBin::RealBin/Linup -name consensus $outdir/mafft.out > $outdir/ali";
+$cmd = "$FindBin::RealBin/Linup -name consensus $outdir/align.raw > $outdir/ali";
 system($cmd);
-$cmd = "$FindBin::RealBin/Linup -name consensus -consensus $outdir/mafft.out > $outdir/rep";
+$cmd = "$FindBin::RealBin/Linup -name consensus -consensus $outdir/align.raw > $outdir/rep";
 system($cmd);
 
 1;

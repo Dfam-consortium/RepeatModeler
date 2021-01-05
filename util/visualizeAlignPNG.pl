@@ -28,6 +28,7 @@ my $ucscToolsDir = "/usr/local/bin";
 my @getopt_args = (
                     '-genome=s',
                     '-outfile=s',
+                    '-fasta=s',
                     '-coreoutfile=s'
 );
 
@@ -37,67 +38,139 @@ unless ( GetOptions( \%options, @getopt_args ) ) {
   die;
 }
 
-my $genome_file = "genome";
+my $genome_file;
+
+if ( -S "genome" ) {
+  $genome_file = "genome";
+}
 if ( exists $options{'genome'} )
 {
   $genome_file = $options{'genome'};
-}
-if ( !-s $genome_file )
-{
-  die "Could not open genome file: $genome_file\n";
+}else {
+  warn "Genome not provided.  No flanking data will be displayed\n";
 }
 
-my $outFile = "out";
+my $outFile;
+if ( -S "out" ) {
+  $outFile = "out";
+}
 if ( exists $options{'outfile'} ) {
   $outFile = $options{'outfile'};
-}
-if ( ! -s $outFile ) {
-  die "Could not open out file: $outFile\n";
 }
 
 # Obtain seq lengths -- do this once
 my %seqLens = ();
-open IN, "$ucscToolsDir/twoBitInfo $genome_file stdout|"
-    or die "Could not run $ucscToolsDir/twoBitInfo on $genome_file!\n";
-my $lines = 0;
-while ( <IN> )
+if ( $genome_file ) 
 {
-  $lines++;
-  if ( /^(\S+)\s+(\d+)/ )
+  open IN, "$ucscToolsDir/twoBitInfo $genome_file stdout|"
+    or die "Could not run $ucscToolsDir/twoBitInfo on $genome_file!\n";
+  my $lines = 0;
+  while ( <IN> )
   {
-    $seqLens{$1} = $2;
+    $lines++;
+    if ( /^(\S+)\s+(\d+)/ )
+    {
+      $seqLens{$1} = $2;
+    }
   }
+  close IN;
 }
-close IN;
-
-my $resultCollection =
-    CrossmatchSearchEngine::parseOutput( searchOutput => $outFile );
 
 my $maxLen = 0;
 my $maxSeqID;
 my $maxStart;
 my $maxEnd;
-if ( $options{'coreoutfile'} ) {
-  my $coreResultCollection =
-    CrossmatchSearchEngine::parseOutput( searchOutput => $options{'coreoutfile'} );
-  for ( my $i = 0; $i < $coreResultCollection->size(); $i++ ){
-     my $result = $coreResultCollection->get($i); 
-     if ( $result->getQueryEnd() - $result->getQueryStart() + 1 > $maxLen ) {
-       $maxSeqID = $result->getQueryname();
-       $maxStart = $result->getQueryStart();
-       $maxEnd =  $result->getQueryEnd();
-       $maxLen = $result->getQueryEnd() - $result->getQueryStart() + 1;
-     }
+my $mAlign;
+if ( exists $options{'outfile'} ) {
+  my $resultCollection =
+    CrossmatchSearchEngine::parseOutput( searchOutput => $outFile );
+
+  if ( $options{'coreoutfile'} ) {
+    my $coreResultCollection =
+      CrossmatchSearchEngine::parseOutput( searchOutput => $options{'coreoutfile'} );
+    for ( my $i = 0; $i < $coreResultCollection->size(); $i++ ){
+       my $result = $coreResultCollection->get($i); 
+       if ( $result->getQueryEnd() - $result->getQueryStart() + 1 > $maxLen ) {
+         $maxSeqID = $result->getQueryname();
+         $maxStart = $result->getQueryStart();
+         $maxEnd =  $result->getQueryEnd();
+         $maxLen = $result->getQueryEnd() - $result->getQueryStart() + 1;
+       }
+    }
+    undef $coreResultCollection;
   }
-  undef $coreResultCollection;
+  
+  $mAlign = MultAln->new(
+                             referenceSeq              => "",
+                             searchCollection          => $resultCollection,
+                             searchCollectionReference => MultAln::Subject
+                        );
+}elsif ( exists $options{'fasta'} ) {
+  my @seqs;
+  my $seq;
+  my $id;
+  open my $IN, "<$options{'fasta'}" or die "Could not open $options{'fasta'} for reading";
+  # Simple FASTA reader
+  my %idHash = ();
+  while (<$IN>) {
+    if ( /^>(\S+)/ )
+    {
+      my $tmpID = $1;
+      if ( defined $idHash{$tmpID} ) {
+        my $ver = 1;
+        while ( defined $idHash{$tmpID . "_$ver"} )
+        {
+          $ver++;
+        }
+        warn "WARN File contains a duplicate identifier \"$tmpID\".  A suffix of \"_$ver\"\n" .
+             "     will be appended to this occurence.\n";
+        $tmpID = $tmpID . "_$ver";
+      }
+      $idHash{$tmpID}++;
+      if ( $seq )
+      {
+        $seq = uc($seq);
+        # Convert prefix/suffix "-"s to spacers
+        #if ( $seq =~ /^(\-+)/ ){
+        #  substr($seq,0,length($1)) = "."x(length($1));
+        #}
+        #if ( $seq =~ /(\-+)$/ ) {
+        #  substr($seq,length($seq)-length($1)-1) = "."x(length($1));
+        #}
+        $seq =~ s/\-/./g;
+        push @seqs, [ " ", $seq, " " ];
+      }
+      $seq = "";
+      $id = $tmpID;
+      next;
+    }
+    s/[\s\n\r]+//g;
+    $seq .= $_;
+  }
+  if ( $seq )
+  {
+    # Convert prefix/suffix "-"s to spacers
+    #if ( $seq =~ /^(\-+)/ ){
+    #  substr($seq,0,length($1)) = "."x(length($1));
+    #}
+    #if ( $seq =~ /(\-+)$/ ) {
+    #  substr($seq,length($seq)-length($1)-1) = "."x(length($1));
+    #}
+    $seq =~ s/\-/./g;
+    $seq = uc($seq);
+    push @seqs, [ " ", $seq, " " ];
+  }
+  close $IN;
+  getMultAlignPNG( seqs => \@seqs );
+  exit;
+  ###
+}else {
+  die "Must provide either -outfile or -fasta";
 }
-
-my $mAlign = MultAln->new(
-                           referenceSeq              => "",
-                           searchCollection          => $resultCollection,
-                           searchCollectionReference => MultAln::Subject
-);
-
+  
+if ($genome_file eq "" ) {
+  die "At this time genome is not an optional argument when used with -outfile";
+}
 my $genome     = $genome_file;
 my $flankleft  = 50;
 my $flankright = 50;
