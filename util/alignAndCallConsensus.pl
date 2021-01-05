@@ -336,6 +336,7 @@ if ( exists $options{'consensus'} ) {
   exit(1);
 }
 my ( $numRefineableCons, $numBuffers, $consRecs ) = &processConFile( $conFile );
+
 if ( $numRefineableCons == 0 && $numBuffers > 0 ) {
   print "\n\nThe consensus file only contains buffer sequences.  There must be at least one non-buffer sequence. Use '-help' for option help.\n\n";
   exit(1);
@@ -578,7 +579,8 @@ while ( 1 ) {
     my %occEnd = ();
     for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
       my $resultRef = $resultCollection->get( $k );
-      my $sName = $consRecs->{$resultRef->getSubjName()};
+      my $subjName = $resultRef->getSubjName();
+      my $sName = $resultRef->getSubjName();
       $sName = $1 if ( $sName =~ /(\S+)\#.*/ );
       next if ( $consRecs->{$sName}->{'buffer'} == 1 );
       my $qName = $resultRef->getQueryName();
