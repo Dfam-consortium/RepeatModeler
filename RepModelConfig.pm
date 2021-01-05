@@ -178,7 +178,21 @@ BEGIN {
                           'param_type' => 'program',
                           'required' => 1,
                           'value' => '/usr/local/bin/trf409.linux64'
+                        },
+          'UCSCTOOLS_DIR' => {
+                          'command_line_override' => 'ucsctools_dir',
+                          'description' => 'The path to the installation directory of the UCSC TwoBit Tools (twoBitToFa, faToTwoBit, twoBitInfo etc).',
+                          'environment_override' => 'UCSCTOOLS_PRGM',
+                          'param_type' => 'directory',
+                          'required' => 0,
+                          'expected_binaries' => [
+                                                     'twoBitToFa',
+                                                     'faToTwoBit',
+                                                     'twoBitInfo'
+                                                   ],
+                          'value' => '/usr/local/ucscTools'
                         }
+ 
         };
 
   ## EDCFG --do-not-remove--
@@ -542,6 +556,12 @@ BEGIN {
       $tmpStr = `$value -V 2>&1`;
       $tmpStr =~ /Version\s+(\d+\.\d+)/;
       $version = $1;
+    }elsif ( $param eq "UCSCTOOLS_DIR" ) { 
+      # Currently Jim doesn't provide an option get a version.  Need to 
+      # sneakily pull it out of the binaries strings.
+      $tmpStr = `strings $value/twoBitInfo | grep "kent source version"`;
+      $version = "unknown";
+      $version = $1 if ( $tmpStr =~ /kent source version\s+(\d+)/ );
     }elsif ( $param eq "ABBLAST_DIR" ) {
       #blastp -blah
       #BLASTP 3.0SE-AB [2009-10-30] [linux26-x64-I32LPF64 2009-10-30T17:06:09]

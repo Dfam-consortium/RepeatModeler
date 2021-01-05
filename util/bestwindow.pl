@@ -29,16 +29,16 @@
 
 =head1 SYNOPSIS
 
- bestwindow.pl [-version] <cross_match output> minimum-windowsize
+ bestwindow.pl [-version] [-w(indow) #] [-c(opiesonly)] <cross_match output>
 
 =head1 DESCRIPTION
 
- Finds a long region in a consensus to which many copies align.
- By default it optimizes the product of copy # and window size..
- Change $copiesonly parameter to just get highest copy number (which runs a lot faster)
+ Given a cross_match format alignment file of a single query sequence (consensus)
+ against a set of sequences (copies), find the longest region of the consensus
+ to which many copies align. 
 
- die "bestwindow.pl <cross_match out file> minimum-windowsize 
-  Any third argument will make it count copies instead of bases\n" unless $ARGV[1];
+ By default it optimizes the product of copy number and window size.  Use the
+ -copiesonly parameter to just get the highest copy number (which runs a lot faster).
 
 The options are:
 
@@ -81,7 +81,6 @@ use Data::Dumper;
 
 my $Version = $RepModelConfig::VERSION;
 my $DEBUG = 0;
-
 
 my $file = shift;
 my $minimumwindow = shift;

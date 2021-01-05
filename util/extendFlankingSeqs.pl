@@ -1,4 +1,61 @@
 #!/usr/bin/perl -w
+###---------------------------------------------------------------------------##
+###  File:
+###      @(#) extendFlankingSeqs.pl
+###  Author:
+###      Robert M. Hubley   rhubley@systemsbiology.org
+###  Description:
+###      Read in a crossmatch out file and extend the sequences.
+###
+##******************************************************************************
+##*  This software is provided ``AS IS'' and any express or implied            *
+##*  warranties, including, but not limited to, the implied warranties of      *
+##*  merchantability and fitness for a particular purpose, are disclaimed.     *
+##*  In no event shall the authors or the Institute for Systems Biology        *
+##*  liable for any direct, indirect, incidental, special, exemplary, or       *
+##*  consequential damages (including, but not limited to, procurement of      *
+##*  substitute goods or services; loss of use, data, or profits; or           *
+##*  business interruption) however caused and on any theory of liability,     *
+##*  whether in contract, strict liability, or tort (including negligence      *
+##*  or otherwise) arising in any way out of the use of this software, even    *
+##*  if advised of the possibility of such damage.                             *
+##*                                                                            *
+##******************************************************************************
+
+=head1 NAME
+
+ extendFlankingSeqs.pl - Extend sequences ranges defined by crossmatch out file
+
+=head1 SYNOPSIS
+
+ extendFlankingSeqs.pl [-version] [[-r(ight_flank) #] [-l(eft_flank) #] | [-f(lank) #]]
+                       [-g(ap) #] [-r(eindex)]
+                       -d(atabase) <2bit file>
+                       <cross_match file>
+
+=head1 DESCRIPTION
+
+The options are:
+
+=over 4
+
+=item -version
+
+Displays the version of the program
+
+=back
+
+=head1 SEE ALSO
+
+=head1 COPYRIGHT
+
+Copyright 2019-2021 Robert Hubley, Institute for Systems Biology
+
+=head1 AUTHOR
+
+Robert Hubley <rhubley@systemsbiology.org>
+
+=cut
 
 #
 # Module Dependence
@@ -10,7 +67,9 @@ use lib "$FindBin::Bin/../";
 use Data::Dumper;
 use Getopt::Long;
 use File::Spec;
+use Storable qw(nstore retrieve);
 use File::Temp qw/ tempfile tempdir /;
+use File::Basename;
 #
 use RepModelConfig;
 use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
@@ -18,29 +77,92 @@ use NCBIBlastSearchEngine;
 use SearchResult;
 use SearchResultCollection;
 
+# Program version
+my $Version = $RepModelConfig::VERSION;
 
-my $ucscToolsDir = "/usr/local/bin";
-my $genome_file = "foo.2bit";
+#
+# Paths
+#
+my $config           = $RepModelConfig::configuration;
+my $TWOBITINFO       = $config->{'UCSCTOOLS_DIR'}->{'value'} . "/twoBitInfo";
+my $TWOBITTOFA       = $config->{'UCSCTOOLS_DIR'}->{'value'} . "/twoBitToFa";
+my $FATOTWOBIT       = $config->{'UCSCTOOLS_DIR'}->{'value'} . "/faToTowBit";
 
-
-# Obtain seq lengths -- do this once
-my %seqLens = ();
-open IN,"$ucscToolsDir/twoBitInfo $genome_file stdout|" or die "Could not run $ucscToolsDir/twoBitInfo on $genome_file!\n";
-my $lines = 0;
-while ( <IN> ) {
-  $lines++;
-  if ( /^(\S+)\s+(\d+)/ ) {
-    $seqLens{$1} = $2;
-  }
+#
+# Option processing
+#  e.g.
+#   -t: Single letter binary option
+#   -t=s: String parameters
+#   -t=i: Number parameters
+#
+my @getopt_args = (
+                    '-version',
+                    '-reindex',
+                    '-gap|g=i',
+                    '-database|d=s',
+                    '-left_flank|l=i',
+                    '-right_flank|r=i',
+                    '-flank|f=i',
+);
+my %options = ();
+Getopt::Long::config( "noignorecase", "bundling_override" );
+unless ( GetOptions( \%options, @getopt_args ) ) {
+  usage();
 }
-close IN;
 
+sub usage {
+  print "$0 - $Version\n";
+  exec "pod2text $0 | less";
+  exit( 1 );
+}
 
-&addFlankingSequence($genome_file, "out", "newrepseq", \%seqLens, 100, 100);
-# Do something
-&addFlankingSequence($genome_file, "out", "newrepseq", \%seqLens, 100, 100);
-# Do something
+if ( ! exists $options{'database'} || ! -s $options{'database'} ) {
+  print "\n\nDatabase doesn't exist!  Must supply a TwoBit file!\n\n";
+  usage();
+}
 
+usage() if ( ! @ARGV || ! -s $ARGV[0] );
+
+my $inputFile = $ARGV[0];
+
+my $leftFlank = 100;
+my $rightFlank = 100;
+
+if ( $options{'flank'} ) {
+  $leftFlank = $rightFlank = $options{'flank'};
+}else {
+  $leftFlank = $options{'left_flank'} if ( $options{'left_flank'} );
+  $rightFlank = $options{'right_flank'} if ( $options{'right_flank'} );
+}
+
+my $gapTolerance = 0;
+$gapTolerance = $options{'gap'} if ( $options{'gap'} );
+
+my $twoBitFile = $options{'database'};
+my($twoBitFilename, $twoBitDir, $twoBitSuffix) = fileparse($twoBitFile);
+my $indexFile = "$twoBitFilename.idx";
+
+if ( ! -e $indexFile || $options{'reindex'} ) {
+  # Must rebuild master index
+  my %seqLens = ();
+  open IN,"$TWOBITINFO $twoBitFile stdout|" or die "Could not run $TWOBITINFO on $twoBitFile!\n";
+  my $lines = 0;
+  while ( <IN> ) {
+    $lines++;
+    if ( /^(\S+)\s+(\d+)/ ) {
+      $seqLens{$1} = $2;
+    }
+  }
+  close IN;
+  nstore(\%seqLens,$indexFile);
+}
+
+if ( ! -s $indexFile ) {
+  die "Index file missing or empty!\n";
+}
+my $seqLens = retrieve($indexFile);
+
+&addFlankingSequence($twoBitFile, $inputFile, "stdout", $seqLens, $leftFlank, $rightFlank);
 
 
 #--------------------------------------------------------------------------------------
@@ -113,17 +235,22 @@ sub addFlankingSequence {
       $orient = "-" if ( $flds[8] eq "C" );
   
       my $id = "";
-      my $start;
-      my $end;
       # These have traditionally been in 1-based full-closed coordinates
       if ( $raw_id =~ /^(\S+)\_(\d+)\_(\d+)\_?(R?)$/ )
       {
         $id = $1;
-        $start = $2;
-        $end = $3;
+        my $startOff = $2;
+        my $endOff = $3;
+        # Keep ranges in low to high order
+        if ( $startOff > $endOff ) {
+          $startOff = $3;
+          $endOff = $2;
+        }
+        $align_end = $startOff + $align_end - 1;
+        $align_start = $startOff + $align_start - 1;
       }else
       {
-        die "I don't know how to parse this id: $raw_id\n";
+        $id = $raw_id;
       }
   
       if ( ! exists $seqLens{$id} ) {
@@ -137,50 +264,38 @@ sub addFlankingSequence {
            !($raw_id =~ /_R/ && $orient eq "-" ) ) 
       {
         # Reversed left/right
-        my $leftExtBP = $flankleft - $align_start - 1;
-        if ( $leftExtBP > 0 ) {
-          $end += $leftExtBP;
-          if ( $end > $slen ) {
-            $end = $slen;
-            $cntTermLeft++;
-          }else {
-            $cntExtLeft++;
-          }
+        if ( $align_start == 1 ) {
+          $cntTermRight++;
+        }else {
+          $cntExtRight++;
         }
-        my $rightExtBP = $flankright - $align_remain;
-        if ( $rightExtBP > 0 ) {
-          $start -= $rightExtBP;
-          if ( $start < 1 ) {
-            $start = 1;
-            $cntTermRight++;
-          }else {
-            $cntExtRight++;
-          }
+        $align_start -= $flankright;
+        $align_start = 1 if ( $align_start < 1 );
+        if ( $align_end == $slen ) {
+          $cntTermLeft++;
+        }else {
+          $cntExtLeft++;
         }
-        push @{$ranges{$id}}, [$start, $end, "-"];
+        $align_end += $flankleft;
+        $align_end = $slen if ( $align_end > $slen );
+        push @{$ranges{$id}}, [$align_start, $align_end, "-"];
       }else {
         # Normal left/right
-        my $leftExtBP = $flankleft - $align_start - 1;
-        if ( $leftExtBP > 0 ) {
-          $start -= $leftExtBP;
-          if ( $start < 1 ) {
-            $start = 1;
-            $cntTermLeft++;
-          }else {
-            $cntExtLeft++;
-          }
+        if ( $align_start == 1 ) {
+          $cntTermLeft++;
+        }else {
+          $cntExtLeft++;
         }
-        my $rightExtBP = $flankright - $align_remain;
-        if ( $rightExtBP > 0 ) {
-          $end += $rightExtBP;
-          if ( $end > $slen ) {
-            $end = $slen;
-            $cntTermRight++;
-          }else {
-            $cntExtLeft++;
-          }
+        $align_start -= $flankleft;
+        $align_start = 1 if ( $align_start < 1 );
+        if ( $align_end == $slen ) {
+          $cntTermRight++;
+        }else {
+          $cntExtRight++;
         }
-        push @{$ranges{$id}}, [$start, $end, "+"];
+        $align_end += $flankright;
+        $align_end = $slen if ( $align_end > $slen );
+        push @{$ranges{$id}}, [$align_start, $align_end, "+"];
       }
       $totalRanges++;
     }
@@ -188,14 +303,15 @@ sub addFlankingSequence {
   close IN;
   
   # Collapse redundancy and overlapping hits
-  my @orient = ();
-  my ( $tmpFH, $tmpFilename ) = tempfile( UNLINK => 0, SUFFIX => ".seqlist", DIR => "." );
+  my @orientArr = ();
+  my ( $tmpFH, $tmpFilename ) = tempfile( UNLINK => 1, SUFFIX => ".seqlist", DIR => "." );
   my $totalRegions = 0;
   foreach my $id ( keys %ranges ) {
     my $prevStart;
     my $prevEnd;
     my $prevOrient;
     print "ID = $id\n" if ( $DEBUG );
+    # TODO: Track the count of overalapping ranges are on the +/- strand and use the max count to set the final orientation of the range
     foreach my $range ( sort {$a->[0] <=> $b->[0] || $a->[1] <=> $b->[1] } @{$ranges{$id}} ) {
       my $start = $range->[0];
       my $end = $range->[1];
@@ -204,11 +320,11 @@ sub addFlankingSequence {
       if ( defined $prevStart )
       {
         next if ( $start == $prevStart && $end == $prevEnd );
-        if ( $start <= $prevEnd ) {
+        if ( $start <= $prevEnd + $gapTolerance ) {
           $start = $prevStart;
           print "overlapping elements\n" if ( $DEBUG );
         }else {
-          push @orient, $prevOrient;
+          push @orientArr, $prevOrient;
           # switch to zero-based, half-open
           print $tmpFH "$id:". ($prevStart-1) . "-" . $prevEnd . "\n";
           $totalRegions++;
@@ -220,7 +336,7 @@ sub addFlankingSequence {
       $prevOrient = $orient;
     }
     if ( defined $prevEnd )  {
-      push @orient, $prevOrient;
+      push @orientArr, $prevOrient;
       # switch to zero-based, half-open
       print $tmpFH "$id:". ($prevStart-1) . "-" . $prevEnd . "\n";
       $totalRegions++;
@@ -240,9 +356,11 @@ sub addFlankingSequence {
     print "  * There may be 1 or more alignments per sequence region\n";
   }else {
     # Generate sequences
-    my $cmd = "$ucscToolsDir/twoBitToFa -seqList=$tmpFilename $genome stdout";
+    my $cmd = "$TWOBITTOFA -seqList=$tmpFilename $genome stdout";
     open IN,"$cmd|" or die "Could not run $cmd!\n";
-    open OUT,">$outputFile" or die "Could not open $outputFile for writing!\n";
+    if ( $outputFile ne "stdout" ) {
+      open OUT,">$outputFile" or die "Could not open $outputFile for writing!\n";
+    }
     my $idx = 0;
     my $seq = "";
     my $id;
@@ -258,12 +376,16 @@ sub addFlankingSequence {
         $tmp_end = $seqLens{$tmp_id} if ( ! defined $tmp_end );
         if ( $seq ) {
           my $outID = $id . "_" . ($start + 1) . "_$end";
-          if ( $orient[$idx] eq "-" ) {
+          if ( $orientArr[$idx] eq "-" ) {
             $seq = reverse( $seq );
             $seq =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
             $outID .= "_R";
           }
-          print OUT ">$outID\n$seq\n";
+          if ( $outputFile eq "stdout" ) {
+            print ">$outID\n$seq\n";
+          }else {
+            print OUT ">$outID\n$seq\n";
+          }
           $idx++;
         }
         $id = $tmp_id;
@@ -277,15 +399,19 @@ sub addFlankingSequence {
     }
     if ( $seq ) {
       my $outID = $id . "_" . ($start + 1) . "_$end";
-      if ( $orient[$idx] eq "-" ) {
+      if ( $orientArr[$idx] eq "-" ) {
         $seq = reverse( $seq );
         $seq =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
         $outID .= "_R";
       }
-      print OUT ">$outID\n$seq\n";
+      if ( $outputFile eq "stdout" ) {
+        print ">$outID\n$seq\n";
+      }else {
+        print OUT ">$outID\n$seq\n";
+      }
     }
     close IN;
-    close OUT;
+    close OUT if ( $outputFile ne "stdout" );
   }
   
   unless( $DEBUG ) {

@@ -150,7 +150,7 @@ BEGIN {
                           "File::Path",  "Data::Dumper",
                           "Cwd",         "JSON",
                           "File::Which", "URI",
-                          "LWP::UserAgent"
+                          "LWP::UserAgent", "Storable"
   );
 
   my @missingModules = ();
