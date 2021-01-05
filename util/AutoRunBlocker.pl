@@ -8,6 +8,20 @@
 ##  Description:
 ##      Automatically identify insertions/deletions in a Linup consensus
 ##
+#******************************************************************************
+#*  This software is provided ``AS IS'' and any express or implied            *
+#*  warranties, including, but not limited to, the implied warranties of      *
+#*  merchantability and fitness for a particular purpose, are disclaimed.     *
+#*  In no event shall the authors or the Institute for Systems Biology        *
+#*  liable for any direct, indirect, incidental, special, exemplary, or       *
+#*  consequential damages (including, but not limited to, procurement of      *
+#*  substitute goods or services; loss of use, data, or profits; or           *
+#*  business interruption) however caused and on any theory of liability,     *
+#*  whether in contract, strict liability, or tort (including negligence      *
+#*  or otherwise) arising in any way out of the use of this software, even    *
+#*  if advised of the possibility of such damage.                             *
+#*                                                                            *
+#******************************************************************************
 
 =head1 NAME
 
@@ -67,7 +81,11 @@ Blah
 
 =head1 SEE ALSO
 
-ReapeatModeler, extendcons.pl, createxmoutstk.pl, dothemsimple.pl etc.
+ReapeatModeler, extendcons.pl, alignAndCallConsensus.pl etc.. 
+
+=head1 COPYRIGHT
+
+Copyright 2019-2021 Robert Hubley, Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -82,11 +100,19 @@ Robert Hubley <rhubley@systemsbiology.org>
 #
 use strict;
 use FindBin;
-use Data::Dumper;
+use lib $FindBin::RealBin;
+use lib "$FindBin::RealBin/../";
 use Getopt::Long;
+use POSIX qw(:sys_wait_h ceil floor);
+use File::Copy;
+use File::Spec;
+use File::Path;
+use File::Basename;
+use Cwd qw(abs_path getcwd cwd);
+use Data::Dumper;
 
 # Program version
-my $Version = 0.1;
+my $Version = $RepModelConfig::VERSION;
 
 #
 # Option processing
