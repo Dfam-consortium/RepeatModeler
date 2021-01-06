@@ -29,11 +29,27 @@
 =head1 SYNOPSIS
 
  extendFlankingSeqs.pl [-version] [[-r(ight_flank) #] [-l(eft_flank) #] | [-f(lank) #]]
-                       [-g(ap) #] [-r(eindex)]
+                       [-g(ap) #] [-re(index)] [-s(hrink)]
                        -d(atabase) <2bit file> 
                        -i(nput) <cross_match file> -o(utput) <fasta file>
 
 =head1 DESCRIPTION
+
+Given an set of hits ( *.out or *.align ) in crossmatch format of a set of genomic
+sequences against a reference (consensus) sequence, add flanking sequence to the aligned
+ranges and output in FASTA format.  The alignment is expected to be query=genomic and
+subject=reference. E.g:
+
+  cross_match genomic_copies.fa consensus.fa 
+or
+  rmblast.pl genomic_copies.fa consensus.fa
+
+The amount of base pairs to add to the aligned sequences may be specified for both sides
+using the -flank parameter or seperately as -left_flank/-right_flank.  The left/right
+sides refer to the 5'/3' of the reference sequence.  
+
+The sequences are pulled from a 2bit database file and a index is created of that file
+the first time the script is on the database.  
 
 The options are:
 
@@ -42,6 +58,45 @@ The options are:
 =item -version
 
 Displays the version of the program
+
+=item -right_flank #
+
+The number of bp to extend the right side of the aligned sequences.  Right/Left
+refers to the side of the reference sequence used in the alignment.  This script 
+assumes that the subject sequence was the reference and the genomic sequences were 
+used as the query.
+
+=item -left_flank #
+
+The number of bp to extend the left side of the aligned sequences.  Right/Left
+refers to the side of the reference sequence used in the alignment.  This script 
+assumes that the subject sequence was the reference and the genomic sequences were 
+used as the query.
+
+=item -flank #
+
+The number of bp to extend both right/left sides of the aligned sequences.
+
+=item -gap #
+
+Overlapping ranges are automatically merged, however it is sometimes advantageous
+to merge nearby ranges as well.  If a -gap value is specified, ranges separated by
+the specified amount will also be merged.
+
+=item -shrink
+
+In some cases the alignments do not fully extend to the edges of the source 
+sequences.  In this case the program doesn't need to extend the sequences and
+by default leaves the original ranges intact.  If -shrink is specified the
+ranges can also be shrunk to be the alignment ranges + the specified flanking
+number of bases.
+
+=item -reindex
+
+An index file is created from the 2bit database if one doesn't exist.  Each time
+the program is run on the same database the same index file will be used to speed
+up repeated runs.  If this option is specified it will force rebuilding of this
+index file.
 
 =back
 
@@ -97,7 +152,8 @@ my $FATOTWOBIT       = $config->{'UCSCTOOLS_DIR'}->{'value'} . "/faToTowBit";
 #
 my @getopt_args = (
                     '-version',
-                    '-reindex',
+                    '-reindex|re',
+                    '-shrink|s',
                     '-gap|g=i',
                     '-input|i=s',
                     '-output|o=s',
@@ -275,59 +331,76 @@ sub addFlankingSequence {
         $seqRecordEnd = $seqRecordLen = $seqLens{$seqRecordID};
       }
 
-print "SeqRecord: $seqRecordID:$seqRecordStart-$seqRecordEnd ($seqRecordOrient) <=> Alignment: $align_start-$align_end [$align_remain] ($align_orient)\n";
-  
-      $leftAdequate++ if ( $align_start-1 >= $flankleft );
-      $rightAdequate++ if ( $align_remain >= $flankright ); 
+      #print "SeqRecord: $seqRecordID:$seqRecordStart-$seqRecordEnd ($seqRecordOrient) <=> Alignment: $align_start-$align_end [$align_remain] ($align_orient)\n";
 
       my $globalStart;
       my $globalEnd;
-      if ( $seqRecordOrient ne $align_orient ) {
-        if ( $seqRecordOrient eq "-" ) {
-          #  rec:200-100  hit:1-10 => 190-200 (-)
-          $globalStart = $seqRecordEnd - $align_end + 1; # right
-          $globalEnd = $seqRecordEnd - $align_start + 1; # left
-        }else {
-          #  rec:100-200 hit:10-1 => 100-110 (-)
-          $globalStart = $seqRecordStart + $align_start - 1; # right
-          $globalEnd = $seqRecordStart + $align_end - 1; # left
-        }
-        $rightUnextendable++ if ( $globalStart == 1 );  
-        if ( $align_remain < $flankright ) {
-          $globalStart -= $flankright;
-          $globalStart = 1 if ( $globalStart < 1 );
-        }
-        $leftUnextendable++ if ( $globalEnd == $seqRecordLen );  
-        if ( $align_start-1 < $flankleft ) {
-          $globalEnd += $flankleft;
-          $globalEnd = $seqRecordLen if ( $globalEnd > $seqRecordLen );
-        }
-print " Range: $globalStart-$globalEnd (-)\n";
-        push @{$ranges{$seqRecordID}}, [$globalStart, $globalEnd, "-"];
-      }else {
-         if ( $seqRecordOrient eq "-" ) {
-          #  rec:200-100  hit:10-1 => 190-200 (+)
-          $globalStart = $seqRecordEnd - $align_end + 1; # left
-          $globalEnd = $seqRecordEnd - $align_start + 1; # right
-print "inter: $globalStart-$globalEnd $seqRecordEnd\n";
-        }else {
-          #  rec:100-200 hit:1-10 => 100-110 (+)
-          $globalStart = $seqRecordStart + $align_start - 1; # left
-          $globalEnd = $seqRecordStart + $align_end - 1; # right
-        }
-        $leftUnextendable++ if ( $globalStart == 1 );  
-        if ( $align_start-1 < $flankleft ) {
-          $globalStart -= $flankleft;
-          $globalStart = 1 if ( $globalStart < 1 );
-        }
-        $rightUnextendable++ if ( $globalEnd == $seqRecordLen );  
-        if ( $align_remain < $flankright ) {
-          $globalEnd += $flankright;
-          $globalEnd = $seqRecordLen if ( $globalEnd > $seqRecordLen );
-        }
-print " Range: $globalStart-$globalEnd (+)\n";
-        push @{$ranges{$seqRecordID}}, [$globalStart, $globalEnd, "+"];
+
+      # SeqRecord Alignment
+      # --------- ---------
+      #     +        +          globalStart=left=seqRecordStart+AlignmentStart-1, globalEnd=right=seqRecordStart+AlignmentEnd-1 [+]
+      #     +        -          globalStart=right=seqRecordStart+AlignmentStart-1, globalEnd=left=seqRecordStart+AlignmentEnd-1 [-]
+      #     -        +          globalStart=right=seqRecordEnd-AlignmentEnd+1, globalEnd=left=seqRecordEnd-AlignmentStart+1     [+]
+      #     -        -          globalStart=left=seqRecordEnd-AlignmentEnd+1, globalEnd=right=seqRecordEnd-AlignmentStart+1     [-]
+      if ( $seqRecordOrient eq "+" ) {
+        # forward seqRecord
+        $globalStart = $seqRecordStart + $align_start - 1;
+        $globalEnd = $seqRecordStart + $align_end - 1;
+      }else {   
+        # reversed seqRecord 
+        $globalStart = $seqRecordEnd - $align_end + 1;
+        $globalEnd = $seqRecordEnd - $align_start + 1;
       }
+      #print "Adjusted1: $globalStart-$globalEnd\n";
+        
+      if ( $align_orient eq $seqRecordOrient ) {
+        $leftUnextendable++ if ( $globalStart == 1 );  
+        $rightUnextendable++ if ( $globalEnd == $seqRecordLen );  
+        $globalStart -= $flankleft;
+        $globalStart = 1 if ( $globalStart < 1 );
+        $globalEnd += $flankright;
+        $globalEnd = $seqRecordLen if ( $globalEnd > $seqRecordLen );
+      }else {
+        $rightUnextendable++ if ( $globalStart == 1 );  
+        $leftUnextendable++ if ( $globalEnd == $seqRecordLen );  
+        $globalStart -= $flankright;
+        $globalStart = 1 if ( $globalStart < 1 );
+        $globalEnd += $flankleft;
+        $globalEnd = $seqRecordLen if ( $globalEnd > $seqRecordLen );
+      }
+      #print "Adjusted2: $globalStart-$globalEnd\n";
+ 
+      if ( $align_orient eq "+" ) {
+        if ( $align_start-1 >= $flankleft ){
+          $leftAdequate++;  
+          unless( $options{'shrink'} ) {
+            $globalStart = $seqRecordStart;
+          }
+        }
+        if ( $align_remain >= $flankright ){
+          $rightAdequate++;  
+          unless ( $options{'shrink'} ) {
+            $globalEnd = $seqRecordEnd;
+          }
+        }
+      }else {
+        if ( $align_start-1 >= $flankright ){
+          $rightAdequate++;  
+          unless ( $options{'shrink'} ) {
+            $globalEnd = $seqRecordEnd;
+          }
+        }
+        if ( $align_remain >= $flankleft ){
+          $leftAdequate++;  
+          unless ( $options{'shrink'} ) {
+            $globalStart = $seqRecordStart;
+          }
+        }
+      }
+     
+      #print " Range: $globalStart-$globalEnd ($align_orient)\n";
+      push @{$ranges{$seqRecordID}}, [$globalStart, $globalEnd, $align_orient];
+
       $totalRanges++;
     }
   }
@@ -379,69 +452,68 @@ print " Range: $globalStart-$globalEnd (+)\n";
   # Only report on what we found
   print "Multiple Alignment Edge Stats:\n";
   print "  Sequence Regions : $totalRegions\n";
-  print "  Alignments : $totalRanges\n";
-  print "    Left  Edge: " . ( $totalRanges - $leftAdequate ) . " aligned sequences needed extension, $leftUnextendable sequences were unextendable\n";
-  print "    Right Edge: " . ( $totalRanges - $rightAdequate ) . " aligned sequences needed extension, $rightUnextendable sequences were unextendable\n";
-  print "  * There may be 1 or more alignments per sequence region\n";
-  if ( 1 ) { 
-    # Generate sequences
-    my $cmd = "$TWOBITTOFA -seqList=$tmpFilename $genome stdout";
-    open IN,"$cmd|" or die "Could not run $cmd!\n";
-    if ( $outputFile ne "stdout" ) {
-      open OUT,">$outputFile" or die "Could not open $outputFile for writing!\n";
-    }
-    my $idx = 0;
-    my $seq = "";
-    my $id;
-    my $start;
-    my $end;
-    while (<IN>){
-      if ( />(\S+)\:(\d+)-(\d+)/ ||
-           />(\S+)/ ) {
-        my $tmp_id = $1;
-        my $tmp_start = $2;
-        my $tmp_end = $3;
-        $tmp_start = 0 if ( ! defined $tmp_start );
-        $tmp_end = $seqLens{$tmp_id} if ( ! defined $tmp_end );
-        if ( $seq ) {
-          my $outID = $id . "_" . ($start + 1) . "_$end";
-          if ( $orientArr[$idx] eq "-" ) {
-            $seq = reverse( $seq );
-            $seq =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
-            $outID .= "_R";
-          }
-          if ( $outputFile eq "stdout" ) {
-            print ">$outID\n$seq\n";
-          }else {
-            print OUT ">$outID\n$seq\n";
-          }
-          $idx++;
-        }
-        $id = $tmp_id;
-        $start = $tmp_start;
-        $end = $tmp_end;
-        $seq = "";
-        next;
-      }
-      s/[\n\r\s]+//g;
-      $seq .= uc($_);
-    }
-    if ( $seq ) {
-      my $outID = $id . "_" . ($start + 1) . "_$end";
-      if ( $orientArr[$idx] eq "-" ) {
-        $seq = reverse( $seq );
-        $seq =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
-        $outID .= "_R";
-      }
-      if ( $outputFile eq "stdout" ) {
-        print ">$outID\n$seq\n";
-      }else {
-        print OUT ">$outID\n$seq\n";
-      }
-    }
-    close IN;
-    close OUT if ( $outputFile ne "stdout" );
+  print "  Alignments* : $totalRanges\n";
+  print "    Left  Edge: " . ( $totalRanges - $leftAdequate ) . " aligned sequence(s) needed extension, $leftUnextendable sequence(s) were unextendable\n";
+  print "    Right Edge: " . ( $totalRanges - $rightAdequate ) . " aligned sequence(s) needed extension, $rightUnextendable sequence(s) were unextendable\n";
+  print "  * There may be more than one alignment per sequence region\n";
+  
+  # Generate sequences
+  my $cmd = "$TWOBITTOFA -seqList=$tmpFilename $genome stdout";
+  open IN,"$cmd|" or die "Could not run $cmd!\n";
+  if ( $outputFile ne "stdout" ) {
+    open OUT,">$outputFile" or die "Could not open $outputFile for writing!\n";
   }
+  my $idx = 0;
+  my $seq = "";
+  my $id;
+  my $start;
+  my $end;
+  while (<IN>){
+    if ( />(\S+)\:(\d+)-(\d+)/ ||
+         />(\S+)/ ) {
+      my $tmp_id = $1;
+      my $tmp_start = $2;
+      my $tmp_end = $3;
+      $tmp_start = 0 if ( ! defined $tmp_start );
+      $tmp_end = $seqLens{$tmp_id} if ( ! defined $tmp_end );
+      if ( $seq ) {
+        my $outID = $id . "_" . ($start + 1) . "_$end";
+        if ( $orientArr[$idx] eq "-" ) {
+          $seq = reverse( $seq );
+          $seq =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
+          $outID .= "_R";
+        }
+        if ( $outputFile eq "stdout" ) {
+          print ">$outID\n$seq\n";
+        }else {
+          print OUT ">$outID\n$seq\n";
+        }
+        $idx++;
+      }
+      $id = $tmp_id;
+      $start = $tmp_start;
+      $end = $tmp_end;
+      $seq = "";
+      next;
+    }
+    s/[\n\r\s]+//g;
+    $seq .= uc($_);
+   }
+   if ( $seq ) {
+    my $outID = $id . "_" . ($start + 1) . "_$end";
+    if ( $orientArr[$idx] eq "-" ) {
+      $seq = reverse( $seq );
+      $seq =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
+      $outID .= "_R";
+    }
+    if ( $outputFile eq "stdout" ) {
+      print ">$outID\n$seq\n";
+    }else {
+      print OUT ">$outID\n$seq\n";
+    }
+  }
+  close IN;
+  close OUT if ( $outputFile ne "stdout" );
   
   unless( $DEBUG ) {
     unlink( $tmpFilename ) if ( -e $tmpFilename );
