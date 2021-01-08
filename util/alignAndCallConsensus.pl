@@ -658,7 +658,7 @@ while ( 1 ) {
       }
     }
     if ( $cntClipped ) {
-      print "Consensus Pruned: $clip5/$clip3\n";
+      print "Consensus Pruned\n";
       while ( -e "$conFile.$backupIdx" ) {
         $backupIdx++;
       }
