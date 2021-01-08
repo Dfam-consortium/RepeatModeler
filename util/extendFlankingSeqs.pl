@@ -28,7 +28,8 @@
 
 =head1 SYNOPSIS
 
- extendFlankingSeqs.pl [-version] [[-r(ight_flank) #] [-l(eft_flank) #] | [-f(lank) #]]
+ extendFlankingSeqs.pl [-version] [-h(elp)] 
+                       [[-r(ight_flank) #] [-l(eft_flank) #] | [-f(lank) #]]
                        [-g(ap) #] [-re(index)] [-s(hrink)]
                        -d(atabase) <2bit file> 
                        -i(nput) <cross_match file> -o(utput) <fasta file>
@@ -175,18 +176,15 @@ sub usage {
 }
 
 if ( ! exists $options{'database'} || ! -s $options{'database'} ) {
-  print "\n\nDatabase doesn't exist!  Must supply a TwoBit file!\n\n";
-  usage();
+  die "\n\nDatabase doesn't exist!  Must supply a TwoBit file!\nUse '$0 -h' to view the help.\n\n";
 }
 
 if ( ! exists $options{'input'} || ! -s $options{'input'} ){
-  print "\n\nMust supply input alignments in crossmatch format!\n\n";
-  usage();
+  die "\n\nMust supply input alignments in crossmatch format!\nUse '$0 -h' to view the help.\n\n";
 }
 
 if ( ! exists $options{'output'} ){
-  print "\n\nMust supply output filename!\n\n";
-  usage();
+  die "\n\nMust supply output filename!\nUse '$0 -h' to view the help.\n\n";
 }
 
 my $inputFile = $options{'input'};

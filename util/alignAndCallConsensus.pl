@@ -81,13 +81,13 @@ alignAndCallConsensus.pl - Align TE consensus to a set of instances and call con
 
 
   Iterative Refinement:
-     The initial consensus may be rudimentary or simply derived from a
-     different representative set.  In this case the new consensus
-     output at the end of the the run may differ from the original.  In
-     this case this tool may be re-run on the updated consensus in an
-     iterative fashion until the input consensus matches the output
-     conensus.
-
+     In some cases the starting consensus may be fairly distant from
+     the sequences being aligned.  In this case the alignment and the
+     calculated consensus may still be suboptimal after one iteration.
+     The script may be called again using the new consensus to iteratively
+     improve the alignment and consensus or the -refine option may be used
+     automatically reiterate until the consensus stabilizes (doesn't change)
+     or a maximum iteration count is reached.
 
   Subfamily Consensus Building:
      After performing a subfamily analysis using tools such as Coseg,
@@ -201,9 +201,10 @@ Use RMBlast instead of cross_match
 
 Iterate the process of aligning the derived consensus to the set
 of instance sequences.  This is a simple optimisation step which 
-(like EM) which typically stabilizes after a small number of
-iterations.  The default is to attempt 5 iterations but a higher
-value may be specified with this option.
+(like EM) typically stabilizes after a small number of
+iterations.  The default, if a value is not passed after '-refine' 
+is to attempt up to five iterations but a higher/lower value may 
+be specified with this option.
 
 =item -fi(lter_overlap)
 
@@ -248,7 +249,8 @@ use SearchResult;
 use SearchResultCollection;
 
 # Program version
-my $Version = 0.7;
+my $Version = $RepModelConfig::VERSION;
+
 
 #
 # Paths
@@ -280,13 +282,12 @@ my @getopt_args = (
                     '-interactive|int',
                     '-prune|p=s',
                     '-quoteprune|qu=s',
-                    '-html|h',
+                    '-html',
                     '-quiet|q',
                     '-refine|re:s',
                     '-bandwidth|b=s',
                     '-crossmatch|cr',
                     '-rmblast|rm',
-                    '-help',
                     '-filter_overlapping|fi',
                     '-onlyBestAlignment', # Deprecated, now 'filter_overlapping'
 );
@@ -302,8 +303,11 @@ sub usage {
   exit( 1 );
 }
 
-usage() unless ( ! $options{'help'} && (
-                 $options{'defaults'} || ( $options{'consensus'} && $options{'elements'} )));
+unless ( ! $options{'help'} && (
+         $options{'defaults'} || ( $options{'consensus'} && $options{'elements'} )))
+{
+   die "\n\nMissing either '-defaults' or '-consensus <file> -elements <file>'\nUse '$0 -h' to view the help.\n\n";
+}
 
 
 # Output directory
@@ -569,7 +573,6 @@ while ( 1 ) {
   # pruning
   #
   if ( $prunecutoff || $pruneratio ) {
-  
     # Go through collection and determine how much to clip
     # consensi.  NOTE: This counts multiple alignments to
     # a single sequence as one contribution from the min to
@@ -655,6 +658,7 @@ while ( 1 ) {
       }
     }
     if ( $cntClipped ) {
+      print "Consensus Pruned: $clip5/$clip3\n";
       while ( -e "$conFile.$backupIdx" ) {
         $backupIdx++;
       }
@@ -896,7 +900,7 @@ while ( 1 ) {
           }
         }
       }else {
-        $newcons = $leftHPad."\n".$newcons."\n".$rightHPad;
+        $newcons = $leftHPad.$newcons.$rightHPad;
       }
   
       unless ( $options{'quiet'} ) {
