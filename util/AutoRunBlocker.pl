@@ -37,11 +37,11 @@ AutoRunBlocker.pl - Automatically identify insertions/deletions in a Linup conse
 
   or 
 
-  AutoRunBlocker.pl <linup_ali_file> <windowSize> <minCopyAgreement> [<minRatioAgreement>]
+  AutoRunBlocker.pl -l <linup_ali_file> -w <windowSize> -mc <minCopyAgreement> 
  
   or
 
-  AutoRunBlocker.pl -prompt <linup_ali_file> <windowSize> <minCopyAgreement> [<minRatioAgreement>]
+  AutoRunBlocker.pl -prompt -l <linup_ali_file> -w <windowSize> -mc <minCopyAgreement> -mr <minRatioAgreement>
 
 =head1 DESCRIPTION
 
@@ -63,25 +63,26 @@ A alignment file produced by Linup ( in "ali" standard format ).
 =item -prompt 
 
 If this option is used, each clustered result is displayed and the user is
-to either include it or exclude it in the consensus update.
+prompted to either include it or exclude it in the consensus update.
 
 =item -minRatioAgreement #
 
-Blah
+The minimum threshold of the ratio of count of majority length subsequences to
+the number retaining the original length.  Default: 1
 
 =item -windowSize #
 
-Blah
+The size of the window in bp.
 
 =item -minCopyAgreement #
 
-Blah
+The minimum number of sequences that must agree on length over the window.
 
 =back
 
 =head1 SEE ALSO
 
-ReapeatModeler, extendcons.pl, alignAndCallConsensus.pl etc.. 
+ReapeatModeler, alignAndCallConsensus.pl etc.. 
 
 =head1 COPYRIGHT
 
@@ -163,6 +164,16 @@ if ( $options{'linup'} && $options{'windowSize'} && $options{'minCopyAgreement'}
   usage();
 }
 
+if ( ! defined $window ) {
+  print "\n\nWindow size is a required parameter!\n\n";
+  usage;
+}
+if ( ! defined $copymin ) {
+  print "\n\nMin copy agreement is a required parameter!\n\n";
+  usage;
+}
+
+
 open (IN, $alifile) or die;
 my @starts;
 while (<IN>) {
@@ -209,7 +220,7 @@ while ($starts[0]) {
         my $end = $blocks{$name}->[$k] + 1;
         my ( $numMajorityLen, $numOrigLen, $newseq, $newseqlen, $ncount) =
            &callBlocker( $alifile, $start, $beg, $start, $end);
-#print "Calling Same Block [ $start, $beg, $start, $end ]\n";
+        #print "Calling Same Block [ $start, $beg, $start, $end ]\n";
         if ( $numMajorityLen ) {
           print "Blocker: $begin-$eind [$start,$beg,$start,$end]: $numMajorityLen, $numOrigLen, $newseqlen, $ncount : $newseq\n" if ( $DEBUG );
           push @blockerData, [$numMajorityLen, $numOrigLen, $newseq, $newseqlen, $ncount, $begin, $eind, $start, $beg, $start, $end];
@@ -217,13 +228,13 @@ while ($starts[0]) {
       } else { # the end positions is in a next block
         my @startsleft = @starts; # current start already shifted from @starts
         my $remain = $k - $#{$blocks{$name}} - 1; 
-#print "Remain = $remain  k= $k j=$j window=$window number of positions in block = " . $#{$blocks{$name}} . "\n";
+        #print "Remain = $remain  k= $k j=$j window=$window number of positions in block = " . $#{$blocks{$name}} . "\n";
         while ($remain >= 0 && $startsleft[0]) {
           my $nxtstart = shift @startsleft;
           my $naam = "block$nxtstart";
           if (defined $blocks{$naam}->[$remain]) { #can be 0
             my $end = $blocks{$naam}->[$remain] + 1; 
-#print "Calling [ $start, $beg, $nxtstart, $end ]\n";
+            #print "Calling [ $start, $beg, $nxtstart, $end ]\n";
             my ( $numMajorityLen, $numOrigLen, $newseq, $newseqlen, $ncount) =
                &callBlocker( $alifile, $start, $beg, $nxtstart, $end );
             if ( $numMajorityLen ) {
@@ -241,7 +252,6 @@ while ($starts[0]) {
 
 
 my $prevRec;
-#my $allowedGapDist = -1;
 my $allowedGapDist = $window/5; #
 my $clusterStartBlock;
 my $clusterStartColumn;
