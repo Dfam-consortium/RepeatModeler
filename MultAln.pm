@@ -3872,6 +3872,7 @@ sub printAlignments {
 
   my $maxIDLen    = length( $object->getReferenceName() );
   my $maxCoordLen = 0;
+  my @seqCoordIdx = ();
   foreach my $i ( @sortedIndexes ) {
     my $start = $object->getAlignedSeqStart( $i );
     my $end   = $object->getAlignedSeqEnd( $i );
@@ -3879,6 +3880,12 @@ sub printAlignments {
     $maxCoordLen = length( $end )   if ( length( $end ) > $maxCoordLen );
     my $tLen = length( $object->getAlignedName( $i ) );
     $maxIDLen = $tLen if ( $tLen > $maxIDLen );
+    # Initialize the sequence coordinate start positions ( cognizant of orientation )
+    my $orient = $object->getAlignedOrientation( $i );
+    $seqCoordIdx[$i] = $start;
+    if ( $orient eq "-" ) {
+      $seqCoordIdx[$i] = $end;
+    }
   }
 
   # Generate the scores if requested
@@ -3957,44 +3964,71 @@ sub printAlignments {
 
     # Now print out the aligned sequences
     foreach my $i ( @sortedIndexes ) {
+      # These are the positions within the gapped multiple alignment ( not sequence positions )
       my $start = $object->getAlignedStart( $i );
       my $end   = $object->getAlignedEnd( $i );
+
+      # Is this sequence even in the alignment window are printing at the moment?
       next if ( $start >= $lineEnd );
       next if ( $end <= $lineStart );
+  
+      # Pad sequence if it starts later than the first position
       $seq = '';
       if ( $start > $lineStart ) {
         $seq = ' ' x ( $start - $lineStart );
       }
+
+      # now figure out the string range for the aligned sequence to grab for this window
       my $seqStart = $lineStart - $start;
       $seqStart = 0 if ( $seqStart < 0 );
       my $seqEnd = $lineEnd - $start;
       $seqEnd = $end if ( $seqEnd > $end );
       $seq .= substr( $object->getAlignedSeq( $i ),
                       $seqStart, $seqEnd - $seqStart + 1 );
+
+      # and our name is...
       $name = $object->getAlignedName( $i );
 
-      #if ( length( $name ) > 16 )
-      #{
-      #  $name = substr( $name, 0, 16 );
+ 
+      #if ( $seqStart == 0 ) {
+      #  $start = $object->getAlignedSeqStart( $i );
       #}
-      if ( $seqStart == 0 ) {
-        $start = $object->getAlignedSeqStart( $i );
-      }
-      else {
-        my $priorSeq = substr( $object->getAlignedSeq( $i ), 0, $seqStart );
-        $numLetters = ( $priorSeq =~ tr/A-Z/A-Z/ );
-        $start = $object->getAlignedSeqStart( $i ) + $numLetters;
-      }
+      #else {
+      #  my $priorSeq = substr( $object->getAlignedSeq( $i ), 0, $seqStart );
+      #  $numLetters = ( $priorSeq =~ tr/A-Z/A-Z/ );
+      #  $start = $object->getAlignedSeqStart( $i ) + $numLetters;
+      #}
       $numLetters = ( $seq =~ tr/A-Z/A-Z/ );
-      $end        = $start + $numLetters - 1;
+      #$end        = $start + $numLetters - 1;
 
+      my $seqCoordStart = $seqCoordIdx[$i];
+      my $orient = $object->getAlignedOrientation( $i );
+      my $seqCoordEnd;
+      if ( $orient eq "+" ) {
+        $seqCoordEnd = $seqCoordStart + $numLetters - 1;
+        $seqCoordIdx[$i] += $numLetters;
+      }else {
+        $seqCoordEnd = $seqCoordStart - $numLetters + 1;
+        $seqCoordIdx[$i] -= $numLetters;
+      }
+       
       my $outStr = $name
           . " " x ( $maxIDLen - length( $name ) ) . " "
-          . " " x ( $maxCoordLen - length( $start ) )
-          . $start . " "
+          . " " x ( $maxCoordLen - length( $seqCoordStart ) )
+          . $seqCoordStart . " "
           . $seq
           . " " x ( $blockSize - length( $seq ) ) . "    "
-          . $end . "\n";
+          . $seqCoordEnd . "\n";
+      
+
+      #my $outStr = $name
+      #    . " " x ( $maxIDLen - length( $name ) ) . " "
+      #    . " " x ( $maxCoordLen - length( $start ) )
+      #    . $start . " "
+      #    . $seq
+      #    . " " x ( $blockSize - length( $seq ) ) . "    "
+      #    . $end . "\n";
+     
       print "$outStr";
 
     }
