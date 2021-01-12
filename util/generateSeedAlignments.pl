@@ -164,14 +164,14 @@ use SearchResultCollection;
 use CrossmatchSearchEngine;
 
 #
-# Dependencies *not-yet* configured by RepeatModeler installation
+# Paths
 #
-my $ucscToolsDir = "/usr/local/bin";
+my $ucscToolsDir = $RepModelConfig::configuration->{'UCSCTOOLS_DIR'}->{'value'};
 
 #
 # Version
 #
-my $Version = "2.1";
+my $Version = $RepModelConfig::VERSION;
 my $DEBUG = 0;
 
 my %TimeBefore = ();
