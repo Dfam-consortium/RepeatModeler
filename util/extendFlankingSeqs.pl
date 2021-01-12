@@ -207,7 +207,7 @@ my $twoBitFile = $options{'database'};
 my($twoBitFilename, $twoBitDir, $twoBitSuffix) = fileparse($twoBitFile);
 my $indexFile = "$twoBitFilename.idx";
 
-if ( ! -e $indexFile || $options{'reindex'} ) {
+if ( ! -e $indexFile || exists $options{'reindex'} ) {
   # Must rebuild master index
   my %seqLens = ();
   open IN,"$TWOBITINFO $twoBitFile stdout|" or die "Could not run $TWOBITINFO on $twoBitFile!\n";
@@ -305,7 +305,8 @@ sub addFlankingSequence {
       my $seqRecordOrient;
       my $seqRecordLen;
       # These have traditionally been in 1-based full-closed coordinates
-      if ( $raw_id =~ /^(\S+)\_(\d+)\_(\d+)\_?(R?)$/ )
+      if ( $raw_id =~ /^(\S+)\_(\d+)\_(\d+)\_?(R?)$/ ||
+           $raw_id =~ /^(\S+):(\d+)-(\d+)/ )
       {
         $seqRecordID = $1;
         $seqRecordStart = $2;
@@ -316,7 +317,7 @@ sub addFlankingSequence {
           $seqRecordStart = $3;
           $seqRecordEnd = $2;
           $seqRecordOrient = "-";
-        }elsif ( $4 eq "R" ) {
+        }elsif ( defined $4 &&  $4 eq "R" ) {
           $seqRecordOrient = "-";
         }
         die "Could not find $seqRecordID in sequence index!\n" if ( !exists $seqLens{$seqRecordID} );
