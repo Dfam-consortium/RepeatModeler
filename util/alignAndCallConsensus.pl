@@ -899,7 +899,7 @@ while ( 1 ) {
         print "------------------------------------------------------------\n";
       }
       # Add back the H pads for anchoring purposes only
-      $newcons = $leftHPad."\n".$newcons."\n".$rightHPad;
+      $newcons = $leftHPad.$newcons.$rightHPad;
 
     }else {
       print "Changes:\n$diffStr\n" unless ( $options{'quiet'} );
@@ -1044,13 +1044,16 @@ while ( 1 ) {
     close OUT;
   }
 
-  last if ( $options{'refine'} && $changedCnt == 0 );
-
-  if ( ! exists $options{'interactive'} && $iterations >= $maxRefineIterations ) {
-    print "WARN: Consensus still changing after $maxRefineIterations iterations. May need to continue refinement.\n" unless ( $options{'quiet'} );
-    last;
+  if ( $options{'refine'} ) {
+    last if ( $changedCnt == 0);
+    if ( $iterations >= $maxRefineIterations ) {
+      if ( $changedCnt != 0 ) {
+        print "WARN: Consensus still changing after $maxRefineIterations iterations. May need to continue refinement.\n" unless ( $options{'quiet'} );
+      }
+      last;
+    }
   }
-}
+} # while(1);
   
 # cleanup
 foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
