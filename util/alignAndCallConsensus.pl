@@ -264,7 +264,7 @@ my $Version = $RepModelConfig::VERSION;
 my $phrapDir = "/usr/local/phrap";
 my $matrixDir = "$FindBin::RealBin/../Matrices";
 my $RMBLAST_DIR = $RepModelConfig::configuration->{'RMBLAST_DIR'}->{'value'};
-my $defaultEngine = "crossmatch";
+my $defaultEngine = "rmblast";
 
 #
 # Option processing
@@ -296,6 +296,7 @@ my @getopt_args = (
                     '-crossmatch|cr',
                     '-rmblast|rm',
                     '-filter_overlapping|fi',
+                    '-debug',
                     '-onlyBestAlignment', # Deprecated, now 'filter_overlapping'
 );
 my %options = ();
@@ -314,9 +315,14 @@ sub usage {
 unless ( ! $options{'help'} && (
          $options{'defaults'} || ( $options{'consensus'} && $options{'elements'} )))
 {
-   die "\n\nMissing either '-defaults' or '-consensus <file> -elements <file>'\nUse '$0 -h' to view the help.\n\n";
+   print "\n\nMissing either '-defaults' or '-consensus <file> -elements <file>'\nUse '$0 -h' to view the help.\n\n";
+   exit(1);
 }
 
+if ( exists $options{'refine'} && exists $options{'interactive'} ) {
+   print "\n\nOptions -refine and -interactive are mutually exclusive!\nUse '$0 -h' to view the help.\n\n";
+   exit(1);
+}
 
 # Output directory
 my $outdir = cwd;
@@ -408,7 +414,14 @@ if ( exists $options{'elements'} ) {
 
 my $engine = $defaultEngine;
 $engine = "rmblast" if ( $options{'rmblast'} );
-$engine = "crossmatch" if ( $options{'crossmatch'} );
+if ( exists $options{'crossmatch'} ){
+  if ( $phrapDir eq "" ) {
+    print "\n\nThis option only works if the \$phrapDir variable near the top of the script is\n";
+    print "defined.  This is currently a non-supported feature.\n";
+    exit(1);
+  }
+  $engine = "crossmatch"
+}
 my $matrixPath;
 if ( $engine eq "rmblast" ) {
   $matrixPath = "$matrixDir/ncbi/nt";
@@ -883,8 +896,7 @@ while ( 1 ) {
       $consRecs->{$consID}->{'stable'} = 1;
 
       unless ( $options{'quiet'} ) {
-        #print ">$consID\n$newcons\n";
-        print "-----\n";
+        print "------------------------------------------------------------\n";
       }
       # Add back the H pads for anchoring purposes only
       $newcons = $leftHPad."\n".$newcons."\n".$rightHPad;
@@ -908,6 +920,10 @@ while ( 1 ) {
         chomp $answer;
         if ( $answer eq "q" ) {
           print "Quitting. The consensus file $conFile has not been changed.\n";
+          # cleanup
+          foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
+            unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
+          }
           exit;
         }
         if ($answer eq 's') {
@@ -916,29 +932,33 @@ while ( 1 ) {
            $newcons = $leftHPad."\n".$consRecs->{$consID}->{'seq'}."\n".$rightHPad;
            if ( $numRefineableCons == $numSkipped ) {
              print "Changes skipped for all consensi. Done.\n";
+             # cleanup
+             foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
+               unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
+             }
              exit;
            }
         } else {
- 
+          #print "hAlignLeft = $hAlignLeft, hAlignRight=$hAlignRight, leftHPad=$leftHPad, rightHPad=$rightHPad\n";
           if ($answer eq 'c') {
             # Only allow core changes in new consensus ( i.e. do not allow H pad additions in ).
-            $newcons =~ s/^\w{$hAlignLeft}(\w+)\w{$hAlignRight}/$leftHPad\n$1\n$rightHPad/ || 
+            $newcons =~ s/^\w{$hAlignLeft}(\w+)\w{$hAlignRight}/$leftHPad$1$rightHPad/ || 
                 print STDERR "Error: processing 'c' hAlignLeft=$hAlignLeft hAlignRight=$hAlignRight,\n" .
                              "       leftHPad=$leftHPad rightHPad=$rightHPad newcons=$newcons\n";
             $intMessage = "Keeping only core changes, ignoring the sequence in the H-pad regions.";
           } elsif ( $answer eq 'x' ) {
             # Trim off edge N's and repad
-            $newcons =~ s/^N*(\w+)N*/$leftHPad\n$1\n$rightHPad/;
+            $newcons =~ s/^N*(\w+)N*/$leftHPad$1$rightHPad/;
             $intMessage = "Keeping both 5\' and 3\' H-pad changes.";
           } elsif ( $answer =~ /^[b5]$/ ) {
             # Trim off 5' N's and any 3' extension and repad
-            $newcons =~ s/^N*(\w+)\w{$hAlignRight}/$leftHPad\n$1\n$rightHPad/  || 
+            $newcons =~ s/^N*(\w+)\w{$hAlignRight}/$leftHPad$1$rightHPad/  || 
                 print STDERR "Error: processing 'b5' hAlignRight=$hAlignRight,\n" .
                              "       leftHPad=$leftHPad rightHPad=$rightHPad newcons=$newcons\n";
             $intMessage = "Keeping only 5\' H-pad changes.";
           } elsif ( $answer =~ /^[e3]$/ ) {
             # Trim off 3' N's and any 5' extension and repad
-            $newcons =~ s/^\w{$hAlignLeft}(\w+)N*/$leftHPad\n$1\n$rightHPad/;
+            $newcons =~ s/^\w{$hAlignLeft}(\w+)N*/$leftHPad$1$rightHPad/;
             $intMessage = "Keeping only 3\' H-pad changes.";
           } elsif ( $answer =~ /^(\d+)\-(\d+)/ ) {
             $intMessage = "Keeping only range $1-$2.";
@@ -956,6 +976,9 @@ while ( 1 ) {
             $newcons =~ s/^H+/$leftHPad\n/;
             $newcons =~ s/H+$/\n$rightHPad/;
           }
+        }
+        if ( $options{'debug'} ) {
+          print "Newcons: $newcons\n";
         }
       }else {
         $newcons = $leftHPad.$newcons.$rightHPad;
@@ -1021,9 +1044,9 @@ while ( 1 ) {
     close OUT;
   }
 
-  last if ( ! exists $options{'refine'} || $changedCnt == 0 );
+  last if ( $options{'refine'} && $changedCnt == 0 );
 
-  if ( $iterations >= $maxRefineIterations ) {
+  if ( ! exists $options{'interactive'} && $iterations >= $maxRefineIterations ) {
     print "WARN: Consensus still changing after $maxRefineIterations iterations. May need to continue refinement.\n" unless ( $options{'quiet'} );
     last;
   }
