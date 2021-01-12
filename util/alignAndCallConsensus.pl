@@ -21,11 +21,11 @@ alignAndCallConsensus.pl - Align TE consensus to a set of instances and call con
                  [-d(ivergencemax) #] [-sc(ore) #] [-mi(nmatch) #]
                  [-b(andwidth) #] [-cr(ossmatch)] [-rm(blast)]
                  [-f(inishedext) <str>] [-ma(trix) <str>]
-                 [-h(tml)] [-st(ockholm)] [-q(uiet)]
-                 [-re(fine)|-re(fine) #> [-fi(lter_overlap)]
+                 [-ht(ml)] [-st(ockholm)] [-q(uiet)]
+                 [-re(fine)|-re(fine) #] [-fi(lter_overlap)]
                  [-inc(lude_reference)] [-outdir <val]
                  [-p(rune) <val>] [-qu(oteprune) <val>]
-                 [-int(eractive)] [-help]
+                 [-int(eractive)] [-hp(ad) #] [-h(elp)]
 
   Example:
 
@@ -185,9 +185,15 @@ sequences are aligned it prunes until the number of aligned sequences increases
 by >= # times.  Only checks the first and last 100bp and when 3 or more seqs
 join.
 
-=item -h(tml)       
+=item -ht(ml)       
 
 Generate an HTML visualization of the alignment using viewMSA.pl. 
+
+=item -hp(ad) #
+
+Append/prepend 'H' characters to the sequence so that there are the given number on each
+side.  The current number of 'H's will be taken into account so the actual number may grow
+or shrink the sequence.  This is performed prior to the first search.
 
 =item -st(ockholm)     
 
@@ -282,7 +288,8 @@ my @getopt_args = (
                     '-interactive|int',
                     '-prune|p=s',
                     '-quoteprune|qu=s',
-                    '-html',
+                    '-html|ht',
+                    '-hpad|hp=i',
                     '-quiet|q',
                     '-refine|re:s',
                     '-bandwidth|b=s',
@@ -296,6 +303,7 @@ Getopt::Long::config( "noignorecase", "bundling_override" );
 unless ( GetOptions( \%options, @getopt_args ) ) {
   usage();
 }
+
 
 sub usage {
   print "$0 - $Version\n";
@@ -339,7 +347,27 @@ if ( exists $options{'consensus'} ) {
   print "\n\nDefault consensus file \"rep\" is missing or empty! See -c option for details. Use '-help' for option help.\n\n";
   exit(1);
 }
-my ( $numRefineableCons, $numBuffers, $consRecs ) = &processConFile( $conFile );
+my $hpadCnt;
+$hpadCnt = $options{'hpad'} if ( $options{'hpad'} );
+my ( $numRefineableCons, $numBuffers, $consRecs, $seqsWithHpads ) = &processConFile( $conFile, $hpadCnt );
+
+# If -hpad is provided, it is more than likely that the consensus sequences have
+# been modified to include a different number of H's.  We should right out the
+# consensus file before the search.
+if ( $options{'hpad'} ) {
+  open OUT, ">$conFile" or die "Could not open up $conFile for writing!\n";
+  foreach my $consID ( keys(%{$consRecs}) ) {
+    print OUT ">$consID";
+    if ( $consRecs->{$consID}->{'class'} ne "" ) {
+      print OUT "#" . $consRecs->{$consID}->{'class'};
+    }
+    if ( $consRecs->{$consID}->{'desc'} ne "" ) { 
+      print OUT "  " . $consRecs->{$consID}->{'desc'};
+    }
+    print OUT "\n" . "H"x($options{'hpad'}) . $consRecs->{$consID}->{'seq'} . "H"x($options{'hpad'}) . "\n"; 
+  }
+  close OUT;
+}
 
 if ( $numRefineableCons == 0 && $numBuffers > 0 ) {
   print "\n\nThe consensus file only contains buffer sequences.  There must be at least one non-buffer sequence. Use '-help' for option help.\n\n";
@@ -444,6 +472,8 @@ $maxdiv = $options{'divergencemax'} if ( exists $options{'divergencemax'} );
 my $maxRefineIterations = 5;
 $maxRefineIterations = $1 if ( exists $options{'refine'} && $options{'refine'} =~ /(\d+)/ );
 
+
+
 my ($ext5done, $ext3done) = ();
 if ($options{'finishedext'}) {
   if ($options{'finishedext'} =~ /^5/) {
@@ -501,14 +531,19 @@ unless ( $options{'quiet'} ) {
   print "#                  Minmatch: $minmatch, Minscore: $minscore,\n";
   print "#                  Maxdiv: $maxdiv, GapInit: $gapInit,\n";
   print "#                  InsGapExt: $insGapExt, DelGapExt: $delGapExt\n";
-  if ( $options{'refine'} ) {
-    print "# Refine: max $maxRefineIterations iterations\n";
-  }else {
-    print "# Refine: false\n";
+  if ( $prunecutoff > 0 ) {
+    print "# Prune alignment edges where coverage is less than $prunecutoff sequences.\n";
+  }
+  if ( $seqsWithHpads ) {
+    print "# Extension Mode, $seqsWithHpads sequences have Hpads\n";
+  }
+  if ( exists $options{'refine'} ) {
+    print "# Refinement Mode,  max $maxRefineIterations iterations\n";
   }
   if ( $firstFreeBackupIdx > 1 ) {
     print "# Starting Round Index: $firstFreeBackupIdx\n";
   }
+  print "------------------------------------------------------------\n";
 }
 
 my $searchEngineN;
@@ -599,6 +634,7 @@ while ( 1 ) {
           $min3 = $npad - $qRem;
         }
       }
+      # Subject is the reference so these are reference coordinates
       my $tbegin = $resultRef->getSubjStart() + $min5;
       my $tend = $resultRef->getSubjEnd() - $min3;
       if ( $resultRef->getOrientation() eq "C" ) {
@@ -620,6 +656,13 @@ while ( 1 ) {
           ++$alignednr{$i};
         }
       }
+
+      #print "Coverage:\n";
+      #foreach my $k ( sort{$a <=> $b} keys(%alignednr) ) {
+      #  print ", $k:" . $alignednr{$k};
+      #}
+      #print "\n";
+
       my $zcount5 = $consRecs->{$consID}->{'leftHPad'};
       my $zcount3 = $consRecs->{$consID}->{'rightHPad'};
       my $conslen = length($consRecs->{$consID}->{'seq'});
@@ -636,7 +679,7 @@ while ( 1 ) {
             die "Stopped after pruning.\n";
           }
         }
-        my $nr3 = $conslen - $zcount3;
+        my $nr3 = $conslen + $zcount5;
         while (!$alignednr{$nr3} ||
                $alignednr{$nr3} <= $prunecutoff) {
           --$nr3;
@@ -704,13 +747,10 @@ while ( 1 ) {
   #
   my $changedCnt = 0;
   my %filterIndices = ();
+  my $numSkipped = 0;
   foreach my $consID ( sort { $consRecs->{$a}->{'order'} <=> $consRecs->{$b}->{'order'} } keys(%{$consRecs}) ) {
     next if ( $consRecs->{$consID}->{'stable'} == 1 );
     next if ( $consRecs->{$consID}->{'buffer'} == 1 );
-    unless ( $options{'quiet'} ) {
-      print "-----\n";
-      print "Working on consensus: $consID\n";
-    }
     my $removedMinDiv = 10000;
     my $removedMaxDiv = 0;
     my $removedDivCount = 0;
@@ -822,9 +862,13 @@ while ( 1 ) {
   
     unless ( $options{'quiet'} ) {
       system "$FindBin::RealBin/scoretotal.pl $outdir/$consID.out";
+      #out.CGmodified: average kimura-subst: 0.149304766710626
       my $kimura = `$FindBin::RealBin/CntSubst -cg $outdir/$consID.out | grep kimura`;
       $kimura = $1 if ( $kimura =~ /average kimura-subst: (\S+)/ );
-      print "Kimura Divergence: $kimura\n";
+      #out.CGmodified: total aligned length: 15249 bp
+      my $aligned_bp = `$FindBin::RealBin/CntSubst -cg $outdir/$consID.out | grep aligned`;
+      $aligned_bp = $1 if ( $aligned_bp =~ /length: (\S+) bp/ );
+      print "Kimura Divergence: $kimura ( $aligned_bp aligned bps )\n";
     }
 
     #
@@ -850,6 +894,7 @@ while ( 1 ) {
       $changedCnt++;
       $consRecs->{$consID}->{'iteration'}++;
 
+      my $intMessage = "";
       if ( $options{'interactive'} ) {
         
         print STDERR "s(kip),c(hangeinbetweenHs),x(pandandchange), b(eginexpand) or 5(\'),e(ndexpand) or 3(\'),##-## (range)\n";
@@ -860,11 +905,19 @@ while ( 1 ) {
                        "Typing \"q\" stops the script";
           $answer = <STDIN>;
         }
-        die "Quitting. The consensus file $conFile has not been changed.\n" if $answer eq 'q';;
         chomp $answer;
+        if ( $answer eq "q" ) {
+          print "Quitting. The consensus file $conFile has not been changed.\n";
+          exit;
+        }
         if ($answer eq 's') {
            # Do not keep changes
+           $numSkipped++;
            $newcons = $leftHPad."\n".$consRecs->{$consID}->{'seq'}."\n".$rightHPad;
+           if ( $numRefineableCons == $numSkipped ) {
+             print "Changes skipped for all consensi. Done.\n";
+             exit;
+           }
         } else {
  
           if ($answer eq 'c') {
@@ -872,18 +925,23 @@ while ( 1 ) {
             $newcons =~ s/^\w{$hAlignLeft}(\w+)\w{$hAlignRight}/$leftHPad\n$1\n$rightHPad/ || 
                 print STDERR "Error: processing 'c' hAlignLeft=$hAlignLeft hAlignRight=$hAlignRight,\n" .
                              "       leftHPad=$leftHPad rightHPad=$rightHPad newcons=$newcons\n";
+            $intMessage = "Keeping only core changes, ignoring the sequence in the H-pad regions.";
           } elsif ( $answer eq 'x' ) {
             # Trim off edge N's and repad
             $newcons =~ s/^N*(\w+)N*/$leftHPad\n$1\n$rightHPad/;
+            $intMessage = "Keeping both 5\' and 3\' H-pad changes.";
           } elsif ( $answer =~ /^[b5]$/ ) {
             # Trim off 5' N's and any 3' extension and repad
             $newcons =~ s/^N*(\w+)\w{$hAlignRight}/$leftHPad\n$1\n$rightHPad/  || 
                 print STDERR "Error: processing 'b5' hAlignRight=$hAlignRight,\n" .
                              "       leftHPad=$leftHPad rightHPad=$rightHPad newcons=$newcons\n";
+            $intMessage = "Keeping only 5\' H-pad changes.";
           } elsif ( $answer =~ /^[e3]$/ ) {
             # Trim off 3' N's and any 5' extension and repad
             $newcons =~ s/^\w{$hAlignLeft}(\w+)N*/$leftHPad\n$1\n$rightHPad/;
+            $intMessage = "Keeping only 3\' H-pad changes.";
           } elsif ( $answer =~ /^(\d+)\-(\d+)/ ) {
+            $intMessage = "Keeping only range $1-$2.";
             my $begin = $1 - 1 unless $1 == 0; # half-opened
             my $end = $2;
             my $len = $end - $begin;
@@ -904,8 +962,10 @@ while ( 1 ) {
       }
   
       unless ( $options{'quiet'} ) {
-        #print ">$consID\n$newcons\n";
-        print "-----\n";
+        print "------------------------------------------------------------\n";
+      }
+      if ( $intMessage ne "" ) {
+        print "$intMessage\n";
       }
 
       $consRecs->{$consID}->{'seq'} = $newcons;
@@ -961,10 +1021,10 @@ while ( 1 ) {
     close OUT;
   }
 
-  last if ( ! $options{'refine'} || $changedCnt == 0 );
+  last if ( ! exists $options{'refine'} || $changedCnt == 0 );
 
   if ( $iterations >= $maxRefineIterations ) {
-    print "Consensus still changing after $maxRefineIterations iterations...giving up.\n" unless ( $options{'quiet'} );
+    print "WARN: Consensus still changing after $maxRefineIterations iterations. May need to continue refinement.\n" unless ( $options{'quiet'} );
     last;
   }
 }
@@ -1013,18 +1073,16 @@ sub processAliFile {
         $Hleft = length($1);
       }
       # Could span multiple stanzas
-      #if ( $refbit =~ /[ACGTNRYMKSW-](H+)\s*$/ ) {
-      #  $Hright = length($1);
-      #}
+      if ( $Hleft > 0 && $refbit =~ /[^H]+(H+)\s*$/ ) {
+        $Hright += length($1);
+      }
       if ($refbit ne $consbit) {
         if ( $is5ExtDone && /^ref\:\S+\s+(\d+)\s+(H+)[ACGTN]/ ) {
           # We were done with 5'extension previously.  Any alignment
           # to H's in this round are purely for anchoring purposes and
           # should not contribute the consensus.
-# print "Chewing off H aligned left\nwas:$newcons\nnow:";
           $Hleft = length $2;
           $newcons =~ s/^\w{$Hleft}//;
-# print "$newcons\n";
           # Now that we are done with extension only record differences
           # if they occur after the H padding.
           my ($tempcons,$tempref) = ($consbit,$refbit);
@@ -1068,9 +1126,7 @@ sub processAliFile {
     }
   }
   close ALI;
-# print "Chewing off H aligned right \nwas:$newcons\nnow:" if ( $is3ExtDone);
   $newcons =~ s/(\w){$Hright}$// if $Hright && $is3ExtDone;
-# print "$newcons\n" if ( $is3ExtDone );
  
   return( $newcons, $Hleft, $Hright, $diffStr );
 }
@@ -1082,6 +1138,7 @@ sub processAliFile {
 #
 sub processConFile {
   my $conFile = shift;
+  my $optHpadCnt = shift;
 
   my($filename, $dirs, $suffix) = fileparse($conFile);
   open CON,"<$conFile" or die "\n\nCould not open consensus file \'$conFile\' for reading!\n\n";
@@ -1092,6 +1149,7 @@ sub processConFile {
   my $seq;
   my $desc;
   my $class;
+  my $seqsWithHpads = 0;
   while (<CON>) {
     if ( /^>(\S+)\s+(.*)$/ ) {
       my $tID = $1;
@@ -1127,6 +1185,11 @@ sub processConFile {
           $rightHPad = length($2) if ( $2 );
           $seq = $1;
         }
+        if ( $optHpadCnt ) {
+          $leftHPad = $optHpadCnt;
+          $rightHPad = $optHpadCnt;
+        }
+        $seqsWithHpads++ if ( $leftHPad > 0 || $rightHPad > 0 );
         if ( $seq !~ /^(H*)[ACGTRYMKSWN]+(H*)$/ )
         {
           my $problems = "";
@@ -1189,6 +1252,11 @@ sub processConFile {
       $rightHPad = length($2) if ( $2 );
       $seq = $1;
     }
+    if ( $optHpadCnt ) {
+      $leftHPad = $optHpadCnt;
+      $rightHPad = $optHpadCnt;
+    }
+    $seqsWithHpads++ if ( $leftHPad > 0 || $rightHPad > 0 );
     if ( $seq !~ /^(H*)[ACGTRYMKSWN]+(H*)$/ )
     {
       my $problems = "";
@@ -1213,7 +1281,7 @@ sub processConFile {
  
   my $numRefineableCons = scalar(keys(%consRecs))-$numBuffers;
 
-  return( $numRefineableCons, $numBuffers, \%consRecs );
+  return( $numRefineableCons, $numBuffers, \%consRecs, $seqsWithHpads );
 }
 
 1;
