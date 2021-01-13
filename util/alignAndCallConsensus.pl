@@ -887,9 +887,6 @@ while ( 1 ) {
       print "Kimura Divergence: $kimura ( $aligned_bp aligned bps )\n";
     }
 
-    #
-    #
-    #
     my ($newcons, $hAlignLeft, $hAlignRight, $diffStr) = processAliFile("$outdir/$consID.ali", $ext5done, $ext3done);
     
     my $leftHPad = "H"x($consRecs->{$consID}->{'leftHPad'});
@@ -901,9 +898,6 @@ while ( 1 ) {
       unless ( $options{'quiet'} ) {
         print "------------------------------------------------------------\n";
       }
-      # Add back the H pads for anchoring purposes only
-      $newcons = $leftHPad.$newcons.$rightHPad;
-
     }else {
       print "Changes:\n$diffStr\n" unless ( $options{'quiet'} );
       #print "new: $newcons\n";
@@ -932,9 +926,9 @@ while ( 1 ) {
           exit;
         }
         if ($answer eq 's') {
-           # Do not keep changes
+           # Do not keep changes - take the previous consensus 
            $numSkipped++;
-           $newcons = $leftHPad."\n".$consRecs->{$consID}->{'seq'}."\n".$rightHPad;
+           $newcons = $consRecs->{$consID}->{'seq'};
            if ( $numRefineableCons == $numSkipped ) {
              print "Changes skipped for all consensi. Done.\n";
              # cleanup
@@ -947,23 +941,23 @@ while ( 1 ) {
           #print "hAlignLeft = $hAlignLeft, hAlignRight=$hAlignRight, leftHPad=$leftHPad, rightHPad=$rightHPad\n";
           if ($answer eq 'c') {
             # Only allow core changes in new consensus ( i.e. do not allow H pad additions in ).
-            $newcons =~ s/^\w{$hAlignLeft}(\w+)\w{$hAlignRight}/$leftHPad$1$rightHPad/ || 
+            $newcons =~ s/^\w{$hAlignLeft}(\w+)\w{$hAlignRight}/$1/ || 
                 print STDERR "Error: processing 'c' hAlignLeft=$hAlignLeft hAlignRight=$hAlignRight,\n" .
                              "       leftHPad=$leftHPad rightHPad=$rightHPad newcons=$newcons\n";
             $intMessage = "Keeping only core changes, ignoring the sequence in the H-pad regions.";
           } elsif ( $answer eq 'x' ) {
             # Trim off edge N's and repad
-            $newcons =~ s/^N*(\w+)N*/$leftHPad$1$rightHPad/;
+            $newcons =~ s/^N*(\w+)N*/$1/;
             $intMessage = "Keeping both 5\' and 3\' H-pad changes.";
           } elsif ( $answer =~ /^[b5]$/ ) {
             # Trim off 5' N's and any 3' extension and repad
-            $newcons =~ s/^N*(\w+)\w{$hAlignRight}/$leftHPad$1$rightHPad/  || 
+            $newcons =~ s/^N*(\w+)\w{$hAlignRight}/$1/  || 
                 print STDERR "Error: processing 'b5' hAlignRight=$hAlignRight,\n" .
                              "       leftHPad=$leftHPad rightHPad=$rightHPad newcons=$newcons\n";
             $intMessage = "Keeping only 5\' H-pad changes.";
           } elsif ( $answer =~ /^[e3]$/ ) {
             # Trim off 3' N's and any 5' extension and repad
-            $newcons =~ s/^\w{$hAlignLeft}(\w+)N*/$leftHPad$1$rightHPad/;
+            $newcons =~ s/^\w{$hAlignLeft}(\w+)N*/$1/;
             $intMessage = "Keeping only 3\' H-pad changes.";
           } elsif ( $answer =~ /^(\d+)\-(\d+)/ ) {
             $intMessage = "Keeping only range $1-$2.";
@@ -978,25 +972,22 @@ while ( 1 ) {
             }
             my $old3 = substr($consRecs->{$consID}->{'seq'},$end);
             $newcons = "$old5"."$newfrag"."$old3";
-            $newcons =~ s/^H+/$leftHPad\n/;
-            $newcons =~ s/H+$/\n$rightHPad/;
           }
         }
         if ( $options{'debug'} ) {
-          print "Newcons: $newcons\n";
+          print "Newcons: $leftHPad$newcons$rightHPad\n";
         }
-      }else {
-        $newcons = $leftHPad.$newcons.$rightHPad;
       }
   
       unless ( $options{'quiet'} ) {
         print "------------------------------------------------------------\n";
       }
+
       if ( $intMessage ne "" ) {
         print "$intMessage\n";
       }
-      $newcons =~ s/H//g;
-      $consRecs->{$consID}->{'seq'} = $newcons;
+
+      $consRecs->{$consID}->{'seq'} = $newcons
     }
   
   } # foreach my $consID...
@@ -1037,6 +1028,8 @@ while ( 1 ) {
     rename "$conFile", "$conFile.$backupIdx";
     open OUT, ">$conFile" or die "Could not open up $conFile for writing!\n";
     foreach my $consID ( keys(%{$consRecs}) ) {
+      my $leftHPad = "H"x($consRecs->{$consID}->{'leftHPad'});
+      my $rightHPad = "H"x($consRecs->{$consID}->{'rightHPad'});
       print OUT ">$consID";
       if ( $consRecs->{$consID}->{'class'} ne "" ) {
         print OUT "#" . $consRecs->{$consID}->{'class'};
@@ -1044,7 +1037,7 @@ while ( 1 ) {
       if ( $consRecs->{$consID}->{'desc'} ne "" ) { 
         print OUT "  " . $consRecs->{$consID}->{'desc'};
       }
-      print OUT "\n" . $consRecs->{$consID}->{'seq'} . "\n"; 
+      print OUT "\n" . $leftHPad . $consRecs->{$consID}->{'seq'} . $rightHPad . "\n"; 
     }
     close OUT;
   }
