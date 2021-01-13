@@ -617,6 +617,8 @@ while ( 1 ) {
      }
   );
 
+  print "ITERATION: " . ( $iterations + 1 ) . "\n";
+
   #
   # pruning
   #
@@ -764,6 +766,7 @@ while ( 1 ) {
   foreach my $consID ( sort { $consRecs->{$a}->{'order'} <=> $consRecs->{$b}->{'order'} } keys(%{$consRecs}) ) {
     next if ( $consRecs->{$consID}->{'stable'} == 1 );
     next if ( $consRecs->{$consID}->{'buffer'} == 1 );
+    print "Working on $consID\n";
     my $removedMinDiv = 10000;
     my $removedMaxDiv = 0;
     my $removedDivCount = 0;
@@ -903,6 +906,8 @@ while ( 1 ) {
 
     }else {
       print "Changes:\n$diffStr\n" unless ( $options{'quiet'} );
+      print "new: $newcons\n";
+      print "old: " . $consRecs->{$consID}->{'seq'} ."\n";
       $changedCnt++;
       $consRecs->{$consID}->{'iteration'}++;
 
@@ -990,7 +995,7 @@ while ( 1 ) {
       if ( $intMessage ne "" ) {
         print "$intMessage\n";
       }
-
+      $newcons =~ s/H//g;
       $consRecs->{$consID}->{'seq'} = $newcons;
     }
   
