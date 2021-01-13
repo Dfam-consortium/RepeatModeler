@@ -906,8 +906,8 @@ while ( 1 ) {
 
     }else {
       print "Changes:\n$diffStr\n" unless ( $options{'quiet'} );
-      print "new: $newcons\n";
-      print "old: " . $consRecs->{$consID}->{'seq'} ."\n";
+      #print "new: $newcons\n";
+      #print "old: " . $consRecs->{$consID}->{'seq'} ."\n";
       $changedCnt++;
       $consRecs->{$consID}->{'iteration'}++;
 
