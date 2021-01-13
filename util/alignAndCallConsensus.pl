@@ -1054,6 +1054,8 @@ while ( 1 ) {
     }
   }elsif ( $options{'interactive'} ) {
     last if ( $changedCnt == 0 );
+  }else {
+    last;
   }
 } # while(1);
   
