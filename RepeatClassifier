@@ -321,9 +321,7 @@ my $cmd =
 print "Running: $cmd\n" if ( $DEBUG );
 system( $cmd );
 if ( !-s "tmpConsensi.fa.masked" ) {
-
-  #  die "Something went wrong with the RepeatMasker program.  The "
-  #     ."$options{'consensi'}.masked file is missing or empty\n";
+  # In cases where no repeats were masked ( e.g no simple/tandem repeats )
   system( "cp tmpConsensi.fa tmpConsensi.fa.masked" );
 }
 
@@ -430,7 +428,6 @@ elsif ( $engine eq "rmblast" ) {
 }
 
 print "        o Running: $blastCmd\n" if ( $DEBUG );
-system( $blastCmd );
 
 if ( !-s "tmpBlastXResults.out" ) {
   die "Something went wrong while running blastX.  The tmpBlastXResults.out"

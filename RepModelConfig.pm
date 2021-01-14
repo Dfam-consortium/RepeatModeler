@@ -73,7 +73,7 @@ BEGIN {
                                                     'cd-hit'
                                                   ],
                            'param_type' => 'directory',
-                           'required' => 0,
+                           'required' => 1,
                            'value' => '/home/rhubley/src/cd-hit-v4.8.1-2019-0228'
                          },
           'GENOMETOOLS_DIR' => {
@@ -184,7 +184,7 @@ BEGIN {
                           'description' => 'The path to the installation directory of the UCSC TwoBit Tools (twoBitToFa, faToTwoBit, twoBitInfo etc).',
                           'environment_override' => 'UCSCTOOLS_PRGM',
                           'param_type' => 'directory',
-                          'required' => 0,
+                          'required' => 1,
                           'expected_binaries' => [
                                                      'twoBitToFa',
                                                      'faToTwoBit',
@@ -207,7 +207,7 @@ BEGIN {
   #
   # Current version of the software
   #
-  $VERSION = "2.0.2-alpha-5";
+  $VERSION = "2.0.2-beta-1";
 
   #
   # Set this flag to default to debug mode for the entire package
