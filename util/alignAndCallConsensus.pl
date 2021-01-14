@@ -877,7 +877,7 @@ while ( 1 ) {
     }
   
     unless ( $options{'quiet'} ) {
-      system "$FindBin::RealBin/scoretotal.pl $outdir/$consID.out";
+      &scoretotal("$outdir/$consID.out");
       #out.CGmodified: average kimura-subst: 0.149304766710626
       my $kimura = `$FindBin::RealBin/CntSubst -cg $outdir/$consID.out | grep kimura`;
       $kimura = $1 if ( $kimura =~ /average kimura-subst: (\S+)/ );
@@ -1069,6 +1069,27 @@ sub cleanup {
   foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
     unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
   }
+}
+
+sub scoretotal {
+  my $file = shift;
+
+  my $cmScoreTot = 0;
+  my $alignedBases = 0;
+  my %uniqIDs = ();
+  open SCIN,"<$file" or die;
+  while (<SCIN>) {
+    if ( /^\s*(\d+)\s+\d+\.\d+\s+\d+\.\d+\s+\d\.\d+\s+(\S+)\s+(\d+)\s+(\d+)/ ) {
+      $cmScoreTot += $1;
+      $uniqIDs{$2}++;
+      $alignedBases += $4-$3+1;
+    }
+  }
+  close SCIN;
+  print "Unique aligned sequences: " . scalar( keys(%uniqIDs) ) . "\n";
+  print "Total Crossmatch Score: $cmScoreTot\n";
+  print "Per Base Average: " . sprintf( "%0.2f", ( $cmScoreTot / $alignedBases )) . "\n";
+  return (scalar(keys(%uniqIDs)),$cmScoreTot,sprintf( "%0.2f", ( $cmScoreTot / $alignedBases )));
 }
 
 

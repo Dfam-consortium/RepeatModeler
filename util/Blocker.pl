@@ -142,9 +142,13 @@ use strict;
 use FindBin;
 use Data::Dumper;
 use Getopt::Long;
+#
+use RepModelConfig;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
+
 
 # Program version
-my $Version = 0.1;
+my $Version = $RepModelConfig::VERSION;
 
 #
 # Option processing

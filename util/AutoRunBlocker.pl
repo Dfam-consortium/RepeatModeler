@@ -111,6 +111,9 @@ use File::Path;
 use File::Basename;
 use Cwd qw(abs_path getcwd cwd);
 use Data::Dumper;
+#
+use RepModelConfig;
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 
 # Program version
 my $Version = $RepModelConfig::VERSION;
