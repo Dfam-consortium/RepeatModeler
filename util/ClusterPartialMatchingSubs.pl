@@ -459,7 +459,7 @@ sub makeconsensus {
   print OUTCL "$cluster\]\$ $FindBin::RealBin/alignAndCallConsensus.pl -ma $matrix -p $minaligned -re 3 -rm\n" if $options{'debug'};
   system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -p $minaligned -re 3 -rm >& consensusbuildingnoises1";
   if ($options{'auto_off'}) {
-    system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -p $minaligned -rm -h >& consensusbuildingnoises";
+    system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -p $minaligned -rm -ht >& consensusbuildingnoises";
   } else {
     my $ws = 10;
     $ws = $options{'window'} if $options{'window'};
@@ -482,9 +482,9 @@ sub makeconsensus {
     close INTEMP;
     if (-s $tempnew) {
       system "mv $tempnew rep";
-      system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -re 2 -rm -h";
+      system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -re 2 -rm -ht";
     } else {
-      system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -rm -h";
+      system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -rm -ht";
     }
   }
   unlink "repseq.log","tempxmatch.stderr", "tempout", "repbefore1" unless $options{'debug'};

@@ -276,7 +276,7 @@ my $defaultEngine = "rmblast";
 my @getopt_args = (
                     '-consensus|c=s',
                     '-elements|e=s',
-                    '-divergencemax=s', 
+                    '-divergencemax|d=s', 
                     '-defaults|de',
                     '-finishedext|f=s',
                     '-matrix|ma=s',
@@ -908,34 +908,29 @@ while ( 1 ) {
       my $intMessage = "";
       if ( $options{'interactive'} ) {
         
-        print STDERR "s(kip),c(hangeinbetweenHs),x(pandandchange), b(eginexpand) or 5(\'),e(ndexpand) or 3(\'),##-## (range)\n";
+        print STDERR "s(kip),c(hangeinbetweenHs),x(pandandchange), b(eginexpand) or 5(\'),e(ndexpand) or 3(\'),##-## (range),d(one)\n";
         print STDERR "A range only works if the new and old consensus have the same positions at the start and end of the range.\n";
         my $answer = <STDIN>;
-        while ($answer !~ /^[scxbelr35q]$/ && $answer !~ /^\d+[-\s]+\d+/ ) {
-          print STDERR "Could not process $answer\nType 's','c','e','b','5','e','3' or '#-###' range.\n" .
-                       "Typing \"q\" stops the script";
+        while ($answer !~ /^[scxbelr35d]$/ && $answer !~ /^\d+[-\s]+\d+/ ) {
+          print STDERR "Could not process $answer\nType 's','c','e','b','5','e','3','#-###' range, or 'd'.\n" .
+                       "Typing \"d\" quits early keeping only the changes made so far.\n";
           $answer = <STDIN>;
         }
         chomp $answer;
-        if ( $answer eq "q" ) {
-          print "Quitting. The consensus file $conFile has not been changed.\n";
-          # cleanup
-          foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
-            unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
-          }
-          exit;
+        if ( $answer eq "d" ) {
+          print "Done! Consensus file ($conFile) has been updated with any previously made selections.\n";
+          &saveNewCons( $conFile, $consRecs );
+          &cleanup( $outdir, $conFile );
+          exit();
         }
         if ($answer eq 's') {
            # Do not keep changes - take the previous consensus 
            $numSkipped++;
            $newcons = $consRecs->{$consID}->{'seq'};
            if ( $numRefineableCons == $numSkipped ) {
-             print "Changes skipped for all consensi. Done.\n";
-             # cleanup
-             foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
-               unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
-             }
-             exit;
+             print "Changes skipped for all consensi. Done!\n";
+             &cleanup( $outdir, $conFile );
+             exit();
            }
         } else {
           #print "hAlignLeft = $hAlignLeft, hAlignRight=$hAlignRight, leftHPad=$leftHPad, rightHPad=$rightHPad\n";
@@ -977,7 +972,7 @@ while ( 1 ) {
         if ( $options{'debug'} ) {
           print "Newcons: $leftHPad$newcons$rightHPad\n";
         }
-      }
+      } # interactive
   
       unless ( $options{'quiet'} ) {
         print "------------------------------------------------------------\n";
@@ -988,7 +983,7 @@ while ( 1 ) {
       }
 
       $consRecs->{$consID}->{'seq'} = $newcons
-    }
+    } # has changes
   
   } # foreach my $consID...
 
@@ -1022,24 +1017,7 @@ while ( 1 ) {
   $iterations++;
 
   if ( $changedCnt ) {
-    while ( -e "$conFile.$backupIdx" ) {
-      $backupIdx++;
-    }
-    rename "$conFile", "$conFile.$backupIdx";
-    open OUT, ">$conFile" or die "Could not open up $conFile for writing!\n";
-    foreach my $consID ( keys(%{$consRecs}) ) {
-      my $leftHPad = "H"x($consRecs->{$consID}->{'leftHPad'});
-      my $rightHPad = "H"x($consRecs->{$consID}->{'rightHPad'});
-      print OUT ">$consID";
-      if ( $consRecs->{$consID}->{'class'} ne "" ) {
-        print OUT "#" . $consRecs->{$consID}->{'class'};
-      }
-      if ( $consRecs->{$consID}->{'desc'} ne "" ) { 
-        print OUT "  " . $consRecs->{$consID}->{'desc'};
-      }
-      print OUT "\n" . $leftHPad . $consRecs->{$consID}->{'seq'} . $rightHPad . "\n"; 
-    }
-    close OUT;
+    &saveNewCons($conFile,$consRecs);
   }
 
   if ( $options{'refine'} ) {
@@ -1057,9 +1035,40 @@ while ( 1 ) {
   }
 } # while(1);
   
-# cleanup
-foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
-  unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
+&cleanup( $outdir, $conFile );
+exit;
+
+sub saveNewCons {
+  my $conFile = shift;
+  my $consRecs = shift;
+
+  while ( -e "$conFile.$backupIdx" ) {
+    $backupIdx++;
+  }
+  rename "$conFile", "$conFile.$backupIdx";
+  open OUT, ">$conFile" or die "Could not open up $conFile for writing!\n";
+  foreach my $consID ( keys(%{$consRecs}) ) {
+    my $leftHPad = "H"x($consRecs->{$consID}->{'leftHPad'});
+    my $rightHPad = "H"x($consRecs->{$consID}->{'rightHPad'});
+    print OUT ">$consID";
+    if ( $consRecs->{$consID}->{'class'} ne "" ) {
+      print OUT "#" . $consRecs->{$consID}->{'class'};
+    }
+    if ( $consRecs->{$consID}->{'desc'} ne "" ) { 
+      print OUT "  " . $consRecs->{$consID}->{'desc'};
+    }
+    print OUT "\n" . $leftHPad . $consRecs->{$consID}->{'seq'} . $rightHPad . "\n"; 
+  }
+  close OUT;
+}
+
+sub cleanup {
+  my $outdir = shift;
+  my $conFile = shift;
+  # cleanup
+  foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
+    unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
+  }
 }
 
 
