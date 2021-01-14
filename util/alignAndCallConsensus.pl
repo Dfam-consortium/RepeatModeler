@@ -415,7 +415,7 @@ if ( exists $options{'elements'} ) {
 my $engine = $defaultEngine;
 $engine = "rmblast" if ( $options{'rmblast'} );
 if ( exists $options{'crossmatch'} ){
-  if ( $phrapDir eq "" ) {
+  if ( $phrapDir eq "" || ! -x "$phrapDir/cross_match"  ) {
     print "\n\nThis option only works if the \$phrapDir variable near the top of the script is\n";
     print "defined.  This is currently a non-supported feature.\n";
     exit(1);

@@ -21,9 +21,8 @@ use CrossmatchSearchEngine;
 use SearchResult;
 use SearchResultCollection;
 
-my $ucscToolsDir = "/usr/local/bin";
-#my $ucscToolsDir = "/lustre/work/daray/software/ucscTools";
-
+my $config           = $RepModelConfig::configuration;
+my $ucscToolsDir =  $config->{'UCSCTOOLS_DIR'}->{'value'};
 
 my @getopt_args = (
                     '-genome=s',
