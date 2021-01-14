@@ -595,7 +595,7 @@ while ( 1 ) {
   unless ( $engine eq "crossmatch" ) {
     # Always make a database as the sequence may have changed
     system(   "$RMBLAST_DIR/makeblastdb -blastdb_version 4 -out $conFile "
-            . "-parse_seqids -dbtype nucl -in $conFile >& /dev/null ");
+            . "-parse_seqids -dbtype nucl -in $conFile >/dev/null 2>&1");
   }
  
   my %collected = ();
@@ -739,7 +739,7 @@ while ( 1 ) {
     unless ( $engine eq "crossmatch" ) {
       # Always make a database as the sequence may have changed
       system(   "$RMBLAST_DIR/makeblastdb -blastdb_version 4 -out $conFile "
-            . "-parse_seqids -dbtype nucl -in $conFile >& /dev/null ");
+            . "-parse_seqids -dbtype nucl -in $conFile >/dev/null 2>&1 ");
     }
  
     ( $status, $resultCollection ) = $searchEngineN->search();

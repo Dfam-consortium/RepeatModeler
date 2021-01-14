@@ -148,7 +148,7 @@ my $outFile = "$inputFile.2.7.7.80.10.50.$maxPeriod";
 
 # -ngs : produce compact *.dat output on multisequence files
 # -h   : don't make a .html report
-my $trfCmd = "$TRF_PRGM $inputFile 2 7 7 80 10 50 $maxPeriod -h -m > $outFile >& /dev/null";
+my $trfCmd = "$TRF_PRGM $inputFile 2 7 7 80 10 50 $maxPeriod -h -m > $outFile >/dev/null 2>&1";
 system($trfCmd);
 
 my %filteredSeqs = ();

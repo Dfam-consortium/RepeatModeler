@@ -457,13 +457,13 @@ sub makeconsensus {
   }
   $minaligned = 2 if $minaligned < 2;
   print OUTCL "$cluster\]\$ $FindBin::RealBin/alignAndCallConsensus.pl -ma $matrix -p $minaligned -re 3 -rm\n" if $options{'debug'};
-  system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -p $minaligned -re 3 -rm >& consensusbuildingnoises1";
+  system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -p $minaligned -re 3 -rm >consensusbuildingnoises1 2>&1";
   if ($options{'auto_off'}) {
-    system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -p $minaligned -rm -ht >& consensusbuildingnoises";
+    system "$FindBin::RealBin/alignAndCallConsensus.pl -de -ma $matrix -p $minaligned -rm -ht >consensusbuildingnoises 2>&1";
   } else {
     my $ws = 10;
     $ws = $options{'window'} if $options{'window'};
-    system "$FindBin::RealBin/AutoRunBlocker.pl -linup ali -windowSize $ws -minRatioAgreement 1.5 -minCopyAgreement $minaligned >& tempout";
+    system "$FindBin::RealBin/AutoRunBlocker.pl -linup ali -windowSize $ws -minRatioAgreement 1.5 -minCopyAgreement $minaligned >tempout 2>&1";
     my $tempnew = "temp$epoc";
     open (INTEMP, "tempout");
     my $print = "";
