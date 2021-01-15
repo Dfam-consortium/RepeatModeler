@@ -32,7 +32,7 @@ generateSeedAlignments - Generate a seed alignments from RM *.align output
  generateSeedAlignments [-families "<id1> <id2> .."] [-includeRef]
                         [-outSTKFile <*.stk>] [-taxon <ncbi_taxonomy_name>]
                         [-assemblyID <id>] [-minAlignedLength #]
-                        [-verbose][-noColor]
+                        [-verbose][-noColor] [-prefixAssembly]
                         -assemblyFile <*.2bit>
                         <RepeatMasker *.align File>
 
@@ -191,6 +191,7 @@ my @getopt_args = (
                     '-taxon=s',
                     '-includeRef',
                     '-outSTKFile=s',
+                    '-prefixAssembly',
                     '-noColor',
                     '-minAlignedLength=s'
 );
@@ -758,8 +759,10 @@ foreach my $id ( keys( %alignByID ) )
         $sampledDepth[ $idUpd ]++;
       }
       #print "*";
-      $result->setQueryName( $assemblyName . ":"
-                             . $result->getQueryName() ); 
+      if ( $options{'prefixAssembly'} ) {
+        $result->setQueryName( $assemblyName . ":"
+                               . $result->getQueryName() ); 
+      }
  
       $resultCol->add( $result );
       $sampleCount++;
