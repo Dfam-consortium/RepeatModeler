@@ -299,8 +299,22 @@ my @progFiles = (
                   "BuildDatabase",     "Refiner",
                   "RepeatClassifier",  "RepeatModeler",
                   "TRFMask",           "LTRPipeline",
-                  "util/renameIds.pl", "util/viewMSA.pl",
-                  "util/Linup" 
+                  "util/Linup",
+                  "util/CntSubst",
+                  "util/alignAndCallConsensus.pl",
+                  "util/AutoRunBlocker.pl",
+                  "util/bestwindow.pl",
+                  "util/Blocker.pl",
+                  "util/ClusterPartialMatchingSubs.pl",
+                  "util/extendFlankingSeqs.pl",
+                  "util/extend-stk.pl",
+                  "util/fasta-trf-filter.pl",
+                  "util/generateSeedAlignments.pl",
+                  "util/renameIds.pl",
+                  "util/rmblast.pl",
+                  "util/viewMSA.pl",
+                  "util/viewMultipleMSA.pl",
+                  "util/visualizeAlignPNG.pl",
 );
 my $perlLocEsc = $perlLocation;
 $perlLocEsc =~ s/\//\\\//g;
