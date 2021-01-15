@@ -24,7 +24,7 @@
 
 =head1 NAME
 
- ClusterPartialMatchingSubs.pl - Cluster young subfamilies
+ ClusterPartialMatchingSubs.pl - Cluster young partially matching subfamilies
 
 =head1 SYNOPSIS
 
@@ -35,7 +35,7 @@
 
 The script runs cd-hit on a fastafile with sequences of related TE copies and creates consensus sequences 
 for each cluster with more than a given number of sequences (default 3). It is efficient in separating 
-partially matching subfamilies, when copies are relatively young and entries are restricted to the extend 
+partially matching subfamilies, when copies are relatively young and entries are restricted to the extent
 of the TE copies. Following this script, alignAndCallConsensus.pl should be run with the combined consensi,
 both to polish the results but also because sequences have not always been assigned to the correct cluster
 and other sequences may not have been included at all.
