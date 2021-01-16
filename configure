@@ -312,6 +312,7 @@ my @progFiles = (
                   "util/generateSeedAlignments.pl",
                   "util/renameIds.pl",
                   "util/rmblast.pl",
+                  "util/TSD.pl",
                   "util/viewMSA.pl",
                   "util/viewMultipleMSA.pl",
                   "util/visualizeAlignPNG.pl",
