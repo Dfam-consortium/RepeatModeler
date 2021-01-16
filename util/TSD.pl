@@ -89,35 +89,35 @@ sub usage {
 usage() unless ( @ARGV );
 
 my ($nextisleft, $nextisright, $extend, $skip) = ();
-my $lengthZ = 0;
-my $lengthZend = 0;
+my $lengthPad = 0;
+my $lengthPadend = 0;
 my %beg = ();
 my %end = ();
 while (<>) {
   my @bit = split;
   if ($bit[2]) {
-    if ($bit[2] =~ /^(Z+)[ACGTNX]/ && !$extend) {
-      $lengthZ = length $1;
+    if ($bit[2] =~ /^([ZH]+)[ACGTNX]/ && !$extend) {
+      $lengthPad = length $1;
       $nextisleft = 1;
     } elsif ($nextisleft) {
-      if (/\d\s([ACGTNX]{$lengthZ})/) {
+      if (/\d\s([ACGTNX]{$lengthPad})/) {
 	$beg{$bit[0]} = $1;
       } else {
 	# too many spaces after digit means that copy did not extend to the beginning
 	$nextisleft = 0;
       }
       #other end
-    } elsif ($bit[2] =~ /(\S*?)(Z+)$/ && !$extend) {
+    } elsif ($bit[2] =~ /(\S*?)([ZH]+)$/ && !$extend) {
       $skip = length $1;
-      $lengthZend = length $2;
-      $extend = 1 if $lengthZend < $lengthZ;
+      $lengthPadend = length $2;
+      $extend = 1 if $lengthPadend < $lengthPad;
       $nextisright = 1;
-    } elsif ($bit[2] eq /(Z+){$lengthZ}/ && !$extend) {
+    } elsif ($bit[2] eq /([ZH]+){$lengthPad}/ && !$extend) {
       $skip = 0;
-      $lengthZend = length $2;
+      $lengthPadend = length $2;
       $nextisright = 1;
     } elsif ($nextisright) {
-      if (/\d \S{$skip}([ACGT]{$lengthZend})/) {
+      if (/\d \S{$skip}([ACGT]{$lengthPadend})/) {
 	$end{$bit[0]} = $1;
       }
     } elsif ($extend) {
