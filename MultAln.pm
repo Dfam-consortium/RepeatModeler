@@ -1223,7 +1223,8 @@ sub kimuraDivergence {
       $p = $transI / $alignedBases;
       $q = $transV / $alignedBases;
     }
-    if ( ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 ) <= 0 ) {
+
+    if ( ($q > 0.5) || ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 ) <= 0 ) {
       $object->setAlignedDiv( $n, 1 );
     }
     else {
