@@ -1342,7 +1342,7 @@ sub RMClassToDfam {
   if ( exists $rmToDfamClass{$rmClass} ){
     return $rmToDfamClass{$rmClass};
   }else {
-    return "Unknown";
+    return $rmToDfamClass{"unknown"};
   }
 }
 
