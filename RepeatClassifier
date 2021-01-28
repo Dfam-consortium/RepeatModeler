@@ -428,6 +428,7 @@ elsif ( $engine eq "rmblast" ) {
 }
 
 print "        o Running: $blastCmd\n" if ( $DEBUG );
+system( $blastCmd );
 
 if ( !-s "tmpBlastXResults.out" ) {
   die "Something went wrong while running blastX.  The tmpBlastXResults.out"
