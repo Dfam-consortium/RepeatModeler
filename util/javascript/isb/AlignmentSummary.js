@@ -16,6 +16,12 @@
 //  displays the alignments in: start position and length sorted order.
 //  The "orient" mode displays the forward strand alignments on top
 //  of the reference ( ruler ) bar and reverse strand hits below.
+//
+//  2/2/2021
+//    Added an extension to visualize an MSA.  The only change was to 
+//    allow a score of 0.  If 0 is used if the sequence is not present
+//    ( e.g gap in MSA ), and 1 for the sequences for which there are
+//    insertion bases present.
 //  
 //
 //
@@ -591,16 +597,28 @@ AlignmentSummary.prototype.render = function (order) {
                 var grd = this.align_context.createLinearGradient(
                 0, 0, (xScale * qualWidthBP), 0);
 
-                var grad = this.qualColor[qualities[qualIdx] - 1] + " - ";
-                grd.addColorStop(0, this.qualColor[qualities[qualIdx] - 1]);
+                //var grad = this.qualColor[qualities[qualIdx] - 1] + " - ";
+                if (  qualities[qualIdx] > 0 ) {
+                  grd.addColorStop(0, this.qualColor[qualities[qualIdx] - 1]);
+                }else { 
+                  grd.addColorStop(0,"#ffffff");
+                }
                 if (qualIdx == qualities.length - 1) {
-                    grd.addColorStop(1,
-                    this.qualColor[qualities[qualIdx] - 1]);
-                    grad = grad + this.qualColor[qualities[qualIdx] - 1];
+                    if ( qualities[qualIdx+1] > 0 ) {
+                      grd.addColorStop(1,
+                      this.qualColor[qualities[qualIdx] - 1]);
+                    }else {
+                      grd.addColorStop(1,"#ffffff");
+                    }
+                    //grad = grad + this.qualColor[qualities[qualIdx] - 1];
                 } else {
-                    grd.addColorStop(1,
-                    this.qualColor[qualities[qualIdx + 1] - 1]);
-                    grad = grad + this.qualColor[qualities[qualIdx + 1] - 1];
+                    if ( qualities[qualIdx+1] > 0 ) {
+                      grd.addColorStop(1,
+                      this.qualColor[qualities[qualIdx + 1] - 1]);
+                    }else {
+                      grd.addColorStop(1,"#ffffff");
+                    }
+                    //grad = grad + this.qualColor[qualities[qualIdx + 1] - 1];
                 }
                 this.align_context.fillStyle = grd;
                 this.align_context.fillRect(divMargin + (xOffset * xScale) + (j * xScale),

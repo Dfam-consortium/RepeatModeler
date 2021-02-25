@@ -452,18 +452,21 @@ print "  - Sequences = " . ( $#contigSizes + 1 ) . "\n";
 print "  - Bases = $dbSize\n";
 
 if ( @contigSizes > 100 ) {
-  @contigSizes = sort { $a <=> $b } @contigSizes;
+  # Should be longest to shortest for N50 calc: Fixed 20210225
+  @contigSizes = sort { $b <=> $a } @contigSizes;
 
   my $tabSize      = 0;
   my $halfAssembly = $dbSize / 2;
   my $N50          = 0;
   for ( my $i = 0 ; $i < $#contigSizes ; $i++ ) {
-    last if ( $tabSize + $contigSizes[ $i ] > $halfAssembly );
     $tabSize += $contigSizes[ $i ];
     $N50 = $contigSizes[ $i ];
+    last if ( $tabSize + $contigSizes[ $i ] > $halfAssembly );
   }
   print "  - N50 = $N50\n";
 
+  # Sort shortest to longest for histogram
+  @contigSizes = sort { $a <=> $b } @contigSizes;
   print "  - Contig Histogram:\n";
   print
 "  Size(bp)                                                        Count\n";
