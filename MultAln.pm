@@ -2246,8 +2246,10 @@ sub getLowScoringAlignmentColumns {
   foreach my $index ( 0 .. $#profile ) {
     $profile[ $index ] *= -1;
   }
+print "" . Dumper(\@profile) . "\n";
 
-  my $valArray = _ruzzoTompaFindAllMaximalScoringSubsequences( \@profile );
+  my ( $ruzzoTompaArr, $intervalArr, $valArray ) = _ruzzoTompaFindAllMaximalScoringSubsequences( \@profile );
+  undef $ruzzoTompaArr, $intervalArr;
 
   # Calc the average
   my @seqPosAvg = @{$valArray};
@@ -2490,9 +2492,11 @@ sub getAlignmentBlock {
 }
 
 ##---------------------------------------------------------------------##
-## Use: \@results =  _ruzzoTompaFindAllMaximalScoringSubsequences (
+## Use: my (\@ruzzoTompaArr, \@intervalArr, \@scoreMaskArr ) = 
+##            _ruzzoTompaFindAllMaximalScoringSubsequences (
 ##                                                 @sequenceScoreArray
-##                                                                );
+##                                                          );
+##
 ##      @sequenceScoreArray : An array containing individual
 ##                            penalty scores for each position
 ##                            within the sequence.
@@ -2502,16 +2506,33 @@ sub getAlignmentBlock {
 ##      Tompa ("A Linear Time Algorithm for Finding All Maximal Scoring
 ##      Subsequences" - 7th Intl Conf. Intelligent Systems for Mol
 ##      Biology).
+##      
+##      3/9/2021: Updated algorithm fixing a bug in the previous 
+##                implementation and providing the standard score
+##                list output provided by the standard Ruzzo and
+##                Tompa algorithm.  This new implementation follows
+##                the python implementation detailed on the wikipedia
+##                page for the algorithm.
 ##
-##      The result is an array the size of the original sequence.
-##      The array is annotated as follows:
+##      Given the score array example: 4,-5,3,-3,1,2,-2,2,-2,1,5
+##      
+##      Identify the maximal scoring subsequences.  This is traditionally
+##      returned as a list of lists. Each list contains the position ordered
+##      scores for a maximal subsequence.  For the example above it would
+##      be:
+##             [[4], [3], [1, 2, -2, 2, -2, 1, 5]]
 ##
-##          Subsequences:   Each position within the subsequence is
-##                          replaced with the subsequences' score.
-##                          NOTE: It is not possible for two subsequences
-##                          with the same score to adjacent to one another.
-##                          ( See algorithm paper ).
-##          Other       :   Contains the number zero.
+##      Additionally this implementation provides the interval as a list
+##      of [start, end] lists.  For the example above:
+##
+##             [[0, 1], [2, 3], [4, 11]]
+##        
+##      Finally this also provides a score mask.  This is list the size
+##      of the input score array where each position is either 0 or it 
+##      contains the score of the maximal scoring range it is a member of.
+##      For instance in the above example:
+##
+##             [4, 0, 3, 0, 7, 7, 7, 7, 7, 7, 7]
 ##
 ##---------------------------------------------------------------------##
 sub _ruzzoTompaFindAllMaximalScoringSubsequences {
@@ -2523,78 +2544,66 @@ sub _ruzzoTompaFindAllMaximalScoringSubsequences {
   my @I = ();
   my @L = ();
   my @R = ();
-  my @S = ();
+  my @Lidx = ();
 
-  #
-  # Seeds
-  #
+  # indices and total
   my $i        = 0;
   my $j        = 0;
-  my $subStart = -1;
+  my $k        = 0;
+  my $total    = 0;
 
   #
   # Maximal scoring subsequences
   #
   while ( $i <= $#b ) {
-
-    # Cumulative Scores Array
-    if ( $i > 0 ) {
-      $S[ $i ] = $S[ $i - 1 ] + $b[ $i ];
-    }
-    else {
-      $S[ $i ] = $b[ $i ];
-    }
-
+    $total += $b[$i];
     # Only consider positive scores
-    if ( $b[ $i ] > 0 ) {
-
-      # Subsequence start pointer
-      $subStart = $i if ( $subStart == -1 );
-
-      # Step 1: Find the maximal j for which Lj < Lk
-      for ( $j = $#L ; $j >= 0 ; $j-- ) {
-        last if ( $L[ $j ] < $S[ $subStart - 1 ] );
+    if ( $b[$i] > 0 ) {
+      $I[$k] = [$i, $i+1];
+      $Lidx[$k] = $i;
+      $L[$k] = $total - $b[$i];
+      $R[$k] = $total;
+      while ( 1 ) {
+        my $maxj = -1;
+        for ( $j = $k-1; $j > -1; $j-- ) {
+          if ( $L[$j] < $L[$k] ) {
+            $maxj = $j;
+            last;
+          }
+        }
+        if ( $maxj != -1 && $R[$maxj] < $R[$k] ) {
+          $I[$maxj] = [$Lidx[$maxj], $i+1];
+          $R[$maxj] = $total;
+          $k = $maxj;
+        }else {
+           $k++;
+           last;
+        }
       }
-
-      # Step 2,3:
-      if (    $L[ $j ] > $S[ $subStart - 1 ]
-           || $#L == -1
-           || $j == -1
-           || $R[ $j ] >= $S[ $i ] )
-      {
-        push @I, [ $subStart, $i ];
-        if ( $i == 0 ) { push @L, 0; }
-        else { push @L, $S[ $subStart - 1 ]; }
-        push @R, $S[ $i ];
-        $subStart = -1;
-        $i++;
-      }
-      else {
-
-        # Step 4:
-        $subStart = $I[ $j ][ 0 ];
-        foreach ( $j .. $#I ) { pop @I; pop @L; pop @R; }
-
-      }
-
     }
-    else {
-      $i++;
-    }
+    $i++;
   }
-
-  #
-  # Build array
-  #
-  my @results = ( 0 ) x ( $#b + 1 );
-
-  foreach $i ( 0 .. $#I ) {
-    foreach $j ( $I[ $i ][ 0 ] .. $I[ $i ][ 1 ] ) {
-      $results[ $j ] = ( $R[ $i ] - $L[ $i ] );
-    }
+  # There are now k-1 valid ranges in I
+  
+  my @ruzzoTompaArr = ();
+  my @intervalArr = ();
+  my @scoreMaskArr = ();
+  for ( $i = 0; $i <= $#b; $i++ ){
+    $scoreMaskArr[$i] = 0;
   }
-  return ( \@results );
-
+  for ( $i = 0; $i < $k; $i++ ) {
+    push @intervalArr, [$I[$i][0], $I[$i][1]];
+    my @tScores;
+    for ( $j = $I[$i][0]; $j < $I[$i][1]; $j++ ) {
+      push @tScores, $b[$j];
+      $scoreMaskArr[$j] = $R[$i]-$L[$i];
+    }
+    push @ruzzoTompaArr, [@tScores];
+  }
+  #print "RTA = " . Dumper(\@ruzzoTompaArr) . "\n";
+  #print "ia = " . Dumper(\@intervalArr) . "\n";
+  #print "sma = " . Dumper(\@scoreMaskArr) . "\n";
+  return ( \@ruzzoTompaArr, \@intervalArr, \@scoreMaskArr );
 }
 
 ##---------------------------------------------------------------------##
