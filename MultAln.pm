@@ -2132,6 +2132,47 @@ sub _alignFromSearchResultCollection {
   gap initiation/extension penalties.  The score is inverted so as 
   to give the minimal scoring subsequences below the given threshold.
 
+  For instance, given the multiple alignment:
+
+        AACT-TTGACC---CCacta
+      GAAAGT-TTCTCCAGTCCacta
+      G-AACTATTC-CCA--CCacta
+      GAAACT-TTG-CC-----acta
+
+  And the reference:
+
+      GAAACT-TTN-CCA--CCACTA
+
+  The first column has three aligned sequences.  If G to G is scored
+  as +10 the average score for column one is 30/3 = +10.  The seventh
+  column however has four sequences aligning (with deletions) and
+  therefore would be scored as 0 + 0 + -40 + 0 = -40 assuming the gap
+  open penalty is -40.  The average for the columne is -40/4 = -10.
+
+  For this alignment the column score array would be:
+
+      10, -7.33, 9, 9, 3.75, 9, -10, 9, 9 -1, -20, 10, 10, -15.5, -10,
+      -3.75, 3.75, 3.75, 9, 10, 9, 9
+
+  Inverting the scores and and applying the Ruzzo Tompa algorithm will
+  give:
+
+      [[ 7.33 ], [ 10 ], [ 1, 20, -10, -10, 15.5, 10, 3.75 ]]
+
+  With the following block ranges:
+
+      [[ 1, 1 ], [ 6, 6 ], [ 9, 15 ]]
+
+  This routine will report any block above the supplied threshold.  Using
+  the default threshold of 1.0 all the above blocks will be returned in effect
+  flagging the following columns of the alignment as low scoring:
+
+  low: *    *  *******
+        AACT-TTGACC---CCacta
+      GAAAGT-TTCTCCAGTCCacta
+      G-AACTATTC-CCA--CCacta
+      GAAACT-TTG-CC-----acta
+
 =cut
 
 ##---------------------------------------------------------------------##
@@ -2246,9 +2287,10 @@ sub getLowScoringAlignmentColumns {
   foreach my $index ( 0 .. $#profile ) {
     $profile[ $index ] *= -1;
   }
-print "" . Dumper(\@profile) . "\n";
+  #print "" . Dumper(\@profile) . "\n";
 
   my ( $ruzzoTompaArr, $intervalArr, $valArray ) = _ruzzoTompaFindAllMaximalScoringSubsequences( \@profile );
+  #print "RTA: " . Dumper($ruzzoTompaArr) . "\n";
   undef $ruzzoTompaArr, $intervalArr;
 
   # Calc the average
