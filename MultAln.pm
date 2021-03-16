@@ -2762,9 +2762,19 @@ sub _getSequenceDuplicates {
   return ( \%nameHash );
 }
 
+# 
+# histoArray: contains integer counts in a sparse array
+# windowSize: size of the scoring window
+# useHighestInWindow: flag
+#
+# NOTES: Consider the score drop threshold and it's impact
+#        on peak calling under different value distributions.
 sub _pickHistogramPeak {
   my %parameters = @_;
 
+  # e.g. 
+  #    pos:  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 
+  #  array: [0, 8, 2, 1, 0, 0, 0, 0, 1, 10, 5]
   my $histoArray = $parameters{'histogram'};
   my $windowSize = $parameters{'windowSize'};
 
@@ -2779,12 +2789,15 @@ sub _pickHistogramPeak {
   my $highScoreStart     = -1;
   my $highScoreEnd       = -1;
   my $windowFlankingSize = ( ( $windowSize - 1 ) / 2 );
+  # Calculate sum of counts for left half of the window
   for ( my $i = 0 ; $i <= $windowFlankingSize ; $i++ ) {
     print "Histo:  $i -> " . $histoArray->[ $i ] . "\n"
         if ( $histoArray->[ $i ] > 0 && $DEBUG );
+    # sum the counts
     $score += $histoArray->[ $i ];
   }
   my $i;
+  # Calculate sum of counts for right half of the window
   for ( $i = $windowFlankingSize + 1 ; $i <= $#{$histoArray} ; $i++ ) {
     print "Histo: $i -> " . $histoArray->[ $i ] . "\n"
         if ( $histoArray->[ $i ] > 0 && $DEBUG );
@@ -2792,17 +2805,23 @@ sub _pickHistogramPeak {
     if ( $i - $windowSize >= 0 ) {
       $score -= $histoArray->[ $i - $windowSize ];
     }
+    # Keep the start of the window as the high score start
     if ( $score > $highScore ) {
       $highScoreStart = $i - $windowFlankingSize - 1;
       $highScore      = $score;
     }
+    # Is the score decreasing *right* after a high score was found
+    # Looks like this particularly detecting a spike.
     if ( $score < $prevScore && $prevScore == $highScore ) {
       $highScoreEnd = $i - 1;
     }
     $prevScore = $score;
   }
+
   $highScoreEnd = $i - 1 if ( $highScoreEnd < $highScoreStart );
   if ( $useHighestInWindow == 1 ) {
+    # Return the highScore and the position of the maximum value in
+    # the high scoring window.
     my $maxPos = 0;
     my $maxVal = 0;
     print "About to call $highScoreStart to $highScoreEnd\n";
@@ -2815,6 +2834,7 @@ sub _pickHistogramPeak {
     return ( $highScore, $maxPos );
   }
   else {
+    # Return highScore and the mid point of between start of highScoreStart-highScoreEnd 
     return (
              $highScore,
              $highScoreStart + (
