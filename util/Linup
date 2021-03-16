@@ -41,7 +41,8 @@ Linup -
 
   Linup [-version] [-i] [-matrix <matrix_file>
                         [-cgParam #] [-taParam # ] [-cgTransParam #] ]
-                        [-trimLeft #] [-trimRight #] [-name familyname]
+                        [ -trimLeft # | -trimRight # | -revcomp ] 
+                        [-name familyname]
                         [-normalizeCoord] [-showScore] 
                         [-includeFlanking # -genome <2bit_file>]
                         [-malignOut <file>]
@@ -97,6 +98,11 @@ the gap characters.
 =item -showScore
 
 Include score in the default Linup output format.
+
+=item -revcomp
+
+Reverse complement the multiple alignment.  Currently this
+may not be used at the same time as -trimLeft/-trimRight.
 
 =item -genome <2bit file>
 
@@ -197,6 +203,7 @@ my @getopt_args = (
                     '-trimRight=s',
                     '-normalizeCoord',
                     '-matrix=s',
+                    '-revcomp',
                     '-genome=s',
                     '-includeFlanking=i',
                     '-noTemplate',
@@ -241,6 +248,17 @@ $inclRef = 1 if ( $options{'i'} );
 
 my $inclTempl = 1;
 $inclTempl = 0 if ( $options{'noTemplate'} );
+
+my $revComp = 0;
+$revComp = 1 if ( $options{'revcomp'} );
+if ( $revComp && ( $options{'trimLeft'} || $options{'trimRight'} )){
+  print "\n\nCannot use -revcomp and -trimLeft/-trimRight at the same time\n\n";
+  usage();
+}
+if ( $revComp && $options{'includeFlanking'} ){
+  print "\n\nCannot use -revcomp and -includeFlanking at the same time\n\n";
+  usage();
+}
 
 my $matrixFile;
 my $cgParam;
@@ -455,6 +473,10 @@ if ( $trimLeft || $trimRight )
 }
 if ( defined $options{'normalizeCoord'} ) {
     $mAlign->normalizeSeqRefs();
+}
+
+if ( $revComp ) {
+  $mAlign->reverseComplement();
 }
 
 my $cons;

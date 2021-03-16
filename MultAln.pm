@@ -1567,7 +1567,6 @@ sub _importAlignedSeqs {
     my $startPos       = 1;
     my $endPos         = 0;
     if ( $sequenceName =~ /(\S+)\:(\d+)-(\d+)/ )
-
         # Hack...deletme
         #         || $sequenceName =~ /(\S+)\_[\-]?(\d+)-(\d+)/ )
     {
@@ -1604,13 +1603,16 @@ sub _importAlignedSeqs {
 
     my $ID = "";
     $ID .= "$assemblyName:" if ( $assemblyName );
-    $ID .= "$sequenceName:";
-    if ( $orient eq "+" ) {
-      $ID .= "$startPos-$endPos";
-    }
-    else {
-      $ID .= "$endPos-$startPos";
-    }
+    $ID .= "$sequenceName";
+    # The sequence name shouldn't be appended a range by default.
+    # Instead this is a concern of the output formats.
+    #$ID .= "$sequenceName:";
+    #if ( $orient eq "+" ) {
+    #  $ID .= "$startPos-$endPos";
+    #}
+    #else {
+    #  $ID .= "$endPos-$startPos";
+    #}
     $object->setAlignedName( $l, $ID );
     $object->setAlignedSeqStart( $l, $startPos );
     $object->setAlignedSeqEnd( $l, $endPos );
@@ -2287,7 +2289,7 @@ sub getLowScoringAlignmentColumns {
   foreach my $index ( 0 .. $#profile ) {
     $profile[ $index ] *= -1;
   }
-  #print "" . Dumper(\@profile) . "\n";
+  #print "score profile (before inversion): " . Dumper(\@profile) . "\n";
 
   my ( $ruzzoTompaArr, $intervalArr, $valArray ) = _ruzzoTompaFindAllMaximalScoringSubsequences( \@profile );
   #print "RTA: " . Dumper($ruzzoTompaArr) . "\n";
@@ -2428,6 +2430,88 @@ sub trimAlignments {
   );
   $this->resetGappedReferenceLength();
 }
+
+# New method added 3/15/21 -- needs to be ported to Python object
+# NOTE: This prohibits the use of ":" in a identifier itself.
+#       Need to sanitize identifiers for that...discuss
+sub reverseComplement {
+  my $this       = shift;
+  my %parameters = @_;
+
+  # First reverse complement the reference
+  my $seq = $this->getReferenceSeq();
+  my $refLen = length($seq);
+  #print "seq: $seq\n";
+  $seq = _compl($seq);
+  #print "seqnow: $seq\n";
+  $this->setReferenceSeq( $seq );
+
+  for ( my $i = 0 ; $i < $this->getNumAlignedSeqs() ; $i++ ) {
+    my $id = $this->getAlignedName( $i );
+    my $seq = $this->getAlignedSeq( $i );
+    my $curOrient  = $this->getAlignedOrientation( $i );
+    my $newAlignedStart = $refLen - ($this->getAlignedStart( $i ) + length($seq));
+    $this->setAlignedStart($i, $newAlignedStart);
+
+    #my $idPrefix = '';
+    #my $idStart = 0;
+    #my $idEnd = 0; 
+    #my $idOrient = '+';
+    ## e.g. chrUn_KK085329v1_11857_12355_R
+    #if ( $id =~ /^(\S+)_(\d+)_(\d+)(_R)?:\d+-\d+$/ ) {
+    #  $idPrefix = $1;
+    #  $idStart = $2;
+    #  $idEnd = $3;
+    #  $idOrient = '-' if ( $4 eq '_R' );
+    ## e.g. hg38:chrUn_KK085329v1_11857_12355_R
+    #}elsif ( $id =~ /^\S+:(\S+)_(\d+)_(\d+)(_R):\d+-\d+?$/ ){
+    #  $idPrefix = $1;
+    #  $idStart = $2;
+    #  $idEnd = $3;
+    #  $idOrient = '-' if ( $4 eq '_R' );
+    #}
+#
+#    if ( $idPrefix ne "" ) {
+#print "Fixing id for $idPrefix\n";
+#      # Name needs to be adjusted
+#      my $curOrient  = $this->getAlignedOrientation( $i );
+#      my $curStart   = $this->getAlignedSeqStart( $i );
+#      my $curEnd     = $this->getAlignedSeqEnd( $i );
+#      if ( $idOrient eq '-' ) {
+#        $this->setAlignedSeqEnd( $i, $idEnd - $curStart + 1 );
+#        $this->setAlignedSeqStart( $i, $idEnd - $curEnd + 1 );
+#  
+#        # Original sequence is reverse
+#        if ( $curOrient eq '+' ) {
+#          # Alignment is forward
+#          $this->getAlignedOrientation( "-" );
+#        }
+#        else {
+#          # Alignment is reverse
+#          # two wrongs make a right
+#          $this->getAlignedOrientation( "+" );
+#        }
+#      }
+#      else {
+#        $this->setAlignedSeqStart( $i, $idStart + $curStart - 1 );
+#        $this->setAlignedSeqEnd( $i, $idStart + $curEnd - 1 );
+#      }
+#      $this->setAlignedName( $i, $idPrefix );
+#    }else {
+      if ( $curOrient eq '+' ){
+        $this->setAlignedOrientation( $i, '-' );
+      } else {
+        $this->setAlignedOrientation( $i, '+' );
+      }
+#    }
+    # TODO: setAlignedSeqStart correct...accounting for space
+
+    # Do the actual reverse complement
+    $seq = _compl($seq);
+    $this->setAlignedSeq( $i,$seq );
+  }
+}
+
 
 sub normalizeSeqRefs {
   my $this       = shift;
@@ -4320,6 +4404,7 @@ sub substFrequency {
 ##---------------------------------------------------------------------##
 sub _compl {
   my $seq = shift;
+  $seq = uc($seq); # Just in case
   $seq =~ tr/ACGTRYKMSWBDHV/TGCAYRMKWSVHDB/;
   return ( reverse( $seq ) );
 }
