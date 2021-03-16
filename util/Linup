@@ -209,6 +209,7 @@ my @getopt_args = (
                     '-noTemplate',
                     '-cgParam=s',
                     '-taParam=s',
+                    '-gesp',
                     '-cgTransParam=s',
 );
 
@@ -477,6 +478,12 @@ if ( defined $options{'normalizeCoord'} ) {
 
 if ( $revComp ) {
   $mAlign->reverseComplement();
+}
+
+if ( $options{'gesp'} ){
+  my $garr = $mAlign->_getEndStartPairs();
+  print "GetEndStartPairs: " . Dumper($garr) . "\n";
+  exit;
 }
 
 my $cons;

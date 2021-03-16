@@ -2849,7 +2849,7 @@ sub _pickHistogramPeak {
 ## Use: _pickHistogramPeaks(..);
 ##
 ## Private method.
-##
+## ** Used by getEndStartPairs which is currently not used **
 ##---------------------------------------------------------------------##
 sub _pickHistogramPeaks {
   my $this       = shift;
@@ -2858,7 +2858,7 @@ sub _pickHistogramPeaks {
   my $histoArray  = $parameters{'histogram'};
   my $windowSize  = $parameters{'windowSize'};
   my $threshold   = $parameters{'threshold'};
-  my $perPosCount = $parameters{'perPosCount'};
+  #my $perPosCount = $parameters{'perPosCount'};
 
   #croak $CLASS."::_pickHistogramPeak(): Histogram is not as wide as ".
   #      "the window size!\n" if ( ( $#{ $histoArray } + 1 ) <
@@ -2884,11 +2884,13 @@ sub _pickHistogramPeaks {
       }
     }
   }
-
   my $i                 = -1;
   my $numUniqSequences  = -1;
   my $sig               = -1;
   my $distSinceLastCall = $windowFlankingSize;
+  # TODO: This looks like a bug.  The starting index of 0
+  # looks like it will be double counting the $score kept
+  # from the previous loop.
   for ( $i = 0 ; $i <= $#{$histoArray} ; $i++ ) {
     my $windowStart = $i - $windowFlankingSize;
     my $windowEnd   = $i + $windowFlankingSize;
@@ -2896,12 +2898,10 @@ sub _pickHistogramPeaks {
 
     # Slide Score Window
     if ( $windowEnd <= $#{$histoArray} ) {
-
       # Add new column
       $score += $histoArray->[ $windowEnd ];
     }
     if ( ( $windowStart - 1 ) >= 0 ) {
-
       # Remove old column
       $score -= $histoArray->[ $windowStart - 1 ];
     }
