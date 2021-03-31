@@ -24,8 +24,8 @@ alignAndCallConsensus.pl - Align TE consensus to a set of instances and call con
                  [-ht(ml)] [-st(ockholm)] [-q(uiet)]
                  [-re(fine)|-re(fine) #] [-fi(lter_overlap)]
                  [-inc(lude_reference)] [-outdir <val]
-                 [-p(rune) <val>] [-qu(oteprune) <val>]
-                 [-int(eractive)] [-hp(ad) #] [-h(elp)]
+                 [-p(rune) <val>] [-int(eractive)] 
+                 [-hp(ad) #] [-h(elp)]
 
   Example:
 
@@ -100,6 +100,8 @@ alignAndCallConsensus.pl - Align TE consensus to a set of instances and call con
      cosensus for each family in the same fashion as the single consensus
      case.
 
+  Buffer Sequences:
+
 
   Output:
      The program saves the original input consensus file as <filename>.#, where 
@@ -161,11 +163,11 @@ If given 14p35 (37,39,41,43,45,47,49,51,53) #####g.matrix is chosen
  
 =item -f(inishedext) <value>
 
-Default off; given N 'H's on an end of the reference, the program wil extend 
-the consensus by N bases and pad the new consensus with N 'H's.
--f 5 : 5' extension done (the 5' end won't grow nor get 'H's attached)
--f 3 : 3' extension done
--f b : both extensions done
+Default off; Indicate that one or both ends are not to be extended even if they 
+have 'H's prefixed/suffixed to the sequence.
+-f 5 : 5' extension done, do not incorporate bases matching the H-pad into consensus.
+-f 3 : 3' extension done, ...
+-f b : both extensions done, ...
 
 =item -inc(lude_reference)
 
@@ -176,14 +178,6 @@ were the starting consnesus is a single instance of the family.
 
 Prunes the consensus sequence on either side to the point that more than # 
 sequences are aligned. If the string form "#n#" is used ....
-
-=item -qu(oteprune) #
-
-TODO: NOT IMPLEMENTED
-Same as prune except that instead of pruning to the point that more than #
-sequences are aligned it prunes until the number of aligned sequences increases
-by >= # times.  Only checks the first and last 100bp and when 3 or more seqs
-join.
 
 =item -ht(ml)       
 
@@ -218,6 +212,7 @@ When a single sequence in the elements file produces multiple sub
 alignments to the consensus, this option will remove any sub alignment
 which overlaps the same consensus range *or* the same sequence
 range as a higher scoring sub alignment.
+
 
 =back
 
@@ -257,6 +252,9 @@ use SearchResultCollection;
 # Program version
 my $Version = $RepModelConfig::VERSION;
 
+# A global hash to hold program timers
+my %TimeBefore = ();
+
 
 #
 # Paths
@@ -287,7 +285,6 @@ my @getopt_args = (
                     '-include_reference|inc',
                     '-interactive|int',
                     '-prune|p=s',
-                    '-quoteprune|qu=s',
                     '-html|ht',
                     '-hpad|hp=i',
                     '-quiet|q',
@@ -305,6 +302,16 @@ unless ( GetOptions( \%options, @getopt_args ) ) {
   usage();
 }
 
+# TODO: NOT IMPLEMENTED
+# '-quoteprune|qu=s',
+#
+# -qu(oteprune) #
+#
+# Same as prune except that instead of pruning to the point that more than #
+# sequences are aligned it prunes until the number of aligned sequences increases
+# by >= # times.  Only checks the first and last 100bp and when 3 or more seqs
+# join.
+#
 
 sub usage {
   print "$0 - $Version\n";
@@ -526,6 +533,7 @@ if ($options{'quoteprune'}) {
 ##
 ## Main
 ##
+elapsedTime('main');
 unless ( $options{'quiet'} ) {
   print "##\n";
   print "## alignAndCallConsensus (aka dothemsimple/dothemmultiple.pl)\n";
@@ -556,7 +564,7 @@ unless ( $options{'quiet'} ) {
   if ( $firstFreeBackupIdx > 1 ) {
     print "# Starting Round Index: $firstFreeBackupIdx\n";
   }
-  print "------------------------------------------------------------\n";
+  print "#--------------------------------------------------------------------\n";
 }
 
 my $searchEngineN;
@@ -617,7 +625,10 @@ while ( 1 ) {
      }
   );
 
-  print "ITERATION: " . ( $iterations + 1 ) . "\n";
+  print "#\n";
+  print "# ITERATION " . ( $iterations + 1 ) . "\n";
+  print "#\n";
+  print "#--------------------------------------------------------------------\n";
 
   #
   # pruning
@@ -884,23 +895,30 @@ while ( 1 ) {
       #out.CGmodified: total aligned length: 15249 bp
       my $aligned_bp = `$FindBin::RealBin/CntSubst -cg $outdir/$consID.out | grep aligned`;
       $aligned_bp = $1 if ( $aligned_bp =~ /length: (\S+) bp/ );
-      print "Kimura Divergence: $kimura ( $aligned_bp aligned bps )\n";
+      print "Kimura Divergence: " . sprintf("%0.3f",$kimura*100) . " % ( $aligned_bp aligned bps )\n";
     }
 
-    my ($newcons, $hAlignLeft, $hAlignRight, $diffStr) = processAliFile("$outdir/$consID.ali", $ext5done, $ext3done);
-    
     my $leftHPad = "H"x($consRecs->{$consID}->{'leftHPad'});
     my $rightHPad = "H"x($consRecs->{$consID}->{'rightHPad'});
-    if ($newcons eq $consRecs->{$consID}->{'seq'}) {
-      print "Changes: **unchanged**\n" unless ( $options{'quiet'} );
+
+    my ( $consHLeft, $consCore, $consHRight, $consAligned, $refAligned, $diffStr ) = processAliFile("$outdir/$consID.ali", $ext5done, $ext3done);
+    #print "ALI CONS: $consHLeft ... $consCore ... $consHRight\n";
+
+    my $testCons = $consCore;
+    $testCons = $consHLeft . $testCons unless( $ext5done );
+    $testCons .= $consHRight unless( $ext3done );
+    my $newcons = $testCons;
+
+    if ($testCons eq $consRecs->{$consID}->{'seq'}) {
+      print "Consensus Changes: **unchanged**\n" unless ( $options{'quiet'} );
       $consRecs->{$consID}->{'stable'} = 1;
 
       unless ( $options{'quiet'} ) {
-        print "------------------------------------------------------------\n";
+        print "#--------------------------------------------------------------------\n";
       }
     }else {
-      print "Changes:\n$diffStr\n" unless ( $options{'quiet'} );
-      #print "new: $newcons\n";
+      print "Consensus Changes:\n\n$diffStr\n" unless ( $options{'quiet'} );
+      #print "new: $testCons\n";
       #print "old: " . $consRecs->{$consID}->{'seq'} ."\n";
       $changedCnt++;
       $consRecs->{$consID}->{'iteration'}++;
@@ -908,8 +926,7 @@ while ( 1 ) {
       my $intMessage = "";
       if ( $options{'interactive'} ) {
         
-        print STDERR "s(kip),c(hangeinbetweenHs),x(pandandchange), b(eginexpand) or 5(\'),e(ndexpand) or 3(\'),##-## (range),d(one)\n";
-        print STDERR "A range only works if the new and old consensus have the same positions at the start and end of the range.\n";
+        print STDERR "s(kip),c(hangeinbetweenHs),x(pandandchange), b(eginexpand) or 5(\'),e(ndexpand) or 3(\'),##-## (cons range),d(one)\n";
         my $answer = <STDIN>;
         while ($answer !~ /^[scxbelr35d]$/ && $answer !~ /^\d+[-\s]+\d+/ ) {
           print STDERR "Could not process $answer\nType 's','c','e','b','5','e','3','#-###' range, or 'd'.\n" .
@@ -936,37 +953,58 @@ while ( 1 ) {
           #print "hAlignLeft = $hAlignLeft, hAlignRight=$hAlignRight, leftHPad=$leftHPad, rightHPad=$rightHPad\n";
           if ($answer eq 'c') {
             # Only allow core changes in new consensus ( i.e. do not allow H pad additions in ).
-            $newcons =~ s/^\w{$hAlignLeft}(\w+)\w{$hAlignRight}/$1/ || 
-                print STDERR "Error: processing 'c' hAlignLeft=$hAlignLeft hAlignRight=$hAlignRight,\n" .
-                             "       leftHPad=$leftHPad rightHPad=$rightHPad newcons=$newcons\n";
+            #print "processing 'c' hAlignLeft=$hAlignLeft hAlignRight=$hAlignRight,\n" .
+            #      "       leftHPad=$leftHPad rightHPad=$rightHPad cons=$newcons\n";
+            #$newcons =~ s/^\w{$hAlignLeft}(\w+)\w{$hAlignRight}/$1/ || 
+            #    print STDERR "Error: processing 'c' hAlignLeft=$hAlignLeft hAlignRight=$hAlignRight,\n" .
+            #                 "       leftHPad=$leftHPad rightHPad=$rightHPad newcons=$newcons\n";
+            $newcons = $consCore;
             $intMessage = "Keeping only core changes, ignoring the sequence in the H-pad regions.";
           } elsif ( $answer eq 'x' ) {
             # Trim off edge N's and repad
+            $newcons = $consHLeft . $consCore . $consHRight;
             $newcons =~ s/^N*(\w+)N*/$1/;
             $intMessage = "Keeping both 5\' and 3\' H-pad changes.";
           } elsif ( $answer =~ /^[b5]$/ ) {
             # Trim off 5' N's and any 3' extension and repad
-            $newcons =~ s/^N*(\w+)\w{$hAlignRight}/$1/  || 
-                print STDERR "Error: processing 'b5' hAlignRight=$hAlignRight,\n" .
+            $newcons = $consHLeft . $consCore; 
+            $newcons =~ s/^N*(\w+)/$1/  || 
+                print STDERR "Error: processing 'b5' consHLeft=$consHLeft,\n" .
                              "       leftHPad=$leftHPad rightHPad=$rightHPad newcons=$newcons\n";
             $intMessage = "Keeping only 5\' H-pad changes.";
           } elsif ( $answer =~ /^[e3]$/ ) {
             # Trim off 3' N's and any 5' extension and repad
-            $newcons =~ s/^\w{$hAlignLeft}(\w+)N*/$1/;
+            $newcons = $consCore . $consHRight; 
+            $newcons =~ s/^(\w+)N*/$1/;
             $intMessage = "Keeping only 3\' H-pad changes.";
           } elsif ( $answer =~ /^(\d+)\-(\d+)/ ) {
-            $intMessage = "Keeping only range $1-$2.";
-            my $begin = $1 - 1 unless $1 == 0; # half-opened
-            my $end = $2;
-            my $len = $end - $begin;
-            $len = (length $newcons) - $begin if $len > (length $newcons);
-            my $newfrag = substr($newcons,$begin,$len);
-            my $old5 = "";
-            if ($begin) {
-              $old5 =  substr($consRecs->{$consID}->{'seq'},0,$begin);
+            $intMessage = "Keeping only consensus range $1-$2.";
+            my $rangeStart = $1;
+            my $rangeEnd = $2;
+            my $rangeColStart = 0;
+            my $rangeColEnd = 0;
+            my $baseCnt = 0;
+            for ( my $i = 0; $i < length($consAligned); $i++ ){
+              $baseCnt++ if ( substr($consAligned,$i,1) ne "-" );
+              $rangeColStart = $i;
+              last if ( $baseCnt == $rangeStart );
             }
-            my $old3 = substr($consRecs->{$consID}->{'seq'},$end);
-            $newcons = "$old5"."$newfrag"."$old3";
+            if ( $baseCnt != $rangeStart ) { print "Range Error: could not find start position of $rangeStart!\n"; }
+            for ( my $i = $rangeColStart+1; $i < length($consAligned); $i++ ){
+              $baseCnt++ if ( substr($consAligned,$i,1) ne "-" );
+              $rangeColEnd = $i;
+              last if ( $baseCnt == $rangeEnd );
+            }
+            if ( $baseCnt != $rangeEnd ) { print "Range Error: could not find end position of $rangeStart!\n"; }
+            #print "Identified range columns: $rangeColStart - $rangeColEnd\n";
+            #print "Cons for this range: " . substr($consAligned,$rangeColStart, ($rangeColEnd - $rangeColStart + 1)) . "\n";
+            #print "Ref for this range: " . substr($refAligned,$rangeColStart, ($rangeColEnd - $rangeColStart + 1)) . "\n";
+            substr($refAligned,$rangeColStart, ($rangeColEnd - $rangeColStart + 1)) = substr($consAligned,$rangeColStart, ($rangeColEnd - $rangeColStart + 1));
+            $newcons = $refAligned;
+            $newcons =~ s/-//g;
+            $newcons =~ s/^H*(.*)/$1/;
+            $newcons =~ s/([^H]*)H+$/$1/;
+            #print "newCons = $newcons\n";
           }
         }
         if ( $options{'debug'} ) {
@@ -974,18 +1012,18 @@ while ( 1 ) {
         }
       } # interactive
   
-      unless ( $options{'quiet'} ) {
-        print "------------------------------------------------------------\n";
-      }
-
       if ( $intMessage ne "" ) {
         print "$intMessage\n";
       }
 
+      unless ( $options{'quiet'} ) {
+        print "#--------------------------------------------------------------------\n";
+      }
+
       $consRecs->{$consID}->{'seq'} = $newcons
     } # has changes
-  
   } # foreach my $consID...
+
 
   # If we have multiple consensi we have to generate an additional file
   # containing all the alignments in one file.
@@ -1020,11 +1058,13 @@ while ( 1 ) {
     &saveNewCons($conFile,$consRecs);
   }
 
-  if ( $options{'refine'} ) {
+  if ( exists $options{'refine'} ) {
     last if ( $changedCnt == 0);
     if ( $iterations >= $maxRefineIterations ) {
       if ( $changedCnt != 0 ) {
-        print "WARN: Consensus still changing after $maxRefineIterations iterations. May need to continue refinement.\n" unless ( $options{'quiet'} );
+        print "#\n";
+        print "# WARN: Consensus still changing after $maxRefineIterations iterations. May need to continue refinement.\n" unless ( $options{'quiet'} );
+        print "#\n";
       }
       last;
     }
@@ -1034,6 +1074,10 @@ while ( 1 ) {
     last;
   }
 } # while(1);
+
+unless ( exists $options{'quiet'} ){
+  print "# Runtime: " . elapsedTime('main') . "\n";
+}
   
 &cleanup( $outdir, $conFile );
 exit;
@@ -1092,8 +1136,6 @@ sub scoretotal {
   return (scalar(keys(%uniqIDs)),$cmScoreTot,sprintf( "%0.2f", ( $cmScoreTot / $alignedBases )));
 }
 
-
-
 #
 # Process the "ali" file produced by Linup and pull out a consensus
 # trimmed based on the extension flags provided by the user and the
@@ -1108,7 +1150,8 @@ sub processAliFile {
 
   open ALI,"<$aliFile" or die "\n\nCould not open ali file \'$aliFile\' for reading!\n\n";
 
-  my $newcons = "";
+  my $consSeq = "";
+  my $refSeq = "";
   my $Hleft = 0;
   my $Hright = 0;
   my @consbit = ();
@@ -1118,13 +1161,13 @@ sub processAliFile {
   while (<ALI>) {
     # consensus     1 TCTTCTGATT----GGTTGGTGGTGAGGTAA-------CA-G...
     if (/^consensus\s+\d+\s+(\S+)/) {
-      $newcons .= $1; 
+      $consSeq .= $1; 
       $consbit = $1;  # Save for comparison of sequences
-      $newcons =~ tr/-//d;
       $consline = $_;
       chomp $consline;
     # ref:rep       1 HHHHHTGATT----GGTTGGTGGTGAGGTAA-------CA-G...
     } elsif (/^(ref\:\S+\s+\d+\s+)(\S+)/) {
+      $refSeq .= $2; 
       my $spacelen = length $1;
       my $refbit = $2;
       if ( $refbit =~ /^(H+)[ACGTNRYMKSW-]/ ) {
@@ -1138,11 +1181,8 @@ sub processAliFile {
         if ( $is5ExtDone && /^ref\:\S+\s+(\d+)\s+(H+)[ACGTN]/ ) {
           # We were done with 5'extension previously.  Any alignment
           # to H's in this round are purely for anchoring purposes and
-          # should not contribute the consensus.
+          # should not contribute to the diff output
           $Hleft = length $2;
-          $newcons =~ s/^\w{$Hleft}//;
-          # Now that we are done with extension only record differences
-          # if they occur after the H padding.
           my ($tempcons,$tempref) = ($consbit,$refbit);
           $tempcons =~ s/^\w{$Hleft}//;
           $tempref =~ s/^H+//;
@@ -1184,10 +1224,25 @@ sub processAliFile {
     }
   }
   close ALI;
-  $newcons =~ s/(\w){$Hright}$// if $Hright && $is3ExtDone;
+
+  # Process new consensus into parts
+  my $consHLeft;
+  my $consHRight;
+  my $consCore;
+  my $cTmp = $consSeq;
+  $cTmp =~ s/-//g;
+  if ( $cTmp =~ /^(\w{$Hright})(\w+)(\w{$Hleft})$/ ) {
+    $consHLeft = $1;
+    $consCore = $2;
+    $consHRight = $3;
+  }else {
+    print STDERR "ERROR: Could not parse cons $consSeq into parts!  Hright = $Hright Hleft = $Hleft\n";
+    exit(1);
+  }
  
-  return( $newcons, $Hleft, $Hright, $diffStr );
+  return( $consHLeft, $consCore, $consHRight, $consSeq, $refSeq, $diffStr );
 }
+
 
 
 #
@@ -1341,5 +1396,33 @@ sub processConFile {
 
   return( $numRefineableCons, $numBuffers, \%consRecs, $seqsWithHpads );
 }
+
+##-------------------------------------------------------------------------##
+## Use: my $string = elapsedTime( $index );
+##
+## Great little utility for measuring the elapsed
+## time between one or more sections of perl code.
+##
+##-------------------------------------------------------------------------##
+sub elapsedTime {
+  my ( $TimeHistIdx ) = @_;
+  if ( defined $TimeBefore{$TimeHistIdx} ) {
+    my $DiffTime = time - $TimeBefore{$TimeHistIdx};
+    $TimeBefore{$TimeHistIdx} = time;
+    my $Min = int( $DiffTime / 60 );
+    $DiffTime -= $Min * 60;
+    my $Hours = int( $Min / 60 );
+    $Min -= $Hours * 60;
+    my $Sec = $DiffTime;
+    my $timeStr = sprintf( "%02d:%02d:%02d", $Hours, $Min, $Sec );
+    return "$timeStr (hh:mm:ss)";
+  }
+  else {
+    $TimeBefore{$TimeHistIdx} = time;
+    return 0;
+  }
+}
+
+
 
 1;
