@@ -140,6 +140,8 @@ Robert Hubley <rhubley@systemsbiology.org>
 #
 use strict;
 use FindBin;
+use lib $FindBin::RealBin;
+use lib "$FindBin::RealBin/../";
 use Data::Dumper;
 use Getopt::Long;
 #
