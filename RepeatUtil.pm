@@ -222,7 +222,7 @@ sub ncbiMaskDatabase {
   for ( my $i = 1 ; $i <= $dbNumSeqs ; $i += $batchSize ) {
     my $dbEnd = $i + $batchSize - 1;
     $dbEnd = $dbNumSeqs if ( $dbEnd > $dbNumSeqs );
-    print "  - Masking $i - $dbEnd of $dbNumSeqs\n";
+    print "   - Masking $i - $dbEnd of $dbNumSeqs\n";
 
     # Create a gilist
     my @giList = ( $i .. $dbEnd );
@@ -447,7 +447,7 @@ sub wublastMaskDatabase {
   for ( my $i = 1 ; $i <= $dbNumSeqs ; $i += $batchSize ) {
     my $dbEnd = $i + $batchSize - 1;
     $dbEnd = $dbNumSeqs if ( $dbEnd > $dbNumSeqs );
-    print "  - Masking $i - $dbEnd of $dbNumSeqs\n";
+    print "   - Masking $i - $dbEnd of $dbNumSeqs\n";
 
     $searchEngine->setAdditionalParameters(
                      "$additionalParams dbslice=" . $i . "-$dbEnd/$dbNumSeqs" );
