@@ -207,7 +207,7 @@ BEGIN {
   #
   # Current version of the software
   #
-  $VERSION = "2.0.2-beta-5";
+  $VERSION = "2.0.2";
 
   #
   # Set this flag to default to debug mode for the entire package
