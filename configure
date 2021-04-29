@@ -148,7 +148,7 @@ BEGIN {
                           "Tie::File",   "Getopt::Long",
                           "POSIX",       "File::Copy",
                           "File::Path",  "Data::Dumper",
-                          "Cwd",         "JSON",
+                          "Cwd",         "JSON", "JSON::PP",
                           "File::Which", "URI",
                           "LWP::UserAgent", "Storable"
   );

@@ -872,7 +872,7 @@ while ( 1 ) {
     $actualGenomeSampleSize += $sampleDB->getSeqLength( $seqID );
   }
   undef $sampleDB;
-print "sampleContigs = " . total_size(\%sampleContigs) . "\n";
+  #print "sampleContigs = " . total_size(\%sampleContigs) . "\n";
 
   if ( $round == 1 ) {
     print "   - Final Sample Size = $actualGenomeSampleSize "
@@ -937,9 +937,9 @@ print "sampleContigs = " . total_size(\%sampleContigs) . "\n";
 
     next;
   }
-print "families size = " . total_size($families) . "\n";
-print "engine size = " . total_size($engine) . "\n";
-print "usedBlockIndex= " . total_size($usedBlockIndex) . "\n";
+  #print "families size = " . total_size($families) . "\n";
+  #print "engine size = " . total_size($engine) . "\n";
+  #print "usedBlockIndex= " . total_size($usedBlockIndex) . "\n";
 
   print "   - Sequence extraction : " . elapsedTime( 3 ) . "\n";
 
