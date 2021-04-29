@@ -41,9 +41,11 @@ Linup -
 
   Linup [-version] [-i] [-matrix <matrix_file>
                         [-cgParam #] [-taParam # ] [-cgTransParam #] ]
-                        [-trimLeft #] [-trimRight #] [-name familyname]
+                        [ -trimLeft # | -trimRight # | -revcomp ] 
+                        [-name familyname]
                         [-normalizeCoord] [-showScore] 
-                        [-seqdb <fasta_file> -includeFlanking #]
+                        [-includeFlanking # -genome <2bit_file>]
+                        [-malignOut <file>]
                         [-stockholm | -msf | 
                          -consensus | -msa
                          -fasta ]
@@ -97,21 +99,32 @@ the gap characters.
 
 Include score in the default Linup output format.
 
-=item -seqdb <fasta_file>
+=item -revcomp
+
+Reverse complement the multiple alignment.  Currently this
+may not be used at the same time as -trimLeft/-trimRight.
+
+=item -genome <2bit file>
 
 This parameter is used in conjunction with the -msa and 
--includeFlanking parameters.  The fasta file should contain
-the sequences (and flanking sequence) that was used to 
+-includeFlanking parameters.  The 2bit file should contain
+the sequences (and flanking sequence) that were used to
 generate the alignments.  
 
 =item -includeFlanking #
 
 Include up to #bp of flanking sequence when using the -msa output
-format and only if the -seqdb parameter is specified.  The same 
+format and only if the -genome parameter is specified.  The same 
 size string is appended/prepended to each aligned sequence 
 regardless of available flanking bases using the "-" to pad out 
 any differences.  The amount of available sequence is dependent 
-on what is in the -seqdb file.
+on what is in the -genome file.
+
+=item -malignOut <file>
+
+Serialize the state of the MultAln object to file.  May be read
+back in as input at a later time or used to by utilities that 
+support MultAln.
 
 =back
 
@@ -135,6 +148,9 @@ use strict;
 use FindBin;
 use Getopt::Long;
 use Data::Dumper;
+use Cwd;
+use File::Spec;
+use File::Basename;
 
 # RepeatModeler Libraries
 use lib $FindBin::RealBin;
@@ -175,19 +191,25 @@ my @getopt_args = (
                     '-i',
                     '-stockholm',
                     '-showScore',
+                    '-malignOut=s',
                     '-msf',
                     '-fasta',
                     '-msa',
                     '-consensus',
+                    '-consIncludeGaps',
+                    '-consNoHeader',
                     '-name=s',
                     '-trimLeft=s',
                     '-trimRight=s',
                     '-normalizeCoord',
                     '-matrix=s',
-                    '-seqdb=s',
+                    '-revcomp',
+                    '-genome=s',
                     '-includeFlanking=i',
+                    '-noTemplate',
                     '-cgParam=s',
                     '-taParam=s',
+                    '-gesp',
                     '-cgTransParam=s',
 );
 
@@ -217,9 +239,27 @@ if ( !-s $inputFile )
   print "\nCannot locate file!: $inputFile\n\n";
   usage();
 }
+my $inputFileDir = cwd;
+my($filename, $dirs, $suffix) = fileparse($inputFile);
+$inputFileDir = $dirs;
+
 
 my $inclRef = 0;
 $inclRef = 1 if ( $options{'i'} );
+
+my $inclTempl = 1;
+$inclTempl = 0 if ( $options{'noTemplate'} );
+
+my $revComp = 0;
+$revComp = 1 if ( $options{'revcomp'} );
+if ( $revComp && ( $options{'trimLeft'} || $options{'trimRight'} )){
+  print "\n\nCannot use -revcomp and -trimLeft/-trimRight at the same time\n\n";
+  usage();
+}
+if ( $revComp && $options{'includeFlanking'} ){
+  print "\n\nCannot use -revcomp and -includeFlanking at the same time\n\n";
+  usage();
+}
 
 my $matrixFile;
 my $cgParam;
@@ -251,8 +291,8 @@ if ( $options{'matrix'} )
   $cgTransParam = $options{'cgTransParam'};
 }
 
-if ( $options{'includeFlanking'} && ! ( $options{'seqdb'} && $options{'msa'} ) ) {
-  print "\nThe includeFlanking option is only valid with the -seqdb and -msa output format!\n";
+if ( $options{'includeFlanking'} && ! ( $options{'genome'} && $options{'msa'} ) ) {
+  print "\nThe includeFlanking option is only valid with the -genome and -msa output format!\n";
   usage();
 }
 
@@ -346,23 +386,11 @@ if ( $fileType eq "crossmatch" )
   my $refInput = MultAln::Subject;
   $refInput = MultAln::Query if ( $staticQuery );
 
-  if ( $options{'includeFlanking'} && $options{'seqdb'} ){
-    my $fSeqDB = FastaDB->new( fileName => "repseq.bak",
-                          openMode => SeqDBI::ReadOnly );
-    $mAlign = MultAln->new(
-                          referenceSeq              => "",
-                          searchCollection          => $resultCollection,
-                          searchCollectionReference => $refInput,
-                          flankingSequenceDatabase  => $fSeqDB,
-                          maxFlankingSequenceLen    => $options{'includeFlanking'} 
-                          );
-  }else {
-    $mAlign = MultAln->new(
-                          referenceSeq              => "",
-                          searchCollection          => $resultCollection,
-                          searchCollectionReference => $refInput
-                           );
-  }
+  $mAlign = MultAln->new(
+                        referenceSeq              => "",
+                        searchCollection          => $resultCollection,
+                        searchCollectionReference => $refInput
+                         );
 } elsif ( $fileType eq "stockholm" )
 {
   open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
@@ -448,6 +476,16 @@ if ( defined $options{'normalizeCoord'} ) {
     $mAlign->normalizeSeqRefs();
 }
 
+if ( $revComp ) {
+  $mAlign->reverseComplement();
+}
+
+if ( $options{'gesp'} ){
+  my $garr = $mAlign->_getEndStartPairs();
+  print "GetEndStartPairs: " . Dumper($garr) . "\n";
+  exit;
+}
+
 my $cons;
 if ( $matrixFile eq "" )
 {
@@ -464,7 +502,15 @@ if ( $options{'stockholm'} )
   if ( $options{'name'} ) { 
     $mAlign->setReferenceName( $options{'name'} );
   }
-  $mAlign->toSTK( includeTemplate => 1, nuclRF => 1 );
+  $mAlign->toSTK( includeTemplate => $inclTempl, nuclRF => 1 );
+
+  # TODO : streamline STK generation.  Perhaps have
+  #        MultAln produce a "SeedAlignment" object.
+  #        Then this object can be manipulated and
+  #        experted as STK.
+  #my $seedAlign = SeedAlignment->new();
+  #$seedAlign->read_stockholm( $IN );
+ 
 } elsif ( $options{'msf'} )
 {
   $mAlign->toMSF( includeReference => 1 );
@@ -472,26 +518,26 @@ if ( $options{'stockholm'} )
 {
   $mAlign->toFASTA( seqOnly => 1 );
 } elsif ( $options{'consensus'} ) {
-  if ( $options{'consensus'} ) {
+  if ( !$options{'consIncludeGaps'} ) {
     $cons =~ s/-//g;
   }
-  if ( $options{'name'} ) {
-    print ">" . $options{'name'} . "\n$cons\n\n";
-  }else {
-    print ">" . $mAlign->getReferenceName() . "\n$cons\n\n";
+  if ( $options{'consNoHeader'} ) {
+    print "$cons\n";
+  } else {
+    if ( $options{'name'} ) {
+      print ">" . $options{'name'} . "\n$cons\n\n";
+    }elsif ( $mAlign->getReferenceName() ne "" ) {
+      print ">" . $mAlign->getReferenceName() . "\n$cons\n\n";
+    }else {
+      print ">consensus\n";
+    }
   }
 }elsif ( $options{'msa'} ) {
-   # DEBUGING
-   #for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs() ; $i++ ) {
-   #   my $name = $mAlign->getAlignedName( $i );
-   #   my $qs = $mAlign->getAlignedSeqStart( $i );
-   #   my $lFlank = $mAlign->getLeftFlankingSequence( $i );
-   #   my $rFlank = $mAlign->getRightFlankingSequence( $i );
-   #   print "$name ($i) - q:$qs\n lf=$lFlank\n rf=$rFlank\n";
-   #}
-  if ( exists $options{'includeFlanking'} && $options{'includeFlanking'} > 0 ) 
+  if ( exists $options{'includeFlanking'} && exists $options{'genome'} && $options{'includeFlanking'} > 0 ) 
   {
-    $mAlign->toFASTA( includeFlanking => $options{'includeFlanking'}, includeReference => $inclRef, includeConsensus => 1 );
+    my $seqLens = &getSequenceLengths($options{'genome'});
+    &generateMSAWithFlanking($mAlign, $options{'genome'}, $seqLens, $options{'includeFlanking'}, $options{'includeFlanking'});
+    #$mAlign->toFASTA( includeFlanking => $options{'includeFlanking'}, includeReference => $inclRef, includeConsensus => 1 );
   }else {
     $mAlign->toFASTA();
   }
@@ -505,6 +551,7 @@ if ( $options{'stockholm'} )
   );
   print "Avg Kimura Div: $avgDiv\n";
   $cons =~ s/\-//g;
+  print "Cons length: " . length($cons) . "\n";
   if ( $options{'name'} ) {
     print "\n\n>" . $options{'name'} . "\n$cons\n\n";
   }else {
@@ -512,8 +559,277 @@ if ( $options{'stockholm'} )
   }
 
 }
-print stderr "Avg Kimura Div: $avgDiv\n";
+#print stderr "Avg Kimura Div: $avgDiv\n";
 
-$mAlign->serializeOUT( "out.malign" );
+if ( $options{'malignOut'} ) {
+  $mAlign->serializeOUT( $options{'malignOut'} );
+}
+
+
+################################### SUBROUTINES ###################################
+
+
+sub getSequenceLengths{
+  my $twoBitFile = shift;
+
+  my %seqLens = ();
+  open IN, "$ucscToolsDir/twoBitInfo $twoBitFile stdout|"
+      or die "Could not run $ucscToolsDir/twoBitInfo on $twoBitFile!\n";
+  my $lines = 0;
+  while ( <IN> )
+  {
+    $lines++;
+    if ( /^(\S+)\s+(\d+)/ )
+    {
+      $seqLens{$1} = $2;
+    }
+  }
+  close IN;
+  return \%seqLens;
+}
+
+sub generateMSAWithFlanking{
+  my $mAlign = shift;
+  my $twoBitFile = shift;
+  my $seqLens = shift;
+  my $flankleft = shift;
+  my $flankright = shift;
+
+  my $DEBUG      = 0;
+
+  my @ranges = ();
+  my @order  = ();
+  my ( $tmpFH, $tmpFilename ) =
+      tempfile( UNLINK => 0, SUFFIX => ".seqlist", DIR => "." );
+  my $maxAlignedLen = 0;
+  for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs() ; $i++ )
+  {
+    my $seq         = $mAlign->getAlignedSeq( $i );
+    my $raw_id      = $mAlign->getAlignedName( $i );
+    my $align_start = $mAlign->getAlignedSeqStart( $i );
+    my $align_end   = $mAlign->getAlignedSeqEnd( $i );
+    my $orient      = $mAlign->getAlignedOrientation( $i );
+    my $seqOffset   = $mAlign->getAlignedStart( $i );
+    if ( length( $seq ) + $seqOffset > $maxAlignedLen ) {
+      $maxAlignedLen = length( $seq ) + $seqOffset;
+    }
+    my $align_remain = 0;
+  
+    my $id = "";
+    my $start;
+    my $end;
+  
+    # These have traditionally been in 1-based full-closed coordinates
+    if ( $raw_id =~ /^(\S+)\_(\d+)\_(\d+)\_?([R\+\-]?)$/ )
+    {
+      $id    = $1;
+      $start = $2;
+      $end   = $3;
+    } elsif ( $raw_id =~ /^(\S+):(\d+)-(\d+)\_?([R\+\-]?)$/ )
+    {
+      $id    = $1;
+      $start = $2;
+      $end   = $3;
+    } else
+    {
+      die "I don't know how to parse this id: $raw_id\n";
+    }
+    $ranges[ $i ] = { 'id' => $id, 'seq' => $seq };
+  
+    if ( !exists $seqLens->{$id} )
+    {
+      warn "Could not find $id in 2bit file!\n";
+    }
+    my $slen = $seqLens->{$id};
+  
+    # Does the current sequence orientation still make sense or has
+    # it reverted back to the forward strand?
+    if (    $raw_id =~ /_R/ || $raw_id =~ /_-$/ 
+         || $orient eq "-" && !( $raw_id =~ /_R/ && $orient eq "-" ) )
+    {
+  
+      # Reversed orientation ( overall )
+      # 1-based, fully closed
+      $ranges[ $i ]->{'orient'} = "-";
+      my $leftStart = $end - $align_start;
+      my $leftEnd   = $leftStart - 1;
+      if ( $leftEnd + $flankleft > $slen )
+      {
+        $leftEnd = $slen;
+      } else
+      {
+        $leftEnd += $flankleft;
+      }
+      if ( $leftEnd - $leftStart > 0 )
+      {
+        $ranges[ $i ]->{'leftStart'} = $leftStart;
+        $ranges[ $i ]->{'leftEnd'}   = $leftEnd;
+        push @order, [ "L", $i ];
+  
+        #push @ranges, [ $i, $id, "L", $leftStart, $leftEnd, "-" ];
+        print $tmpFH "$id:" . ( $leftStart - 1 ) . "-" . $leftEnd . "\n";
+      }
+  
+      my $rightEnd   = $end - $align_end + 2;
+      my $rightStart = $rightEnd + 1;
+      if ( $rightStart - $flankright < 1 )
+      {
+        $rightStart = 1;
+      } else
+      {
+        $rightStart -= $flankright;
+      }
+      if ( $rightEnd - $rightStart > 0 )
+      {
+        $ranges[ $i ]->{'rightStart'} = $rightStart;
+        $ranges[ $i ]->{'rightEnd'}   = $rightEnd;
+        push @order, [ "R", $i ];
+        print $tmpFH "$id:" . ( $rightStart - 1 ) . "-" . $rightEnd . "\n";
+      }
+    } else
+    {
+      # Normal left/right
+      $ranges[ $i ]->{'orient'} = "+";
+      my $leftEnd = $start + $align_start -
+          2;    # -2 = shift to left of alignment and correct for 1-based math.
+      my $leftStart = $leftEnd + 1;
+      if ( $leftStart - $flankleft < 1 )
+      {
+        $leftStart = 1;
+      } else
+      {
+        $leftStart -= $flankleft;
+      }
+      if ( $leftEnd - $leftStart > 0 )
+      {
+        $ranges[ $i ]->{'leftStart'} = $leftStart;
+        $ranges[ $i ]->{'leftEnd'}   = $leftEnd;
+        push @order, [ "L", $i ];
+        print $tmpFH "$id:" . ( $leftStart - 1 ) . "-" . $leftEnd . "\n";
+      }
+  
+      my $rightStart = $end + $align_start;
+      my $rightEnd   = $rightStart - 1;
+      if ( $rightEnd + $flankright > $slen )
+      {
+        $rightEnd = $slen;
+      } else
+      {
+        $rightEnd += $flankright;
+      }
+      if ( $rightEnd - $rightStart > 0 )
+      {
+        $ranges[ $i ]->{'rightStart'} = $rightStart;
+        $ranges[ $i ]->{'rightEnd'}   = $rightEnd;
+        push @order, [ "R", $i ];
+        print $tmpFH "$id:" . ( $rightStart - 1 ) . "-" . $rightEnd . "\n";
+      }
+    }
+  }
+  close $tmpFH;
+  
+  # Generate sequences
+  my $cmd = "$ucscToolsDir/twoBitToFa -seqList=$tmpFilename $twoBitFile stdout";
+  open IN, "$cmd|" or die "Could not run $cmd!\n";
+  my $idx = 0;
+  my $seq = "";
+  my $id;
+  my $start;
+  my $end;
+  
+  while ( <IN> )
+  {
+    if (    />(\S+)\:(\d+)-(\d+)/
+         || />(\S+)/ )
+    {
+      my $tmp_id    = $1;
+      my $tmp_start = $2;
+      my $tmp_end   = $3;
+      $tmp_start = 0 if ( !defined $tmp_start );
+      $tmp_end = $seqLens->{$tmp_id} if ( !defined $tmp_end );
+      if ( $seq )
+      {
+        my $leftOrRight = $order[ $idx ][ 0 ];
+        my $rangeIdx    = $order[ $idx ][ 1 ];
+        my $outID       = $id . "_" . ( $start + 1 ) . "_$end";
+        if ( $ranges[ $rangeIdx ]->{'orient'} eq "-" )
+        {
+          $seq = reverse( $seq );
+          $seq =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
+          $outID .= "_R";
+        }
+        if ( $leftOrRight eq "R" )
+        {
+          $ranges[ $rangeIdx ]->{'rightFlank'} = $seq;
+        } else
+        {
+          $ranges[ $rangeIdx ]->{'leftFlank'} = $seq;
+        }
+        $idx++;
+      }
+      $id    = $tmp_id;
+      $start = $tmp_start;
+      $end   = $tmp_end;
+      $seq   = "";
+      next;
+    }
+    s/[\n\r\s]+//g;
+    $seq .= uc( $_ );
+  }
+  if ( $seq )
+  {
+    my $leftOrRight = $order[ $idx ][ 0 ];
+    my $rangeIdx    = $order[ $idx ][ 1 ];
+    my $outID       = $id . "_" . ( $start + 1 ) . "_$end";
+    if ( $ranges[ $rangeIdx ]->{'orient'} eq "-" )
+    {
+      $seq = reverse( $seq );
+      $seq =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
+      $outID .= "_R";
+    }
+    if ( $leftOrRight eq "R" )
+    {
+      $ranges[ $rangeIdx ]->{'rightFlank'} = $seq;
+    } else
+    {
+      $ranges[ $rangeIdx ]->{'leftFlank'} = $seq;
+    }
+  }
+  close IN;
+  
+  for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs() ; $i++ )
+  {
+    my $seq         = $mAlign->getAlignedSeq( $i );
+    my $raw_id      = $mAlign->getAlignedName( $i );
+    my $align_start = $mAlign->getAlignedSeqStart( $i );
+    my $align_end   = $mAlign->getAlignedSeqEnd( $i );
+    my $orient      = $mAlign->getAlignedOrientation( $i );
+    my $seqOffset   = $mAlign->getAlignedStart( $i );
+  
+    my $leftFlank = "";
+    if ( exists $ranges[ $i ]->{'leftFlank'} )
+    {
+      $leftFlank = $ranges[ $i ]->{'leftFlank'};
+    }
+    $leftFlank = "-" x ( $flankleft - length( $leftFlank ) ) . $leftFlank;
+    my $rightFlank = "";
+    if ( exists $ranges[ $i ]->{'rightFlank'} )
+    {
+      $rightFlank = $ranges[ $i ]->{'rightFlank'};
+    }
+    $rightFlank = $rightFlank . "-" x ( $flankright - length( $rightFlank ) );
+  
+    $seq = "-" x ( $seqOffset ) . $seq;
+    $seq = $seq . "-" x ( $maxAlignedLen - length( $seq ) );
+  
+    #push @seqs, [ $leftFlank, $seq, $rightFlank ];
+    print ">$raw_id\n" . $leftFlank . $seq . $rightFlank . "\n";
+  }
+  #@seqs = sort { reverse( $a->[ 0 ] ) cmp reverse( $b->[ 0 ] ) } @seqs;
+}
+        
+
+
+
 
 1;

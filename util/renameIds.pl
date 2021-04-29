@@ -132,7 +132,7 @@ use SeedAlignment;
 #
 # Version
 #
-$Version = "";
+my $Version = "";
 
 #
 # Magic numbers/constants here

@@ -397,6 +397,7 @@ sub buildConsensus {
   $srchEngAllVsAll->setInsGapExt( -5 );
   $srchEngAllVsAll->setDelGapExt( -5 );
   $srchEngAllVsAll->setMinMatch( 7 );
+  #$srchEngAllVsAll->setBandwidth( -50 );
   $srchEngAllVsAll->setTempDir( dirname( $pathToFastaFile ) );
   $srchEngAllVsAll->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
 
@@ -421,6 +422,8 @@ sub buildConsensus {
 
   my $round = "1";
   my ( $runStat, $familyCollection ) = $srchEngAllVsAll->search();
+
+#$familyCollection->write( "foo", SearchResult::AlignWithQuerySeq);
 
   ## Cleanup after run
   if ( $engine eq "abblast" ) {
@@ -727,7 +730,7 @@ sub buildConsensus {
           # final multiple alignment.
           %uniqSeqIDs = ();
           foreach my $seqNum ( 0 .. $malign->getNumAlignedSeqs() - 1 ) {
-            $uniqSeqIDs{ $malign->getAlignedName( $seqNum ) } = {
+           $uniqSeqIDs{ $malign->getAlignedName( $seqNum ) } = {
                                consStart => $malign->getAlignedStart( $seqNum ),
                                consEnd   => $malign->getAlignedEnd( $seqNum )
             };
@@ -769,6 +772,7 @@ sub buildConsensus {
   #close OUT;
 
   # Adjust identifiers in MultAln
+  my %onlyUniq;
   for ( my $i = 0 ; $i < $malign->getNumAlignedSeqs() ; $i++ ) {
     my $id     = $malign->getAlignedName( $i );
     my $dbDesc = $db->getDescription( $id );
@@ -798,7 +802,11 @@ sub buildConsensus {
       $seqID = $1;
       $start = $2;
       $end   = $3;
+    }else {
+      # We don't have a recognizable identifier
+      $seqID = $id;
     }
+
     if ( $seqID && $start && $end ) {
       if ( $options{'giToID'}
            && exists $genomeDBToSeqID{$seqID} )
@@ -820,12 +828,18 @@ sub buildConsensus {
       $malign->setAlignedSeqStart( $i, $adjStart );
       $malign->setAlignedSeqEnd( $i, $adjEnd );
     }
-    else {
+    elsif ( $dbDesc ) {
       warn "Could not parse identifier: $dbDesc\n";
     }
+    my $finalID = "$seqID:" . $malign->getAlignedSeqStart( $i ) . "-" . $malign->getAlignedSeqEnd( $i );
+    if ( exists $onlyUniq{$finalID}  ) {
+      print "  - Removing sequence duplicate artefact ( $finalID )\n";
+      splice @{ $malign->{'alignCol'} }, $i+1, 1;
+    }
+    $onlyUniq{$finalID} = 1;
   }
 
-#$malign->toSTK( filename => "$pathToFastaFile.refiner.stk", includeTemplate => 1, nuclRF => 1 );
+  #$malign->toSTK( filename => "$pathToFastaFile.refiner.stk", includeTemplate => 1, nuclRF => 1 );
   $malign->toSTK( filename => "$pathToFastaFile.refiner.stk" );
 
   print "  Build Consensus: " . elapsedTime( 0 ) . "\n"
@@ -1500,6 +1514,8 @@ sub findHighestScoringAlignmentSet {
   # be seen as part of a global alignment
   my %elements   = ();
   my %deleteHash = ();
+  my %dbl_mask_level = ();
+
   for ( my $l = $searchCollection->size() - 1 ; $l >= 0 ; $l-- ) {
     my $resultRef = $searchCollection->get( $l );
 
@@ -1510,6 +1526,17 @@ sub findHighestScoringAlignmentSet {
       $deleteHash{$l} = 1;
       next;
     }
+
+    push @{ $dbl_mask_level{$refID}->{$instID} },
+        {
+          'ref_start' => $resultRef->$refStart(),
+          'ref_end'   => $resultRef->$refEnd(),
+          'inst_start' => $resultRef->$instStart(),
+          'inst_end'   => $resultRef->$instEnd(),
+          'score' => $resultRef->getScore(),
+          'index' => $l
+        };
+
     if ( $resultRef->getOrientation() eq "C" ) {
       push @{ $elements{$refID}->{'reverse'}->{$instID} },
           {
@@ -1531,58 +1558,122 @@ sub findHighestScoringAlignmentSet {
   }
 
   my $maskLevel = 80;
-  foreach my $seqID ( keys( %elements ) ) {
 
-    print "Looking for overlaps in set $seqID\n" if ( $DEBUG );
-
-    # Only consider elements with more than one match
-    foreach my $strand ( 'forward', 'reverse' ) {
-      my $strandRec = $elements{$seqID}->{$strand};
-      foreach my $instanceName ( keys( %{$strandRec} ) ) {
-        if ( $#{ $strandRec->{$instanceName} } > 0 ) {
-
-          # Sort by score
-          my @sortedResults =
-              sort { $b->{'score'} <=> $a->{'score'} }
-              @{ $strandRec->{$instanceName} };
-
-          #print "     - $instanceName appears $#sortedResults times.\n";
-          for ( my $i = 0 ; $i <= $#sortedResults ; $i++ ) {
-            for ( my $j = $i + 1 ; $j <= $#sortedResults ; $j++ ) {
-              my $overlap = 0;
-              my $perc    = 0;
-              my $result1 = $sortedResults[ $i ];
-              my $result2 = $sortedResults[ $j ];
-
-              # Get members
-              my $begin1 = $result1->{'start'};
-              my $begin2 = $result2->{'start'};
-              my $end1   = $result1->{'end'};
-              my $end2   = $result2->{'end'};
-
-              # Check if they overlap
-              next if ( $begin2 > $end1 || $begin1 > $end2 );
-
-              print "OVERLAP: $begin1-$end1 and $begin2-$end2\n" if ( $DEBUG );
-
-              # Calc overlap
-              $overlap = $begin1 - $begin2 if ( $begin2 < $begin1 );
-              $overlap += $end2 - $end1 if ( $end2 > $end1 );
-              $perc = ( $overlap / ( $end2 - $begin2 + 1 ) ) * 100
-                  if ( $overlap );
-              if     ( $perc < ( 100 - $maskLevel ) ) {
-
-                print "Scheduling deletion for " . $result2->{'index'} . "\n"
-                    if ( $DEBUG );
-                $deleteHash{ $result2->{'index'} } = 1;
+  # Single masklevel
+  if ( 1 ) {
+    foreach my $seqID ( keys( %elements ) ) {
+  
+      print "Looking for overlaps in set $seqID\n" if ( $DEBUG );
+  
+      # Only consider elements with more than one match
+      foreach my $strand ( 'forward', 'reverse' ) {
+        my $strandRec = $elements{$seqID}->{$strand};
+        foreach my $instanceName ( keys( %{$strandRec} ) ) {
+          if ( $#{ $strandRec->{$instanceName} } > 0 ) {
+  
+            # Sort by score
+            my @sortedResults =
+                sort { $b->{'score'} <=> $a->{'score'} }
+                @{ $strandRec->{$instanceName} };
+  
+            print "     - $instanceName appears $#sortedResults times.\n" if ( $DEBUG );
+            for ( my $i = 0 ; $i <= $#sortedResults ; $i++ ) {
+              for ( my $j = $i + 1 ; $j <= $#sortedResults ; $j++ ) {
+                my $overlap = 0;
+                my $perc    = 0;
+                my $result1 = $sortedResults[ $i ];
+                my $result2 = $sortedResults[ $j ];
+  
+                # Get members
+                my $begin1 = $result1->{'start'};
+                my $begin2 = $result2->{'start'};
+                my $end1   = $result1->{'end'};
+                my $end2   = $result2->{'end'};
+  
+                # Check if they overlap
+                next if ( $begin2 > $end1 || $begin1 > $end2 );
+  
+                print "OVERLAP: $begin1-$end1 and $begin2-$end2\n" if ( $DEBUG );
+  
+                # Calc overlap
+                $overlap = $begin1 - $begin2 if ( $begin2 < $begin1 );
+                $overlap += $end2 - $end1 if ( $end2 > $end1 );
+                $perc = ( $overlap / ( $end2 - $begin2 + 1 ) ) * 100
+                    if ( $overlap );
+                if     ( $perc < ( 100 - $maskLevel ) ) {
+  
+                  print "Scheduling deletion for " . $result2->{'index'} . "\n"
+                      if ( $DEBUG );
+                  $deleteHash{ $result2->{'index'} } = 1;
+                }
               }
             }
           }
         }
       }
     }
+    undef %elements;
+  }else {
+    # Experimental double masklevel
+    foreach my $seqID ( keys( %dbl_mask_level ) ) {
+      print "Looking for overlaps in set $seqID\n" if ( 1 || $DEBUG );
+        my $strandRec = $dbl_mask_level{$seqID};
+        foreach my $instanceName ( keys( %{$strandRec} ) ) {
+          if ( $#{ $strandRec->{$instanceName} } > 0 ) {
+            # Sort by score
+            my @sortedResults =
+                sort { $b->{'score'} <=> $a->{'score'} }
+                @{ $strandRec->{$instanceName} };
+  
+            print "    - $instanceName appears " . ($#sortedResults+1) . " times.\n" if ( $DEBUG );
+            for ( my $i = 0 ; $i <= $#sortedResults ; $i++ ) {
+              for ( my $j = $i + 1 ; $j <= $#sortedResults ; $j++ ) {
+                my $result1 = $sortedResults[ $i ];
+                my $result2 = $sortedResults[ $j ];
+  
+                # Get members
+                my $rbegin1 = $result1->{'ref_start'};
+                my $rbegin2 = $result2->{'ref_start'};
+                my $rend1   = $result1->{'ref_end'};
+                my $rend2   = $result2->{'ref_end'};
+                my $ibegin1 = $result1->{'inst_start'};
+                my $ibegin2 = $result2->{'inst_start'};
+                my $iend1   = $result1->{'inst_end'};
+                my $iend2   = $result2->{'inst_end'};
+  
+                print "      o  $rbegin1-$rend1 and $rbegin2-$rend2, $ibegin1-$iend1 and $ibegin2-$iend2\n" if ( $DEBUG );
+  
+                # Calc overlap
+                my $roverlap = 0;
+                unless ( $rbegin1 > $rend2 || $rend1 < $rbegin2 ) {
+                  $roverlap = min($rend1, $rend2) - max($rbegin1, $rbegin2) + 1;
+                }
+                my $rperc = 0;
+                $rperc = ( $roverlap / ( $rend2 - $rbegin2 + 1 ) ) * 100
+                    if ( $roverlap );
+  
+                my $ioverlap = 0;
+                unless ( $ibegin1 > $iend2 || $iend1 < $ibegin2 ) {
+                  $ioverlap = min($iend1, $iend2) - max($ibegin1, $ibegin2) + 1;
+                }
+                my $iperc = 0;
+                $iperc = ( $ioverlap / ( $iend2 - $ibegin2 + 1 ) ) * 100
+                    if ( $ioverlap );
+  
+                print "        rperc = $rperc / $roverlap, iperc = $iperc\n" if ( $DEBUG );
+  
+                if     ( $rperc > $maskLevel || $iperc > $maskLevel ) {
+                  print "        Scheduling deletion for " . $result2->{'index'} . "\n"
+                      if ( $DEBUG );
+                  $deleteHash{ $result2->{'index'} } = 1;
+                }
+              }
+            }
+          }
+        }
+      }
+    undef %dbl_mask_level;
   }
-  undef %elements;
 
   # Remove all hits which were filtered above
   if ( keys( %deleteHash ) ) {
@@ -1718,6 +1809,27 @@ sub elapsedTime {
     return 0;
   }
 }
+
+sub max {
+  my $a = shift;
+  my $b = shift;
+  if ( $a >= $b ) {
+    return $a; 
+  }else {
+    return $b;
+  }
+}
+
+sub min {
+  my $a = shift;
+  my $b = shift;
+  if ( $a <= $b ) {
+    return $a; 
+  }else {
+    return $b;
+  }
+}
+
 
 1;
 

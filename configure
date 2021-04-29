@@ -148,9 +148,9 @@ BEGIN {
                           "Tie::File",   "Getopt::Long",
                           "POSIX",       "File::Copy",
                           "File::Path",  "Data::Dumper",
-                          "Cwd",         "JSON",
+                          "Cwd",         "JSON", "JSON::PP",
                           "File::Which", "URI",
-                          "LWP::UserAgent"
+                          "LWP::UserAgent", "Storable"
   );
 
   my @missingModules = ();
@@ -223,33 +223,6 @@ if ( !$options{'repeatmasker_dir'} ) {
   $goodParam = 1;
   do {
     RepModelConfig::promptForParam( 'REPEATMASKER_DIR' );
-
- # Check for libraries
- #    unless (    -s "$repMaskLocation/WUBlastSearchEngine.pm"
- #             && -s "$repMaskLocation/Libraries/RepeatMaskerLib.embl" )
- #      print "$repMaskLocation does not appear to contain a complete\n"
- #          . "set of files.  Perhaps you haven't installed the RepeatMasker\n"
- #          . "libraries yet?\n";
- #
- #    my $result = `$repMaskLocation/RepeatMasker -v 2>&1`;
- #
- #    # Two responses are expected:
- #    # Good Version:
- #    #    RepeatMasker version open-4.0.0
- #    # or RepeatMasker version development-
- #    #
- #    if ( $result =~ /RepeatMasker version open-(\S+)/ )
- #    {
- #      my $version = $1;
- #      $version =~ s/\.//g;
- #      if ( $version <= 400 )
- #      {
- #        die "$repMaskLocation/RepeatMasker is too old.  Must be open-4.0.5 "
- #            . "or later.  Install a newer version of RepeatMasker and re-run "
- #            . "configure.\n";
- #      }
- #    }
- #
   } while ( $goodParam != 1 );
 }
 my $repMaskLocation = $config->{'REPEATMASKER_DIR'}->{'value'};
@@ -257,7 +230,7 @@ my $repMaskLocation = $config->{'REPEATMASKER_DIR'}->{'value'};
 if ( !$options{'recon_dir'} ) {
   RepModelConfig::promptForParam( 'RECON_DIR' );
 }
-if ( !$options{'repeatscout_dir'} ) {
+if ( !$options{'rscout_dir'} ) {
   RepModelConfig::promptForParam( 'RSCOUT_DIR' );
 }
 if ( !$options{'dustmasker_prgm'} ) {
@@ -266,6 +239,13 @@ if ( !$options{'dustmasker_prgm'} ) {
 if ( !$options{'trf_prgm'} ) {
   RepModelConfig::promptForParam( 'TRF_PRGM' );
 }
+if ( !$options{'cdhit_dir'} ) {
+  RepModelConfig::promptForParam( 'CDHIT_DIR' );
+}
+if ( !$options{'ucsctools_dir'} ) {
+  RepModelConfig::promptForParam( 'UCSCTOOLS_DIR' );
+}
+
 
 ##
 ## Search Engine Configuration
@@ -305,9 +285,6 @@ if ( $answer =~ /y|yes/i || $answer eq "" ) {
   if ( !$options{'ninja_dir'} ) {
     RepModelConfig::promptForParam( 'NINJA_DIR' );
   }
-  if ( !$options{'cdhit_dir'} ) {
-    RepModelConfig::promptForParam( 'CDHIT_DIR' );
-  }
 }
 
 # Save settings
@@ -322,8 +299,23 @@ my @progFiles = (
                   "BuildDatabase",     "Refiner",
                   "RepeatClassifier",  "RepeatModeler",
                   "TRFMask",           "LTRPipeline",
-                  "util/renameIds.pl", "util/viewMSA.pl",
-                  "util/Linup" 
+                  "util/Linup",
+                  "util/CntSubst",
+                  "util/alignAndCallConsensus.pl",
+                  "util/AutoRunBlocker.pl",
+                  "util/bestwindow.pl",
+                  "util/Blocker.pl",
+                  "util/ClusterPartialMatchingSubs.pl",
+                  "util/extendFlankingSeqs.pl",
+                  "util/extend-stk.pl",
+                  "util/fasta-trf-filter.pl",
+                  "util/generateSeedAlignments.pl",
+                  "util/renameIds.pl",
+                  "util/rmblast.pl",
+                  "util/TSD.pl",
+                  "util/viewMSA.pl",
+                  "util/viewMultipleMSA.pl",
+                  "util/visualizeAlignPNG.pl",
 );
 my $perlLocEsc = $perlLocation;
 $perlLocEsc =~ s/\//\\\//g;

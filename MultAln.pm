@@ -1223,7 +1223,8 @@ sub kimuraDivergence {
       $p = $transI / $alignedBases;
       $q = $transV / $alignedBases;
     }
-    if ( ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 ) <= 0 ) {
+
+    if ( ($q > 0.5) || ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 ) <= 0 ) {
       $object->setAlignedDiv( $n, 1 );
     }
     else {
@@ -1242,7 +1243,10 @@ sub kimuraDivergence {
     $totDiv += $object->getAlignedDiv( $n );
     $sumDiv += ( $transI + $transV );
   }
-  my $avgDiv = sprintf( "%0.2f", ( $totDiv / $hits ) );
+  my $avgDiv = 0;
+  if ( $hits > 0 ) {
+    $avgDiv = sprintf( "%0.2f", ( $totDiv / $hits ) );
+  }
   return ( $sumDiv, $totDiv, $avgDiv );
 }
 
@@ -1563,7 +1567,6 @@ sub _importAlignedSeqs {
     my $startPos       = 1;
     my $endPos         = 0;
     if ( $sequenceName =~ /(\S+)\:(\d+)-(\d+)/ )
-
         # Hack...deletme
         #         || $sequenceName =~ /(\S+)\_[\-]?(\d+)-(\d+)/ )
     {
@@ -1577,12 +1580,12 @@ sub _importAlignedSeqs {
     }
 
     my $refStart = 0;
-    if ( $sequence =~ /^(\.+)/ ) {
+    if ( $sequence =~ /^([\.\s\-]+)/ ) {
       $refStart = length( $1 );
       $sequence = substr( $sequence, $refStart );
     }
 
-    if ( $sequence =~ /([^\.])(\.+)$/ ) {
+    if ( $sequence =~ /([^\.\s\-])([\.\s\-]+)$/ ) {
       $sequence = substr( $sequence, 0, length( $sequence ) - length( $2 ) );
     }
     my $refEnd = length( $sequence ) + $refStart - 1;
@@ -1600,13 +1603,16 @@ sub _importAlignedSeqs {
 
     my $ID = "";
     $ID .= "$assemblyName:" if ( $assemblyName );
-    $ID .= "$sequenceName:";
-    if ( $orient eq "+" ) {
-      $ID .= "$startPos-$endPos";
-    }
-    else {
-      $ID .= "$endPos-$startPos";
-    }
+    $ID .= "$sequenceName";
+    # The sequence name shouldn't be appended a range by default.
+    # Instead this is a concern of the output formats.
+    #$ID .= "$sequenceName:";
+    #if ( $orient eq "+" ) {
+    #  $ID .= "$startPos-$endPos";
+    #}
+    #else {
+    #  $ID .= "$endPos-$startPos";
+    #}
     $object->setAlignedName( $l, $ID );
     $object->setAlignedSeqStart( $l, $startPos );
     $object->setAlignedSeqEnd( $l, $endPos );
@@ -1692,6 +1698,9 @@ sub _alignFromSeedAlignment {
   }
   my $consensus = $object->consensus();
   $object->setReferenceSeq( $consensus );
+  if ( $seedAlignment->getId() ne "" ){
+    $object->setReferenceName($seedAlignment->getId());
+  }
 }
 
 ##---------------------------------------------------------------------##
@@ -2125,6 +2134,47 @@ sub _alignFromSearchResultCollection {
   gap initiation/extension penalties.  The score is inverted so as 
   to give the minimal scoring subsequences below the given threshold.
 
+  For instance, given the multiple alignment:
+
+        AACT-TTGACC---CCacta
+      GAAAGT-TTCTCCAGTCCacta
+      G-AACTATTC-CCA--CCacta
+      GAAACT-TTG-CC-----acta
+
+  And the reference:
+
+      GAAACT-TTN-CCA--CCACTA
+
+  The first column has three aligned sequences.  If G to G is scored
+  as +10 the average score for column one is 30/3 = +10.  The seventh
+  column however has four sequences aligning (with deletions) and
+  therefore would be scored as 0 + 0 + -40 + 0 = -40 assuming the gap
+  open penalty is -40.  The average for the columne is -40/4 = -10.
+
+  For this alignment the column score array would be:
+
+      10, -7.33, 9, 9, 3.75, 9, -10, 9, 9 -1, -20, 10, 10, -15.5, -10,
+      -3.75, 3.75, 3.75, 9, 10, 9, 9
+
+  Inverting the scores and and applying the Ruzzo Tompa algorithm will
+  give:
+
+      [[ 7.33 ], [ 10 ], [ 1, 20, -10, -10, 15.5, 10, 3.75 ]]
+
+  With the following block ranges:
+
+      [[ 1, 1 ], [ 6, 6 ], [ 9, 15 ]]
+
+  This routine will report any block above the supplied threshold.  Using
+  the default threshold of 1.0 all the above blocks will be returned in effect
+  flagging the following columns of the alignment as low scoring:
+
+  low: *    *  *******
+        AACT-TTGACC---CCacta
+      GAAAGT-TTCTCCAGTCCacta
+      G-AACTATTC-CCA--CCacta
+      GAAACT-TTG-CC-----acta
+
 =cut
 
 ##---------------------------------------------------------------------##
@@ -2239,8 +2289,11 @@ sub getLowScoringAlignmentColumns {
   foreach my $index ( 0 .. $#profile ) {
     $profile[ $index ] *= -1;
   }
+  #print "score profile (before inversion): " . Dumper(\@profile) . "\n";
 
-  my $valArray = _ruzzoTompaFindAllMaximalScoringSubsequences( \@profile );
+  my ( $ruzzoTompaArr, $intervalArr, $valArray ) = _ruzzoTompaFindAllMaximalScoringSubsequences( \@profile );
+  #print "RTA: " . Dumper($ruzzoTompaArr) . "\n";
+  undef $ruzzoTompaArr, $intervalArr;
 
   # Calc the average
   my @seqPosAvg = @{$valArray};
@@ -2378,6 +2431,88 @@ sub trimAlignments {
   $this->resetGappedReferenceLength();
 }
 
+# New method added 3/15/21 -- needs to be ported to Python object
+# NOTE: This prohibits the use of ":" in a identifier itself.
+#       Need to sanitize identifiers for that...discuss
+sub reverseComplement {
+  my $this       = shift;
+  my %parameters = @_;
+
+  # First reverse complement the reference
+  my $seq = $this->getReferenceSeq();
+  my $refLen = length($seq);
+  #print "seq: $seq\n";
+  $seq = _compl($seq);
+  #print "seqnow: $seq\n";
+  $this->setReferenceSeq( $seq );
+
+  for ( my $i = 0 ; $i < $this->getNumAlignedSeqs() ; $i++ ) {
+    my $id = $this->getAlignedName( $i );
+    my $seq = $this->getAlignedSeq( $i );
+    my $curOrient  = $this->getAlignedOrientation( $i );
+    my $newAlignedStart = $refLen - ($this->getAlignedStart( $i ) + length($seq));
+    $this->setAlignedStart($i, $newAlignedStart);
+
+    #my $idPrefix = '';
+    #my $idStart = 0;
+    #my $idEnd = 0; 
+    #my $idOrient = '+';
+    ## e.g. chrUn_KK085329v1_11857_12355_R
+    #if ( $id =~ /^(\S+)_(\d+)_(\d+)(_R)?:\d+-\d+$/ ) {
+    #  $idPrefix = $1;
+    #  $idStart = $2;
+    #  $idEnd = $3;
+    #  $idOrient = '-' if ( $4 eq '_R' );
+    ## e.g. hg38:chrUn_KK085329v1_11857_12355_R
+    #}elsif ( $id =~ /^\S+:(\S+)_(\d+)_(\d+)(_R):\d+-\d+?$/ ){
+    #  $idPrefix = $1;
+    #  $idStart = $2;
+    #  $idEnd = $3;
+    #  $idOrient = '-' if ( $4 eq '_R' );
+    #}
+#
+#    if ( $idPrefix ne "" ) {
+#print "Fixing id for $idPrefix\n";
+#      # Name needs to be adjusted
+#      my $curOrient  = $this->getAlignedOrientation( $i );
+#      my $curStart   = $this->getAlignedSeqStart( $i );
+#      my $curEnd     = $this->getAlignedSeqEnd( $i );
+#      if ( $idOrient eq '-' ) {
+#        $this->setAlignedSeqEnd( $i, $idEnd - $curStart + 1 );
+#        $this->setAlignedSeqStart( $i, $idEnd - $curEnd + 1 );
+#  
+#        # Original sequence is reverse
+#        if ( $curOrient eq '+' ) {
+#          # Alignment is forward
+#          $this->getAlignedOrientation( "-" );
+#        }
+#        else {
+#          # Alignment is reverse
+#          # two wrongs make a right
+#          $this->getAlignedOrientation( "+" );
+#        }
+#      }
+#      else {
+#        $this->setAlignedSeqStart( $i, $idStart + $curStart - 1 );
+#        $this->setAlignedSeqEnd( $i, $idStart + $curEnd - 1 );
+#      }
+#      $this->setAlignedName( $i, $idPrefix );
+#    }else {
+      if ( $curOrient eq '+' ){
+        $this->setAlignedOrientation( $i, '-' );
+      } else {
+        $this->setAlignedOrientation( $i, '+' );
+      }
+#    }
+    # TODO: setAlignedSeqStart correct...accounting for space
+
+    # Do the actual reverse complement
+    $seq = _compl($seq);
+    $this->setAlignedSeq( $i,$seq );
+  }
+}
+
+
 sub normalizeSeqRefs {
   my $this       = shift;
   my %parameters = @_;
@@ -2483,9 +2618,11 @@ sub getAlignmentBlock {
 }
 
 ##---------------------------------------------------------------------##
-## Use: \@results =  _ruzzoTompaFindAllMaximalScoringSubsequences (
+## Use: my (\@ruzzoTompaArr, \@intervalArr, \@scoreMaskArr ) = 
+##            _ruzzoTompaFindAllMaximalScoringSubsequences (
 ##                                                 @sequenceScoreArray
-##                                                                );
+##                                                          );
+##
 ##      @sequenceScoreArray : An array containing individual
 ##                            penalty scores for each position
 ##                            within the sequence.
@@ -2495,16 +2632,33 @@ sub getAlignmentBlock {
 ##      Tompa ("A Linear Time Algorithm for Finding All Maximal Scoring
 ##      Subsequences" - 7th Intl Conf. Intelligent Systems for Mol
 ##      Biology).
+##      
+##      3/9/2021: Updated algorithm fixing a bug in the previous 
+##                implementation and providing the standard score
+##                list output provided by the standard Ruzzo and
+##                Tompa algorithm.  This new implementation follows
+##                the python implementation detailed on the wikipedia
+##                page for the algorithm.
 ##
-##      The result is an array the size of the original sequence.
-##      The array is annotated as follows:
+##      Given the score array example: 4,-5,3,-3,1,2,-2,2,-2,1,5
+##      
+##      Identify the maximal scoring subsequences.  This is traditionally
+##      returned as a list of lists. Each list contains the position ordered
+##      scores for a maximal subsequence.  For the example above it would
+##      be:
+##             [[4], [3], [1, 2, -2, 2, -2, 1, 5]]
 ##
-##          Subsequences:   Each position within the subsequence is
-##                          replaced with the subsequences' score.
-##                          NOTE: It is not possible for two subsequences
-##                          with the same score to adjacent to one another.
-##                          ( See algorithm paper ).
-##          Other       :   Contains the number zero.
+##      Additionally this implementation provides the interval as a list
+##      of [start, end] lists.  For the example above:
+##
+##             [[0, 1], [2, 3], [4, 11]]
+##        
+##      Finally this also provides a score mask.  This is list the size
+##      of the input score array where each position is either 0 or it 
+##      contains the score of the maximal scoring range it is a member of.
+##      For instance in the above example:
+##
+##             [4, 0, 3, 0, 7, 7, 7, 7, 7, 7, 7]
 ##
 ##---------------------------------------------------------------------##
 sub _ruzzoTompaFindAllMaximalScoringSubsequences {
@@ -2516,78 +2670,66 @@ sub _ruzzoTompaFindAllMaximalScoringSubsequences {
   my @I = ();
   my @L = ();
   my @R = ();
-  my @S = ();
+  my @Lidx = ();
 
-  #
-  # Seeds
-  #
+  # indices and total
   my $i        = 0;
   my $j        = 0;
-  my $subStart = -1;
+  my $k        = 0;
+  my $total    = 0;
 
   #
   # Maximal scoring subsequences
   #
   while ( $i <= $#b ) {
-
-    # Cumulative Scores Array
-    if ( $i > 0 ) {
-      $S[ $i ] = $S[ $i - 1 ] + $b[ $i ];
-    }
-    else {
-      $S[ $i ] = $b[ $i ];
-    }
-
+    $total += $b[$i];
     # Only consider positive scores
-    if ( $b[ $i ] > 0 ) {
-
-      # Subsequence start pointer
-      $subStart = $i if ( $subStart == -1 );
-
-      # Step 1: Find the maximal j for which Lj < Lk
-      for ( $j = $#L ; $j >= 0 ; $j-- ) {
-        last if ( $L[ $j ] < $S[ $subStart - 1 ] );
+    if ( $b[$i] > 0 ) {
+      $I[$k] = [$i, $i+1];
+      $Lidx[$k] = $i;
+      $L[$k] = $total - $b[$i];
+      $R[$k] = $total;
+      while ( 1 ) {
+        my $maxj = -1;
+        for ( $j = $k-1; $j > -1; $j-- ) {
+          if ( $L[$j] < $L[$k] ) {
+            $maxj = $j;
+            last;
+          }
+        }
+        if ( $maxj != -1 && $R[$maxj] < $R[$k] ) {
+          $I[$maxj] = [$Lidx[$maxj], $i+1];
+          $R[$maxj] = $total;
+          $k = $maxj;
+        }else {
+           $k++;
+           last;
+        }
       }
-
-      # Step 2,3:
-      if (    $L[ $j ] > $S[ $subStart - 1 ]
-           || $#L == -1
-           || $j == -1
-           || $R[ $j ] >= $S[ $i ] )
-      {
-        push @I, [ $subStart, $i ];
-        if ( $i == 0 ) { push @L, 0; }
-        else { push @L, $S[ $subStart - 1 ]; }
-        push @R, $S[ $i ];
-        $subStart = -1;
-        $i++;
-      }
-      else {
-
-        # Step 4:
-        $subStart = $I[ $j ][ 0 ];
-        foreach ( $j .. $#I ) { pop @I; pop @L; pop @R; }
-
-      }
-
     }
-    else {
-      $i++;
-    }
+    $i++;
   }
-
-  #
-  # Build array
-  #
-  my @results = ( 0 ) x ( $#b + 1 );
-
-  foreach $i ( 0 .. $#I ) {
-    foreach $j ( $I[ $i ][ 0 ] .. $I[ $i ][ 1 ] ) {
-      $results[ $j ] = ( $R[ $i ] - $L[ $i ] );
-    }
+  # There are now k-1 valid ranges in I
+  
+  my @ruzzoTompaArr = ();
+  my @intervalArr = ();
+  my @scoreMaskArr = ();
+  for ( $i = 0; $i <= $#b; $i++ ){
+    $scoreMaskArr[$i] = 0;
   }
-  return ( \@results );
-
+  for ( $i = 0; $i < $k; $i++ ) {
+    push @intervalArr, [$I[$i][0], $I[$i][1]];
+    my @tScores;
+    for ( $j = $I[$i][0]; $j < $I[$i][1]; $j++ ) {
+      push @tScores, $b[$j];
+      $scoreMaskArr[$j] = $R[$i]-$L[$i];
+    }
+    push @ruzzoTompaArr, [@tScores];
+  }
+  #print "RTA = " . Dumper(\@ruzzoTompaArr) . "\n";
+  #print "ia = " . Dumper(\@intervalArr) . "\n";
+  #print "sma = " . Dumper(\@scoreMaskArr) . "\n";
+  return ( \@ruzzoTompaArr, \@intervalArr, \@scoreMaskArr );
 }
 
 ##---------------------------------------------------------------------##
@@ -2620,9 +2762,19 @@ sub _getSequenceDuplicates {
   return ( \%nameHash );
 }
 
+# 
+# histoArray: contains integer counts in a sparse array
+# windowSize: size of the scoring window
+# useHighestInWindow: flag
+#
+# NOTES: Consider the score drop threshold and it's impact
+#        on peak calling under different value distributions.
 sub _pickHistogramPeak {
   my %parameters = @_;
 
+  # e.g. 
+  #    pos:  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 
+  #  array: [0, 8, 2, 1, 0, 0, 0, 0, 1, 10, 5]
   my $histoArray = $parameters{'histogram'};
   my $windowSize = $parameters{'windowSize'};
 
@@ -2637,12 +2789,15 @@ sub _pickHistogramPeak {
   my $highScoreStart     = -1;
   my $highScoreEnd       = -1;
   my $windowFlankingSize = ( ( $windowSize - 1 ) / 2 );
+  # Calculate sum of counts for left half of the window
   for ( my $i = 0 ; $i <= $windowFlankingSize ; $i++ ) {
     print "Histo:  $i -> " . $histoArray->[ $i ] . "\n"
         if ( $histoArray->[ $i ] > 0 && $DEBUG );
+    # sum the counts
     $score += $histoArray->[ $i ];
   }
   my $i;
+  # Calculate sum of counts for right half of the window
   for ( $i = $windowFlankingSize + 1 ; $i <= $#{$histoArray} ; $i++ ) {
     print "Histo: $i -> " . $histoArray->[ $i ] . "\n"
         if ( $histoArray->[ $i ] > 0 && $DEBUG );
@@ -2650,17 +2805,23 @@ sub _pickHistogramPeak {
     if ( $i - $windowSize >= 0 ) {
       $score -= $histoArray->[ $i - $windowSize ];
     }
+    # Keep the start of the window as the high score start
     if ( $score > $highScore ) {
       $highScoreStart = $i - $windowFlankingSize - 1;
       $highScore      = $score;
     }
+    # Is the score decreasing *right* after a high score was found
+    # Looks like this particularly detecting a spike.
     if ( $score < $prevScore && $prevScore == $highScore ) {
       $highScoreEnd = $i - 1;
     }
     $prevScore = $score;
   }
+
   $highScoreEnd = $i - 1 if ( $highScoreEnd < $highScoreStart );
   if ( $useHighestInWindow == 1 ) {
+    # Return the highScore and the position of the maximum value in
+    # the high scoring window.
     my $maxPos = 0;
     my $maxVal = 0;
     print "About to call $highScoreStart to $highScoreEnd\n";
@@ -2673,6 +2834,7 @@ sub _pickHistogramPeak {
     return ( $highScore, $maxPos );
   }
   else {
+    # Return highScore and the mid point of between start of highScoreStart-highScoreEnd 
     return (
              $highScore,
              $highScoreStart + (
@@ -2687,7 +2849,7 @@ sub _pickHistogramPeak {
 ## Use: _pickHistogramPeaks(..);
 ##
 ## Private method.
-##
+## ** Used by getEndStartPairs which is currently not used **
 ##---------------------------------------------------------------------##
 sub _pickHistogramPeaks {
   my $this       = shift;
@@ -2696,7 +2858,7 @@ sub _pickHistogramPeaks {
   my $histoArray  = $parameters{'histogram'};
   my $windowSize  = $parameters{'windowSize'};
   my $threshold   = $parameters{'threshold'};
-  my $perPosCount = $parameters{'perPosCount'};
+  #my $perPosCount = $parameters{'perPosCount'};
 
   #croak $CLASS."::_pickHistogramPeak(): Histogram is not as wide as ".
   #      "the window size!\n" if ( ( $#{ $histoArray } + 1 ) <
@@ -2722,11 +2884,13 @@ sub _pickHistogramPeaks {
       }
     }
   }
-
   my $i                 = -1;
   my $numUniqSequences  = -1;
   my $sig               = -1;
   my $distSinceLastCall = $windowFlankingSize;
+  # TODO: This looks like a bug.  The starting index of 0
+  # looks like it will be double counting the $score kept
+  # from the previous loop.
   for ( $i = 0 ; $i <= $#{$histoArray} ; $i++ ) {
     my $windowStart = $i - $windowFlankingSize;
     my $windowEnd   = $i + $windowFlankingSize;
@@ -2734,12 +2898,10 @@ sub _pickHistogramPeaks {
 
     # Slide Score Window
     if ( $windowEnd <= $#{$histoArray} ) {
-
       # Add new column
       $score += $histoArray->[ $windowEnd ];
     }
     if ( ( $windowStart - 1 ) >= 0 ) {
-
       # Remove old column
       $score -= $histoArray->[ $windowStart - 1 ];
     }
@@ -3511,6 +3673,8 @@ sub toSTK {
   #       RF line. 8/21/2015
   $seq =~ s/-/./g;
   if ( $parameters{'nuclRF'} ) {
+    # 3/27/2020 - TODO: Consider why gaps like this exist in the first place.
+    $seq =~ s/ /N/g;
     $seq = uc( $seq );
   }
   else {
@@ -3549,10 +3713,10 @@ sub toSTK {
     my $end   = $object->getAlignedEnd( $i );
     my $seq   = '';
     if ( $start > 0 ) {
-      $seq = '.' x ( $start );
+      $seq = '.'x( $start );
     }
     $seq .= $object->getAlignedSeq( $i );
-    $seq =~ s/-/./g;
+    $seq =~ s/[-\s]/./g;
 
     if ( length( $seq ) < $maxSeqLen ) {
       $seq .= '.' x ( $maxSeqLen - length( $seq ) );
@@ -3864,6 +4028,7 @@ sub printAlignments {
 
   my $maxIDLen    = length( $object->getReferenceName() );
   my $maxCoordLen = 0;
+  my @seqCoordIdx = ();
   foreach my $i ( @sortedIndexes ) {
     my $start = $object->getAlignedSeqStart( $i );
     my $end   = $object->getAlignedSeqEnd( $i );
@@ -3871,6 +4036,12 @@ sub printAlignments {
     $maxCoordLen = length( $end )   if ( length( $end ) > $maxCoordLen );
     my $tLen = length( $object->getAlignedName( $i ) );
     $maxIDLen = $tLen if ( $tLen > $maxIDLen );
+    # Initialize the sequence coordinate start positions ( cognizant of orientation )
+    my $orient = $object->getAlignedOrientation( $i );
+    $seqCoordIdx[$i] = $start;
+    if ( $orient eq "-" ) {
+      $seqCoordIdx[$i] = $end;
+    }
   }
 
   # Generate the scores if requested
@@ -3949,44 +4120,71 @@ sub printAlignments {
 
     # Now print out the aligned sequences
     foreach my $i ( @sortedIndexes ) {
+      # These are the positions within the gapped multiple alignment ( not sequence positions )
       my $start = $object->getAlignedStart( $i );
       my $end   = $object->getAlignedEnd( $i );
+
+      # Is this sequence even in the alignment window are printing at the moment?
       next if ( $start >= $lineEnd );
       next if ( $end <= $lineStart );
+  
+      # Pad sequence if it starts later than the first position
       $seq = '';
       if ( $start > $lineStart ) {
         $seq = ' ' x ( $start - $lineStart );
       }
+
+      # now figure out the string range for the aligned sequence to grab for this window
       my $seqStart = $lineStart - $start;
       $seqStart = 0 if ( $seqStart < 0 );
       my $seqEnd = $lineEnd - $start;
       $seqEnd = $end if ( $seqEnd > $end );
       $seq .= substr( $object->getAlignedSeq( $i ),
                       $seqStart, $seqEnd - $seqStart + 1 );
+
+      # and our name is...
       $name = $object->getAlignedName( $i );
 
-      #if ( length( $name ) > 16 )
-      #{
-      #  $name = substr( $name, 0, 16 );
+ 
+      #if ( $seqStart == 0 ) {
+      #  $start = $object->getAlignedSeqStart( $i );
       #}
-      if ( $seqStart == 0 ) {
-        $start = $object->getAlignedSeqStart( $i );
-      }
-      else {
-        my $priorSeq = substr( $object->getAlignedSeq( $i ), 0, $seqStart );
-        $numLetters = ( $priorSeq =~ tr/A-Z/A-Z/ );
-        $start = $object->getAlignedSeqStart( $i ) + $numLetters;
-      }
+      #else {
+      #  my $priorSeq = substr( $object->getAlignedSeq( $i ), 0, $seqStart );
+      #  $numLetters = ( $priorSeq =~ tr/A-Z/A-Z/ );
+      #  $start = $object->getAlignedSeqStart( $i ) + $numLetters;
+      #}
       $numLetters = ( $seq =~ tr/A-Z/A-Z/ );
-      $end        = $start + $numLetters - 1;
+      #$end        = $start + $numLetters - 1;
 
+      my $seqCoordStart = $seqCoordIdx[$i];
+      my $orient = $object->getAlignedOrientation( $i );
+      my $seqCoordEnd;
+      if ( $orient eq "+" ) {
+        $seqCoordEnd = $seqCoordStart + $numLetters - 1;
+        $seqCoordIdx[$i] += $numLetters;
+      }else {
+        $seqCoordEnd = $seqCoordStart - $numLetters + 1;
+        $seqCoordIdx[$i] -= $numLetters;
+      }
+       
       my $outStr = $name
           . " " x ( $maxIDLen - length( $name ) ) . " "
-          . " " x ( $maxCoordLen - length( $start ) )
-          . $start . " "
+          . " " x ( $maxCoordLen - length( $seqCoordStart ) )
+          . $seqCoordStart . " "
           . $seq
           . " " x ( $blockSize - length( $seq ) ) . "    "
-          . $end . "\n";
+          . $seqCoordEnd . "\n";
+      
+
+      #my $outStr = $name
+      #    . " " x ( $maxIDLen - length( $name ) ) . " "
+      #    . " " x ( $maxCoordLen - length( $start ) )
+      #    . $start . " "
+      #    . $seq
+      #    . " " x ( $blockSize - length( $seq ) ) . "    "
+      #    . $end . "\n";
+     
       print "$outStr";
 
     }
@@ -4226,6 +4424,7 @@ sub substFrequency {
 ##---------------------------------------------------------------------##
 sub _compl {
   my $seq = shift;
+  $seq = uc($seq); # Just in case
   $seq =~ tr/ACGTRYKMSWBDHV/TGCAYRMKWSVHDB/;
   return ( reverse( $seq ) );
 }
@@ -4496,7 +4695,7 @@ sub buildConsensusFromArray {
   }
 
   #
-  # Build up a profile of these multiply aligned sequences
+  # Build up a profile of these multiply aligned equences
   #
   my $sequences = $parameters{'sequences'};
   my @profile   = ();

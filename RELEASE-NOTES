@@ -1,3 +1,25 @@
+
+RepeatModeler 2.0.2
+===================
+  - First release of a set of manual curation tools for use with
+    de-novo generated TE libraries.
+  - Added generateSeedAlignments.pl to generate Dfam compatible 
+    seed alignments given a consensus based TE library and 
+    RepeatMasker output.
+  - Fixed bug in N50 calculation.
+  - Fixed Ruzzo-Tompa maximal scoring subsequences implementation.
+  - lots of small bugfixes.
+
+RepeatModeler 2.0.1
+===================
+  - Work around a bug introduced in the new NCBI Blast 2.10.0 with 
+    version 5 databases.
+  - RepeatScout in some rare cases will generate models for very 
+    long-period satellites. This can cause Refiner to go crazy creating 
+    tons of off-diagonal alignments. This version filters out 
+    these rare cases.
+  - This version now prints out the version of each dependency in the log.
+
 RepeatModeler 2.0
 =================
   - Many RepeatModeler seed alignments and consensus sequences contained 

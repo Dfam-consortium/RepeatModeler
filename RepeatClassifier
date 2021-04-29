@@ -304,6 +304,9 @@ if ( $seq ) {
             . "       identifiers and resubmit for processing.\n";
       }
     }
+  }else {
+    # just a standard ID no need to fuss
+    print UNC ">$id $desc\n$seq\n";
   }
 }
 close IN;
@@ -318,9 +321,7 @@ my $cmd =
 print "Running: $cmd\n" if ( $DEBUG );
 system( $cmd );
 if ( !-s "tmpConsensi.fa.masked" ) {
-
-  #  die "Something went wrong with the RepeatMasker program.  The "
-  #     ."$options{'consensi'}.masked file is missing or empty\n";
+  # In cases where no repeats were masked ( e.g no simple/tandem repeats )
   system( "cp tmpConsensi.fa tmpConsensi.fa.masked" );
 }
 
@@ -395,7 +396,7 @@ if ( $engine eq "abblast" ) {
   if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib.xps" ) {
     die "Missing $REPEATMASKER_DIR/Libraries/"
         . "RepeatPeps.lib.xps!\n"
-        . "Please rerun the configure program in the RepeatModeler directory\n"
+        . "Please rerun the configure program in the RepeatMasker directory\n"
         . "before running this script.\n";
   }
 
@@ -413,7 +414,7 @@ elsif ( $engine eq "rmblast" ) {
   if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib.psq" ) {
     die "Missing $REPEATMASKER_DIR/Libraries/"
         . "RepeatPeps.lib.psq!\n"
-        . "Please rerun the configure program in the RepeatModeler directory\n"
+        . "Please rerun the configure program in the RepeatMasker directory\n"
         . "before running this script.\n";
   }
   my $additionalOpts = "";
@@ -487,7 +488,7 @@ if ( $engine eq "abblast" ) {
   if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib.xns" ) {
     die "Missing $REPEATMASKER_DIR/Libraries/"
         . "RepeatMasker.lib.xns!\nPlease rerun the configure program "
-        . "in the RepeatModeler directory\nbefore running this script.\n";
+        . "in the RepeatMasker directory\nbefore running this script.\n";
   }
   $searchEngineN->setAdditionalParameters( " -gapW=32" );
 }
@@ -498,7 +499,7 @@ else {
   if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib.nsq" ) {
     die "Missing $REPEATMASKER_DIR/Libraries/"
         . "RepeatMasker.lib.nsq!\nPlease rerun the configure program "
-        . "in the RepeatModeler directory\nbefore running this script.\n";
+        . "in the RepeatMasker directory\nbefore running this script.\n";
   }
 }
 

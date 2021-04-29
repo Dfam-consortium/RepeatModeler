@@ -1,0 +1,262 @@
+#!/usr/bin/perl -w
+#
+# Calculates the Jukes and Kimura substitution level of individual
+# copies and average level for all copies in a fasta file from a
+# cross_match format output including alignments
+# There is an option to only look at one type of repeat,
+# to treat indels as if they are transversions,
+# and to exlcude one transition in a CpG pair
+
+# includes
+use strict;
+use Getopt::Long;
+
+my ($script) = ($0 =~ m|([^/]*)$|);
+my $USAGE = "usage: $script [-rep repeatname] [-indels]
+                    [-cg] [-nolow] [-sum]
+                    <cross_match output WITH ALIGNMENTS>
+
+-cg      One transition opposite a CpG dinucleotide is excluded 
+         from the substitution level estimate.
+-indels  Gaps are counted as a single substitution and are treated
+         as transversions in Kimura calc by default the mismatch 
+         and substitution level of matched bases only is calculated
+-rep     For which repeat to calculate substitution level; end name 
+         with __ if an exact match is required.
+-sum     Only print summary 
+-nolow   Skip low complexity and simple repeats \n";
+
+die $USAGE unless $ARGV[0];
+
+my @opts = qw(cg indels rep:s nolow q sum); 
+our ($opt_cg, $opt_indels, $opt_rep, $opt_nolow, $opt_sum) = ();
+unless (GetOptions(@opts)) {
+  printf STDERR $USAGE;
+  exit (1);
+}
+
+my $exact = 0;
+my $repeat;
+if ($opt_rep) {
+  if ($opt_rep =~ /__$/) {
+    $opt_rep =~ s/__$//;
+    $exact = 1;
+  }
+  $repeat = quotemeta $opt_rep;	# otherwise goes wrong with names containing ( and )
+}
+
+foreach my $file (@ARGV) {
+  print "file: $file\n" unless ( $opt_sum );
+  print "Query name  BeginAlign HitName     length    i     v  " 
+        ."gaps  diverg JC  Kimura\n" unless ( $opt_sum );
+  if ($opt_cg) {
+    open IN, "<$file" or die;
+    open OUT, ">$file.CGmodified" or die;
+    my $print = 0;
+    my $diffline;
+    while (<IN>) {
+      # Unfortunately consensus follows the transition etc. indications
+      last if /^find matches/;
+      if ( /\(\d+\)\s+([\w\-\_]+)/ ) {
+	my $rep = $1;
+	if (!$repeat) {
+	  $print = 1;
+	} elsif ($rep eq $repeat) {
+	  $print = 1;
+	} else {
+	  $print = 0;
+	}
+      } elsif (/^Discrepancy/) {
+	$print = 0;
+      }
+      if ($print) {
+	if (/^\s{28}.*i/ ) {  # a transition is reported
+	  $diffline = $_;
+	} elsif ( $diffline ) {
+	  /^.{28}([-\w]+)/;
+	  my $consseq = $1;
+	  my $cg = 'cg';
+	  while ($consseq =~ s/(\S*)C([-]*)G/$1$cg$2/) {
+	    # The script misses the CpGs spanning the linebreak, i.e. bit more than 1 out of 50
+	    my $len1 = (length $1)+28; 
+	    # 28 spaces before difference line starts. Hope Phil does not change that
+	    my $len2 = $len1 + 1 + (length $2);
+	    # (length $2) representing the number of gaps between C and G
+	    $diffline =~ s/^(.{$len1})i/$1 / || $diffline =~ s/^(.{$len2})i/$1 /;
+	    # If there was a transition of the C, a second transition of the G will not be subtracted
+	    # Transversions at CpG sites will still be counted
+	  } 
+	  print OUT "$diffline$_";
+	  $diffline = "";
+	} else {
+	  print OUT;
+	} 
+      }
+    }
+    $file .= '.CGmodified';
+    close IN;
+    close OUT;
+  }
+
+  my ($queryname, $beginalign, $hitname, $transitions, $transversions, $indels, $divergence, $jukes, $kimura);
+  my $length = 0;
+  format STDOUT =
+@<<<<<<<<<<<<< @######## @<<<<<<<<<<  @####  @###  @###  @##  @#.###  @#.### @#.###
+$queryname, $beginalign, $hitname, $length, $transitions, $transversions, $indels, $divergence, $jukes, $kimura
+.
+#format unfortunately messes up indentation
+  my ($total, $totaltotal, $totallength, $totali, $totalv);
+  my ($averagedivergence, $averagejukes, $averagekimura, $otherkimura);
+  my ($count, $count2, $querynumber);
+  my %counted = ();
+  my $last = "";
+  open FILE, "<$file" or die;
+  while (<FILE>) {
+    last if /^find matches/;
+    if ($count2) {
+      $transitions += (s/i/i/g);
+      $transversions += (s/v/v/g);
+#count the number of indels inits
+      $indels += (s/([iv\? ]-)/$1/g);
+#indel initiations counted as one substitution
+#            $indels += s/g/g/g;
+# ambiguous matches subtracted from length as they are not included in subst.level
+      $length -= (s/\?/\?/g); 
+# delete indel extensions from total length
+# indels continuing on next line are counted as two (imperfection)
+      $length -= (s/-/-/g);
+      $count2 = 0;
+    }
+    if ($count && /$queryname/) {
+      my @queryfield = split;
+      # length usually increments with 50, except at end of
+      # alignment: this is not the length of the target or query
+      # sequence, but the length of the alignment
+      if ($queryfield[0] eq "C") {
+	$length += length $queryfield[3];
+      } else {
+	$length += length $queryfield[2];
+      }
+      $count2 = 1;
+    }                   
+    if (/\(\d+\)/) {
+      if ($count) {
+	$total = $transitions + $transversions;
+	if ($opt_indels) {
+	  $total += $indels;
+	  # gaps treated like transversions in kimura. Unorthodox
+	  $transversions += $indels;
+	  $length += $indels;
+	}
+
+	if ($length) {
+	  $divergence = $total/$length;
+	  $jukes = -0.75*log(1-1.33333333*$divergence);
+	  my $p = $transitions/$length; 
+	  my $q = $transversions/$length;
+	  my $factor = (1-2*$p-$q);	  
+	  if ($factor > 0 && $q < 0.5) {
+	    $kimura = -0.5*log($factor*(1-2*$q)**0.5);
+	  } else {
+	    print STDERR "$last Attempt to take root of (1-2*$q) and then log of $factor times that. p = $p, q = $q\n\n";
+	    $kimura = 1;
+	  }
+	} else {
+	  $divergence = $jukes = $kimura = 0;
+	}
+	write STDOUT;
+	$totallength += $length;
+	$totaltotal += $total;
+	$totali += $transitions;
+	$totalv += $transversions;
+	$transitions = $transversions = $indels = $total = $length = $count = 0;
+      }
+      next if $opt_nolow && /Low_complexity|Simple_repeat/;
+      $last = $_;
+      my @linefield = split;
+      $queryname =  $linefield[4];
+      $beginalign = $linefield[5];
+      if ($linefield[8] eq "C" || $linefield[8] eq "+") {
+	$hitname = $linefield[9];
+      } else {
+	$hitname = $linefield[8];
+      }
+      $queryname =~ s/([\S]{12}).*/$1/; # truncate to 13 as is done in alignment
+      # when > 1000000 name is truncated to 12 letters
+      $queryname = quotemeta $queryname;
+      unless ($repeat) {
+	$count = 1;
+	++$querynumber unless $counted{$queryname};
+	++$counted{$queryname};
+      }       
+      elsif ($queryname =~ /$repeat/i || $hitname =~ /$repeat/i) {
+	if ($exact) {
+	  $hitname =~ s/\#.*$//;
+	  $hitname =~ s/_[35]end$//;
+	  if ($hitname eq "$repeat") {
+	    $count = 1;
+	    ++$querynumber unless $counted{$queryname};
+	    ++$counted{$queryname};
+	  }
+	} else {
+	  $count = 1;
+	  ++$querynumber unless $counted{$queryname};
+	  ++$counted{$queryname};
+	}
+      }
+    }
+  }
+  if ($count) {
+    $total = $transitions + $transversions;
+    if ($opt_indels) {
+      $total += $indels;
+      $transversions += $indels;
+      $length += $indels;
+    }
+    
+    if ($length) {
+      $divergence = $total/$length;
+      $jukes = -0.75*log(1-1.33333333*$divergence);
+      my $p = $transitions/$length;
+      my $q = $transversions/$length;
+      my $factor = (1-2*$p-$q);
+      if ($factor > 0 && $q < 0.5) {
+	$kimura = -0.5*log($factor*(1-2*$q)**0.5);
+      } else {
+	print STDERR "$last Attempt to take root of (1-2*$q) and then log of $factor times that. p = $p, q = $q\n\n";
+	$kimura = 1;
+      }
+    } else {
+      $divergence = $jukes = $kimura = 0;
+    }
+    write STDOUT unless ( $opt_sum );
+    $totallength += $length;
+    $totaltotal += $total;
+    $totali += $transitions;
+    $totalv += $transversions;
+    $transitions = $transversions = $indels = $total = $length = $count = 0;
+  }
+  unless ($totallength && $totaltotal) {
+    print STDERR "$file does not contain a cross_match alignment\n";
+    next;
+  }
+  $averagedivergence = $totaltotal/$totallength;
+  my $p = $totali/$totallength;
+  my $q = $totalv/$totallength;
+  $averagejukes = -0.75*log(1-1.33333333*$averagedivergence);
+  $averagekimura =  -0.5*log((1-2*$p-$q)*(1-2*$q)**0.5);
+  $otherkimura = 0.5*log(1/(1-2*$p-$q)) + 0.25*log(1/(1-2*$q));
+
+  print "
+$file: queries with matches: $querynumber 
+$file: total aligned length: $totallength bp
+$file: total substitutions:  $totaltotal
+$file: total transitions:    $totali
+$file: total transversions:  $totalv
+$file: average divergence:   $averagedivergence
+$file: average jukes-subst:  $averagejukes
+$file: average kimura-subst: $averagekimura
+$file:                    or $otherkimura\n";
+  close (FILE);
+}
+

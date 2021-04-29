@@ -32,7 +32,7 @@ LTRPipeline - Run a structural LTR finder on the genome and polish the results
 
 =head1 SYNOPSIS
 
-  LTRPipeline [-version]
+  LTRPipeline [-version] [-pa #] <input_sequence.fa>
 
 =head1 DESCRIPTION
 
@@ -723,7 +723,7 @@ sub runLtrHarvest {
     warn
 "LtrPipeline: GenomeTools failed to build suffixtree datastructure.  This is frequently\n"
         . "             caused by a lack of disk space. Error code: "
-        . ( $? << 8 ) . "\n";
+        . ( $? >> 8 ) . "\n";
     $errorFlag = 1;
     chdir( $origDir );
   }
@@ -736,7 +736,7 @@ sub runLtrHarvest {
     chdir( $origDir );
     if ( $retCode != 0 ) {
       warn "LtrPipeline: GenomeTools failed to run ltrharvest. Error code: "
-          . ( $? << 8 ) . "\n";
+          . ( $? >> 8 ) . "\n";
       $errorFlag = 1;
     }
     if ( -s "$tmpDir/ltrharvest.log" ) {

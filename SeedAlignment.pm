@@ -95,7 +95,8 @@ my $DEBUG = 0;
 ##-------------------------------------------------------------------------##
 ## Constructor:
 ##-------------------------------------------------------------------------##
-sub new {
+sub new
+{
   my $class          = shift;
   my %nameValuePairs = @_;
   my $subroutine     = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
@@ -107,8 +108,10 @@ sub new {
   bless $this, $class;
 
   # Allow import of values
-  if ( %nameValuePairs ) {
-    while ( my ( $name, $value ) = each( %nameValuePairs ) ) {
+  if ( %nameValuePairs )
+  {
+    while ( my ( $name, $value ) = each( %nameValuePairs ) )
+    {
 
       # RMH: Perl optimisation, the calls to _ucFirst were
       #      costly.
@@ -120,7 +123,8 @@ sub new {
       #     "SeedAlignment::add: Instance variable $name doesn't exist." . "" );
       #}
       eval { $this->$method( $value ); };
-      if ( $@ ) {
+      if ( $@ )
+      {
         croak( "$subroutine: Instance variable $name doesn't exist." . "" );
       }
     }
@@ -141,7 +145,8 @@ sub new {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub clone {
+sub clone
+{
   my $this = shift;
 
   my %newHash = %{$this};
@@ -168,7 +173,8 @@ sub clone {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub getId {
+sub getId
+{
   my $obj = shift;
 
   my $value = $obj->{'id'};
@@ -176,7 +182,8 @@ sub getId {
   return $value;
 }
 
-sub setId {
+sub setId
+{
   my $obj      = shift;
   my $value    = shift;
   my $oldValue = undef;
@@ -199,7 +206,8 @@ sub setId {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub getComment {
+sub getComment
+{
   my $obj = shift;
 
   my $value = $obj->{'comment'};
@@ -207,7 +215,8 @@ sub getComment {
   return $value;
 }
 
-sub setComment {
+sub setComment
+{
   my $obj      = shift;
   my $value    = shift;
   my $oldValue = undef;
@@ -230,7 +239,8 @@ sub setComment {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub getDescription {
+sub getDescription
+{
   my $obj = shift;
 
   my $value = $obj->{'description'};
@@ -238,44 +248,14 @@ sub getDescription {
   return $value;
 }
 
-sub setDescription {
+sub setDescription
+{
   my $obj      = shift;
   my $value    = shift;
   my $oldValue = undef;
 
   $oldValue = $obj->{'description'};
   $obj->{'description'} = $value;
-
-  return $oldValue;
-}
-
-##-------------------------------------------------------------------------##
-
-=head2 get_setAuthor()
-
-  Use: my $value    = getAuthor();
-  Use: my $oldValue = setAuthor( $value );
-
-  Get/Set the author.
-
-=cut
-
-##-------------------------------------------------------------------------##
-sub getAuthor {
-  my $obj = shift;
-
-  my $value = $obj->{'author'};
-
-  return $value;
-}
-
-sub setAuthor {
-  my $obj      = shift;
-  my $value    = shift;
-  my $oldValue = undef;
-
-  $oldValue = $obj->{'author'};
-  $obj->{'author'} = $value;
 
   return $oldValue;
 }
@@ -292,7 +272,8 @@ sub setAuthor {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub getAlignmentMethod {
+sub getAlignmentMethod
+{
   my $obj = shift;
 
   my $value = $obj->{'alignmentMethod'};
@@ -300,7 +281,8 @@ sub getAlignmentMethod {
   return $value;
 }
 
-sub setAlignmentMethod {
+sub setAlignmentMethod
+{
   my $obj      = shift;
   my $value    = shift;
   my $oldValue = undef;
@@ -323,7 +305,8 @@ sub setAlignmentMethod {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub getClassification {
+sub getClassification
+{
   my $obj = shift;
 
   my $value = $obj->{'classification'};
@@ -331,7 +314,8 @@ sub getClassification {
   return $value;
 }
 
-sub setClassification {
+sub setClassification
+{
   my $obj      = shift;
   my $value    = shift;
   my $oldValue = undef;
@@ -354,7 +338,8 @@ sub setClassification {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub getSeqCount {
+sub getSeqCount
+{
   my $obj = shift;
 
   my $value = $obj->{'seqCount'};
@@ -362,44 +347,14 @@ sub getSeqCount {
   return $value;
 }
 
-sub setSeqCount {
+sub setSeqCount
+{
   my $obj      = shift;
   my $value    = shift;
   my $oldValue = undef;
 
   $oldValue = $obj->{'seqCount'};
   $obj->{'seqCount'} = $value;
-
-  return $oldValue;
-}
-
-##-------------------------------------------------------------------------##
-
-=head2 get_setGfLines()
-
-  Use: my $arrayRef = getGfLines();
-  Use: my $oldRef = setGfLines( \@array );
-
-  Get/Set the Auxiliary (ie. unparsed) GF lines.
-
-=cut
-
-##-------------------------------------------------------------------------##
-sub getGfLines {
-  my $obj = shift;
-
-  my $value = $obj->{'GF_lines'};
-
-  return $value;
-}
-
-sub setGfLines {
-  my $obj      = shift;
-  my $value    = shift;
-  my $oldValue = undef;
-
-  $oldValue = $obj->{'GF_lines'};
-  $obj->{'GF_lines'} = $value;
 
   return $oldValue;
 }
@@ -416,7 +371,8 @@ sub setGfLines {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub getRfLine {
+sub getRfLine
+{
   my $obj = shift;
 
   my $value = $obj->{'rfLine'};
@@ -424,7 +380,8 @@ sub getRfLine {
   return $value;
 }
 
-sub setRfLine {
+sub setRfLine
+{
   my $obj      = shift;
   my $value    = shift;
   my $oldValue = undef;
@@ -447,7 +404,8 @@ sub setRfLine {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub setCitation {
+sub setCitation
+{
   my $this       = shift;
   my $index      = shift;
   my $pmid       = shift;
@@ -481,7 +439,8 @@ sub setCitation {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub getCitation {
+sub getCitation
+{
   my $this       = shift;
   my $index      = shift;
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
@@ -508,7 +467,8 @@ sub getCitation {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub citationCount {
+sub citationCount
+{
   my $this = shift;
 
   return $#{ $this->{'citations'} } + 1;
@@ -525,7 +485,8 @@ sub citationCount {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub removeCitation {
+sub removeCitation
+{
   my $this       = shift;
   my $index      = shift;
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
@@ -547,7 +508,8 @@ sub removeCitation {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub addCitation {
+sub addCitation
+{
   my $this    = shift;
   my $pmid    = shift;
   my $title   = shift;
@@ -574,7 +536,8 @@ sub addCitation {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub clearCitations {
+sub clearCitations
+{
   my $this = shift;
 
   $this->{'citations'} = [];
@@ -594,7 +557,8 @@ sub clearCitations {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub setAlignment {
+sub setAlignment
+{
   my $this         = shift;
   my $index        = shift;
   my $assemblyName = shift;
@@ -632,7 +596,8 @@ sub setAlignment {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub getAlignment {
+sub getAlignment
+{
   my $this       = shift;
   my $index      = shift;
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
@@ -640,8 +605,6 @@ sub getAlignment {
   croak "$subroutine: index $index is out of bounds."
       if ( $index < 0 || $index > $#{ $this->{'alignments'} } );
 
-  # TODO: Warning this needs work. If assemblyName is missing this returns
-  #       everything shifted up by one!
   return (
            $this->{'alignments'}->[ $index ]->{'assemblyName'},
            $this->{'alignments'}->[ $index ]->{'sequenceName'},
@@ -663,7 +626,8 @@ sub getAlignment {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub alignmentCount {
+sub alignmentCount
+{
   my $this = shift;
 
   return $#{ $this->{'alignments'} } + 1;
@@ -680,7 +644,8 @@ sub alignmentCount {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub removeAlignment {
+sub removeAlignment
+{
   my $this       = shift;
   my $index      = shift;
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
@@ -703,7 +668,8 @@ sub removeAlignment {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub addAlignment {
+sub addAlignment
+{
   my $this         = shift;
   my $assemblyName = shift;
   my $sequenceName = shift;
@@ -734,7 +700,8 @@ sub addAlignment {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub clearAlignments {
+sub clearAlignments
+{
   my $this = shift;
 
   $this->{'alignments'} = [];
@@ -751,7 +718,8 @@ sub clearAlignments {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub setClade {
+sub setClade
+{
   my $this       = shift;
   my $index      = shift;
   my $cladeName  = shift;
@@ -778,7 +746,8 @@ sub setClade {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub getClade {
+sub getClade
+{
   my $this       = shift;
   my $index      = shift;
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
@@ -800,7 +769,8 @@ sub getClade {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub cladeCount {
+sub cladeCount
+{
   my $this = shift;
 
   return $#{ $this->{'clades'} } + 1;
@@ -817,7 +787,8 @@ sub cladeCount {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub removeClade {
+sub removeClade
+{
   my $this       = shift;
   my $index      = shift;
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
@@ -839,7 +810,8 @@ sub removeClade {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub addClade {
+sub addClade
+{
   my $this      = shift;
   my $cladeName = shift;
 
@@ -857,7 +829,8 @@ sub addClade {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub clearClades {
+sub clearClades
+{
   my $this = shift;
 
   $this->{'clades'} = [];
@@ -914,12 +887,12 @@ sub clearClades {
   hg38:chr12:690782-691123        .GCT.GGGAT.G...CTGCG
   hg38:chr2:38282-38399           AGCTTGGG.TTGTACC.G.G
   //
-
+  
   Recommended features
   ====================
-
+  
   #=GF
-
+  
   Compulsory fields:
   ------------------
      ID   Identification:             One word name for family.
@@ -933,40 +906,40 @@ sub clearClades {
      OC   Clade:                      Organism (clade, etc.) Multiple OC records are
                                       allowed.
      SQ   Sequence:                   Number of sequences in alignment.
-
-
+  
+  
   Optional fields:
   ----------------
-     RN     Reference Number:           Reference Number.
-     RM     Reference PubMed:           Pubmed reference number.
-     RT     Reference Title:            Reference Title. 
-     RA     Reference Author:           Reference Author
-     RL     Reference Location:         Journal location. 
-     DR     Database Reference:         Reference to external database. 
-     CC     Curators Notes, Handbuilt Consensus
-            RepeatMasker Stages
+     RN   Reference Number:           Reference Number.
+     RM   Reference PubMed:           Pubmed reference number.
+     RT   Reference Title:            Reference Title. 
+     RA   Reference Author:           Reference Author
+     RL   Reference Location:         Journal location. 
+     DR   Database Reference:         Reference to external database. 
 
   #=GC
-
+  
   Optional fields:
   ----------------
      RF        Reference annotation   Often the consensus DNA is used as a reference
                                       or simple "x" for match columns and "." for 
                                       insert columns.
-
+  
 =cut
 
 ##-------------------------------------------------------------------------##
-sub read_stockholm {
+sub read_stockholm
+{
   my $this = shift;
   my $in   = shift;
   my $input;
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
 
-  if ( ref $in eq "GLOB" ) {
+  if ( ref $in eq "GLOB" )
+  {
     $input = [ <$in> ];
-  }
-  else {
+  } else
+  {
     $input = $in;
   }
 
@@ -976,7 +949,8 @@ sub read_stockholm {
   my $author      = "";
   my $journal     = "";
   my $sequenceLen = 0;
-  foreach ( @{$input} ) {
+  foreach ( @{$input} )
+  {
 
     # Start of the data
     next if ( /^\# STOCKHOLM/ );
@@ -985,55 +959,53 @@ sub read_stockholm {
     last if ( /^\/\// );
 
     # Specific GC line we care about ( RF )
-    if ( /^\#=GC\s+RF\s+(\S+)/ ) {
+    if ( /^\#=GC\s+RF\s+(\S+)/ )
+    {
       $this->setRfLine( $1 );
       next;
     }
 
     # Save the first identifier line
-    if ( /^\#=GF\s+ID\s+(\S+)/ && !$this->getId() ) {
+    if ( /^\#=GF\s+ID\s+(\S+)/ && !$this->getId() )
+    {
 
       # Only keep the first word in the field.
       $this->setId( $1 );
       next;
     }
 
-    # Save the author line
-    if ( /^\#=GF\s+AU\s+(\S.*)$/ ) {
-      if ( $this->getAuthor() ) {
-        $this->setAuthor( $this->getAuthor() . $1 . "\n" );
-      }
-      else {
-        $this->setAuthor( $1 . "\n" );
-      }
-    }
-
     # Save the description lines
-    if ( /^\#=GF\s+DE\s+(\S.*)$/ ) {
-      if ( $this->getDescription() ) {
+    if ( /^\#=GF\s+DE\s+(\S.*)$/ )
+    {
+      if ( $this->getDescription() )
+      {
         $this->setDescription( $this->getDescription() . $1 . "\n" );
-      }
-      else {
+      } else
+      {
         $this->setDescription( $1 . "\n" );
       }
       next;
     }
 
     # Save the classification of the entry
-    if ( /^\#=GF\s+TP\s+(\S.*)$/ ) {
+    if ( /^\#=GF\s+TP\s+(\S.*)$/ )
+    {
       $this->setClassification( $1 );
       next;
     }
 
     # Save the clades
-    if ( /^\#=GF\s+OC\s+(\S.*)$/ ) {
+    if ( /^\#=GF\s+OC\s+(\S.*)$/ )
+    {
       $this->addClade( $1 );
       next;
     }
 
     # Citations
-    if ( /^\#=GF\s+RN\s+.*$/ ) {
-      if ( $inCitation ) {
+    if ( /^\#=GF\s+RN\s+.*$/ )
+    {
+      if ( $inCitation )
+      {
 
         # Save
         $this->addCitation( $pmid, $title, $author, $journal );
@@ -1045,38 +1017,45 @@ sub read_stockholm {
       $inCitation = 1;
       next;
     }
-    if ( $inCitation && /^\#=GF\s+RM\s+(\S+)/ ) {
+    if ( $inCitation && /^\#=GF\s+RM\s+(\S+)/ )
+    {
       $pmid = $1;
       next;
     }
-    if ( $inCitation && /^\#=GF\s+RT\s+(\S.*)$/ ) {
+    if ( $inCitation && /^\#=GF\s+RT\s+(\S.*)$/ )
+    {
       $title = $1;
       next;
     }
-    if ( $inCitation && /^\#=GF\s+RA\s+(\S.*)$/ ) {
+    if ( $inCitation && /^\#=GF\s+RA\s+(\S.*)$/ )
+    {
       $author = $1;
       next;
     }
-    if ( $inCitation && /^\#=GF\s+RL\s+(\S.*)$/ ) {
+    if ( $inCitation && /^\#=GF\s+RL\s+(\S.*)$/ )
+    {
       $journal = $1;
       next;
     }
 
     # Save unused GF lines for later parsing
-    # TODO: Unhandled DR lines.
-    if ( /^\#=GF/ ) {
+    # TODO: Unhandled DR and AU lines.
+    if ( /^\#=GF/ )
+    {
       push( @{ $this->{'GF_lines'} }, $_ );
       next;
     }
 
     # Save sequence lines
-    if ( /^([^\#]\S+)\s+([A-Za-z\.\-]+)\s*$/ ) {
+    if ( /^([^\#]\S+)\s+([A-Za-z\.\-]+)\s*$/ )
+    {
       my $origName = $1;
       my $sequence = $2;
 
       # Vaildate that all sequence lines are the same length
       my $tmpSeqLen = length( $sequence );
-      if ( $sequenceLen > 0 && $tmpSeqLen != $sequenceLen ) {
+      if ( $sequenceLen > 0 && $tmpSeqLen != $sequenceLen )
+      {
         croak "\n$subroutine:\n"
             . "  Line [$_] contains a sequence line that is\n"
             . "  not the same length as previous sequences.\n";
@@ -1086,7 +1065,8 @@ sub read_stockholm {
 
       # Validate that all sequences only contain DNA or IUB codes.
       # Being strict here and not accepting 'x'.
-      if ( $sequence !~ /^[AGCTYRWSKMDVHBNagctyrwskmdvhbn\.\-]+$/ ) {
+      if ( $sequence !~ /^[AGCTYRWSKMDVHBNagctyrwskmdvhbn\.\-]+$/ )
+      {
         croak "\n$subroutine:\n"
             . "  Line [$_] contains one or more non-DNA/IUB characters.\n";
 
@@ -1099,28 +1079,31 @@ sub read_stockholm {
       my $orient       = "+";
 
       # Validate name
-      if ( $origName =~ /^(\S+)\:(\S+)\:(\d+)-(\d+)$/ ) {
+      if ( $origName =~ /^(\S+)\:(\S+)\:(\d+)-(\d+)$/ )
+      {
         $assemblyName = $1;
         $sequenceName = $2;
         $start        = $3;
         $end          = $4;
-        if ( $end < $start ) {
+        if ( $end < $start )
+        {
           $end    = $3;
           $start  = $4;
           $orient = "-";
         }
-      }
-      elsif ( $origName =~ /^(\S+)\:(\d+)-(\d+)$/ ) {
+      } elsif ( $origName =~ /^(\S+)\:(\d+)-(\d+)$/ )
+      {
         $sequenceName = $1;
         $start        = $2;
         $end          = $3;
-        if ( $end < $start ) {
+        if ( $end < $start )
+        {
           $end    = $2;
           $start  = $3;
           $orient = "-";
         }
-      }
-      else {
+      } else
+      {
 
         # This message needs to be extremely helpful so we encourage users
         # to user standard naming conventions.
@@ -1145,7 +1128,8 @@ sub read_stockholm {
     croak "$subroutine: Line [$_] is not valid stockholm format"
         if ( /\w/ && !/^\#/ );
   }
-  if ( $inCitation ) {
+  if ( $inCitation )
+  {
     $this->addCitation( $pmid, $title, $author, $journal );
   }
 
@@ -1162,7 +1146,8 @@ sub read_stockholm {
 =cut
 
 ##-------------------------------------------------------------------------##
-sub toString {
+sub toString
+{
   my $obj           = shift;
   my $format        = shift;
   my $displayParams = shift;
@@ -1173,24 +1158,30 @@ sub toString {
 
   $retStr .= "# STOCKHOLM 1.0\n";
   $retStr .= "#=GF ID    " . $obj->getId() . "\n";
-  if ( $obj->getDescription() ) {
+  if ( $obj->getDescription() )
+  {
     my @lines = split( /[\n\r]+/, $obj->getDescription() );
-    foreach my $line ( @lines ) {
+    foreach my $line ( @lines )
+    {
       $retStr .= "#=GF DE    $line\n";
     }
   }
-  if ( $obj->getComment() ) {
+  if ( $obj->getComment() )
+  {
     my @lines = split( /[\n\r]+/, $obj->getComment() );
-    foreach my $line ( @lines ) {
+    foreach my $line ( @lines )
+    {
       $retStr .= "#=GF CC    $line\n";
     }
   }
   $retStr .= "#=GF TP    " . $obj->getClassification() . "\n"
       if ( $obj->getClassification() );
-  for ( my $i = 0 ; $i < $obj->cladeCount() ; $i++ ) {
+  for ( my $i = 0 ; $i < $obj->cladeCount() ; $i++ )
+  {
     $retStr .= "#=GF OC    " . $obj->getClade( $i ) . "\n";
   }
-  for ( my $i = 0 ; $i < $obj->citationCount() ; $i++ ) {
+  for ( my $i = 0 ; $i < $obj->citationCount() ; $i++ )
+  {
     my ( $pmid, $title, $author, $journal ) = $obj->getCitation( $i );
     $retStr .= "#=GF RN    [" . ( $i + 1 ) . "]\n";
     $retStr .= "#=GF RM    $pmid\n";
@@ -1202,17 +1193,19 @@ sub toString {
   $retStr .= "#=GC RF    " . $obj->getRfLine() . "\n"
       if ( $obj->getRfLine() );
 
-  for ( my $i = 0 ; $i < $obj->alignmentCount() ; $i++ ) {
+  for ( my $i = 0 ; $i < $obj->alignmentCount() ; $i++ )
+  {
     my ( $assemblyName, $sequenceName, $start, $end, $orient, $sequence ) =
         $obj->getAlignment( $i );
 
     my $id;
     $id = "$assemblyName:" if ( $assemblyName );
     $id .= "$sequenceName:";
-    if ( $orient eq "+" ) {
+    if ( $orient eq "+" )
+    {
       $id .= "$start-$end";
-    }
-    else {
+    } else
+    {
       $id .= "$end-$start";
     }
     $retStr .= "$id    $sequence\n";
@@ -1221,27 +1214,32 @@ sub toString {
   return ( $retStr );
 }
 
-sub reverseComplementAlignment {
+sub reverseComplementAlignment
+{
   my $obj = shift;
 
   my $rfLine = $obj->getRfLine();
-  if ( $rfLine ne "" ) {
-    $rfLine = reverse( uc( $rfLine ) );
+  if ( $rfLine ne "" )
+  {
+    $rfLine = reverse( $rfLine );
 
     # In case a consensus sequence is used in the RF line
     # make sure we complement it.
     $rfLine =~ tr/ACGTRYWSKMNXBDHV/TGCAYRSWMKNXVHDB/;
+    $rfLine =~ tr/acgtrywskmnxbdhv/tgcayrswmknxvhdb/;
     $obj->setRfLine( $rfLine );
   }
 
-  for ( my $i = 0 ; $i < $obj->alignmentCount() ; $i++ ) {
+  for ( my $i = 0 ; $i < $obj->alignmentCount() ; $i++ )
+  {
     my ( $assemblyName, $sequenceName, $start, $end, $orient, $sequence ) =
         $obj->getAlignment( $i );
 
-    if ( $orient eq "+" ) {
+    if ( $orient eq "+" )
+    {
       $orient = "-";
-    }
-    else {
+    } else
+    {
       $orient = "+";
     }
 
@@ -1270,7 +1268,8 @@ sub reverseComplementAlignment {
 ##      of a data structure.  In this case the object data itself.
 ##
 ##-------------------------------------------------------------------------##
-sub _toString {
+sub _toString
+{
   my $this = shift;
   my $data_dumper = new Data::Dumper( [ $this ] );
   $data_dumper->Purity( 1 )->Terse( 1 )->Deepcopy( 1 );
