@@ -372,7 +372,7 @@ foreach my $name (keys %length) {
   }
 }
 
-open (IN, "/home/asmit/Matrices/linupmatrix ") or die;
+open (IN, "$FindBin::RealBin/../Matrices/linupmatrix ") or die;
 my @cons;
 my @l;
 my %matrix;

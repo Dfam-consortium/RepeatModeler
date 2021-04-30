@@ -220,7 +220,11 @@ range as a higher scoring sub alignment.
 
 ReapeatModeler, dothemsimple.pl, extendcons.pl, createxmoutstk.pl etc..
 
-=head1 AUTHOR
+=head1 COPYRIGHT
+
+Copyright 2019-2021 Robert Hubley, Institute for Systems Biology
+
+=head1 AUTHOR(s)
 
 Arian Smit <asmit@systemsbiology.org>
 
@@ -884,7 +888,7 @@ while ( 1 ) {
     unlink "$outdir/$consID.malign" if ( -e "$outdir/$consID.malign" );
   
     if ( $options{'stockholm'} ) {
-      system "$FindBin::RealBin/Linup $includeRef $outdir/$consID.out ~/Matrices/linupmatrix -stockholm > $outdir/$consID.stk";
+      system "$FindBin::RealBin/Linup $includeRef $outdir/$consID.out -matrix $FindBin::RealBin/../Matrices/linupmatrix -stockholm > $outdir/$consID.stk";
     }
   
     unless ( $options{'quiet'} ) {

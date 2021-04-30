@@ -177,7 +177,7 @@ if ( ! defined $copymin ) {
 }
 
 
-open (IN, $alifile) or die;
+open (IN, $alifile) or die "Could not open up $alifile for reading!";
 my @starts;
 while (<IN>) {
   if (/consensus\s+(\d+)/ ) {
