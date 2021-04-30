@@ -35,7 +35,7 @@
 
 =head1 NAME
 
-Linup - 
+Linup - Display or convert MSA into various formats
 
 =head1 SYNOPSIS
 
@@ -132,7 +132,7 @@ support MultAln.
 
 =head1 COPYRIGHT
 
-Copyright 2012-2019 Robert Hubley, Institute for Systems Biology
+Copyright 2012-2021 Robert Hubley, Institute for Systems Biology
 
 =head1 AUTHOR
 
