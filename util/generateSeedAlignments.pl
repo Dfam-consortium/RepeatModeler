@@ -29,7 +29,7 @@ generateSeedAlignments - Generate a seed alignments from RM *.align output
 
 =head1 SYNOPSIS
 
- generateSeedAlignments [-families "<id1> <id2> .."] [-includeRef]
+ generateSeedAlignments [-families "<id1> <id2> .."] [-nucleotideRF]
                         [-outSTKFile <*.stk>] [-taxon <ncbi_taxonomy_name>]
                         [-assemblyID <id>] [-minAlignedLength #]
                         [-verbose][-noColor] [-prefixAssembly]
@@ -76,7 +76,7 @@ The options are:
 
 Only analyze a specific set of families from the RepeatMasker alignment file.
 
-=item -includeRef
+=item -nucleotideRF
 
 Use consensus sequence in the RF line rather than "x"s.
 
@@ -188,8 +188,9 @@ my @getopt_args = (
                     '-verbose',
                     '-families=s',
                     '-assemblyFile=s',
+                    '-assemblyID=s',
                     '-taxon=s',
-                    '-includeRef',
+                    '-nucleotideRF',
                     '-outSTKFile=s',
                     '-prefixAssembly',
                     '-noColor',
@@ -832,6 +833,7 @@ foreach my $id ( keys( %alignByID ) )
     next;
   }
 
+  #print "DEBUG: " . $resultCol->toString( SearchResult::AlignWithQuerySeq ) . "\n";
   my $mAlign = MultAln->new( searchCollection          => $resultCol,
                              searchCollectionReference => MultAln::Subject );
 
@@ -845,11 +847,11 @@ foreach my $id ( keys( %alignByID ) )
   }
   
   $totalBuilt++;
-  if ( $options{'includeRef'} ) {
+  if ( $options{'nucleotideRF'} ) {
                       #header           => $newHeaders{uc($id)}->{'header'},
     $mAlign->toSTK(
                       filename         => "$sanitizedID.stk",
-                      includeReference => 1,
+                      nuclRF => 1,
                       id               => $sanitizedID
       );
   } else

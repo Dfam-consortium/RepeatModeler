@@ -79,6 +79,9 @@ use Data::Dumper;
 use Carp;
 use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION);
 
+use constant ExportComplete => 1;
+use constant ExportHeadersOnly => 2;
+
 require Exporter;
 
 @ISA = qw(Exporter);
@@ -262,6 +265,72 @@ sub setDescription
 
 ##-------------------------------------------------------------------------##
 
+=head2 get_setComments()
+
+  Use: my $value    = getComments();
+  Use: my $oldValue = setComments( $value );
+
+  Get/Set the comments.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub getComments
+{
+  my $obj = shift;
+
+  my $value = $obj->{'comments'};
+
+  return $value;
+}
+
+sub setComments
+{
+  my $obj      = shift;
+  my $value    = shift;
+  my $oldValue = undef;
+
+  $oldValue = $obj->{'comments'};
+  $obj->{'comments'} = $value;
+
+  return $oldValue;
+}
+
+##-------------------------------------------------------------------------##
+
+=head2 get_setCuratorComments()
+
+  Use: my $value    = getCuratorComments();
+  Use: my $oldValue = setCuratorComments( $value );
+
+  Get/Set the curatorComments.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub getCuratorComments
+{
+  my $obj = shift;
+
+  my $value = $obj->{'curatorComments'};
+
+  return $value;
+}
+
+sub setCuratorComments
+{
+  my $obj      = shift;
+  my $value    = shift;
+  my $oldValue = undef;
+
+  $oldValue = $obj->{'curatorComments'};
+  $obj->{'curatorComments'} = $value;
+
+  return $oldValue;
+}
+
+##-------------------------------------------------------------------------##
+
 =head2 get_setAlignmentMethod()
 
   Use: my $value    = getAlignmentMethod();
@@ -391,6 +460,140 @@ sub setRfLine
 
   return $oldValue;
 }
+
+##-------------------------------------------------------------------------##
+
+=head2 get_setAuthors()
+
+  Use: my $value    = getAuthors();
+  Use: my $oldValue = setAuthors( $value );
+
+  Get/Set the Authors.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub getAuthors
+{
+  my $obj = shift;
+
+  my $value = $obj->{'authors'};
+
+  return $value;
+}
+
+sub setAuthors
+{
+  my $obj      = shift;
+  my $value    = shift;
+  my $oldValue = undef;
+
+  $oldValue = $obj->{'authors'};
+  $obj->{'authors'} = $value;
+
+  return $oldValue;
+}
+
+##-------------------------------------------------------------------------##
+
+=head2 get_setTSD()
+
+  Use: my $value    = getTSD();
+  Use: my $oldValue = setTSD( $value );
+
+  Get/Set the TSD.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub getTSD
+{
+  my $obj = shift;
+
+  my $value = $obj->{'tsd'};
+
+  return $value;
+}
+
+sub setTSD
+{
+  my $obj      = shift;
+  my $value    = shift;
+  my $oldValue = undef;
+
+  $oldValue = $obj->{'tsd'};
+  $obj->{'tsd'} = $value;
+
+  return $oldValue;
+}
+
+##-------------------------------------------------------------------------##
+
+=head2 get_setDatabaseRef()
+
+  Use: my $value    = getDatabaseRef();
+  Use: my $oldValue = setDatabaseRef( $value );
+
+  Get/Set the DatabaseRef.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub getDatabaseRef
+{
+  my $obj = shift;
+
+  my $value = $obj->{'databaseRef'};
+
+  return $value;
+}
+
+sub setDatabaseRef
+{
+  my $obj      = shift;
+  my $value    = shift;
+  my $oldValue = undef;
+
+  $oldValue = $obj->{'databaseRef'};
+  $obj->{'databaseRef'} = $value;
+
+  return $oldValue;
+}
+
+##-------------------------------------------------------------------------##
+
+=head2 get_setBuildMethod()
+
+  Use: my $value    = getBuildMethod();
+  Use: my $oldValue = setBuildMethod( $value );
+
+  Get/Set the BuildMethod.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub getBuildMethod
+{
+  my $obj = shift;
+
+  my $value = $obj->{'buildMethod'};
+
+  return $value;
+}
+
+sub setBuildMethod
+{
+  my $obj      = shift;
+  my $value    = shift;
+  my $oldValue = undef;
+
+  $oldValue = $obj->{'buildMethod'};
+  $obj->{'buildMethod'} = $value;
+
+  return $oldValue;
+}
+
+
 
 ##-------------------------------------------------------------------------##
 
@@ -915,7 +1118,10 @@ sub clearClades
      RT   Reference Title:            Reference Title. 
      RA   Reference Author:           Reference Author
      RL   Reference Location:         Journal location. 
+     TD   TSD:                        Target Site Duplication String.
      DR   Database Reference:         Reference to external database. 
+     CC   Long Description:           Multi-line description of the family.
+     **   Curators Comments:          Dfam internal-use field for curator comments.
 
   #=GC
   
@@ -986,11 +1192,66 @@ sub read_stockholm
       }
       next;
     }
+    
+    # Save the comment lines
+    if ( /^\#=GF\s+CC\s+(\S.*)$/ )
+    {
+      if ( $this->getComments() )
+      {
+        $this->setComments( $this->getComments() . $1 . "\n" );
+      } else
+      {
+        $this->setComments( $1 . "\n" );
+      }
+      next;
+    }
+
+    # Save the curator comment lines
+    if ( /^\#=GF\s+\*\*\s+(\S.*)$/ )
+    {
+      if ( $this->getCuratorComments() )
+      {
+        $this->setCuratorComments( $this->getCuratorComments() . $1 . "\n" );
+      } else
+      {
+        $this->setCuratorComments( $1 . "\n" );
+      }
+      next;
+    }
+
 
     # Save the classification of the entry
     if ( /^\#=GF\s+TP\s+(\S.*)$/ )
     {
       $this->setClassification( $1 );
+      next;
+    }
+    
+    # Save the DR entry
+    if ( /^\#=GF\s+DR\s+(\S.*)$/ )
+    {
+      $this->setDatabaseRef( $1 );
+      next;
+    }
+    
+    # Save the AU entry
+    if ( /^\#=GF\s+AU\s+(\S.*)$/ )
+    {
+      $this->setAuthors( $1 );
+      next;
+    }
+     
+    # Save the TD entry
+    if ( /^\#=GF\s+TD\s+(\S.*)$/ )
+    {
+      $this->setTSD( $1 );
+      next;
+    }
+    
+    # Save the BM entry
+    if ( /^\#=GF\s+BM\s+(\S.*)$/ )
+    {
+      $this->setBuildMethod( $1 );
       next;
     }
 
@@ -1039,7 +1300,6 @@ sub read_stockholm
     }
 
     # Save unused GF lines for later parsing
-    # TODO: Unhandled DR and AU lines.
     if ( /^\#=GF/ )
     {
       push( @{ $this->{'GF_lines'} }, $_ );
@@ -1135,13 +1395,17 @@ sub read_stockholm
 
 }
 
+
 ##-------------------------------------------------------------------------##
 
 =head2
 
-  Use: toString();
+  Use: toString( $format );
 
   Create stockholm string representation of the object.
+
+      $format        : SeedAlignment::ExportComplete      [ default ]
+                       SeedAlignment::ExportHeadersOnly 
 
 =cut
 
@@ -1154,6 +1418,9 @@ sub toString
 
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
 
+  $format = SeedAlignment::ExportComplete
+      if ( !defined $format );
+
   my $retStr = "";
 
   $retStr .= "# STOCKHOLM 1.0\n";
@@ -1165,6 +1432,9 @@ sub toString
     {
       $retStr .= "#=GF DE    $line\n";
     }
+  }
+  if ( $obj->getAuthors() ) {
+    $retStr .= "#=GF AU    " . $obj->getAuthors() . "\n";
   }
   if ( $obj->getComment() )
   {
@@ -1180,6 +1450,9 @@ sub toString
   {
     $retStr .= "#=GF OC    " . $obj->getClade( $i ) . "\n";
   }
+  if ( $obj->getTSD() ) {
+    $retStr .= "#=GF TD    " . $obj->getTSD() . "\n";
+  }
   for ( my $i = 0 ; $i < $obj->citationCount() ; $i++ )
   {
     my ( $pmid, $title, $author, $journal ) = $obj->getCitation( $i );
@@ -1189,28 +1462,54 @@ sub toString
     $retStr .= "#=GF RA    $author\n" if ( $author );
     $retStr .= "#=GF RL    $journal\n" if ( $journal );
   }
-  $retStr .= "#=GF SQ    " . $obj->alignmentCount() . "\n";
-  $retStr .= "#=GC RF    " . $obj->getRfLine() . "\n"
-      if ( $obj->getRfLine() );
-
-  for ( my $i = 0 ; $i < $obj->alignmentCount() ; $i++ )
-  {
-    my ( $assemblyName, $sequenceName, $start, $end, $orient, $sequence ) =
-        $obj->getAlignment( $i );
-
-    my $id;
-    $id = "$assemblyName:" if ( $assemblyName );
-    $id .= "$sequenceName:";
-    if ( $orient eq "+" )
-    {
-      $id .= "$start-$end";
-    } else
-    {
-      $id .= "$end-$start";
-    }
-    $retStr .= "$id    $sequence\n";
+  if ( $obj->getDatabaseRef() ) {
+    $retStr .= "#=GF DR    " . $obj->getDatabaseRef() . "\n";
   }
-  $retStr .= "//\n";
+  if ( $obj->getComments() )
+  {
+    my @lines = split( /[\n\r]+/, $obj->getComments() );
+    foreach my $line ( @lines )
+    {
+      $retStr .= "#=GF CC    $line\n";
+    }
+  }
+  if ( $obj->getCuratorComments() )
+  {
+    my @lines = split( /[\n\r]+/, $obj->getCuratorComments() );
+    foreach my $line ( @lines )
+    {
+      $retStr .= "#=GF **    $line\n";
+    }
+  }
+  if ( $obj->getBuildMethod() ) {
+    $retStr .= "#=GF BM    " . $obj->getBuildMethod() . "\n";
+  }
+  if ( $format != SeedAlignment::ExportHeadersOnly ) { 
+    # These two "headers" are special as they relate directly to the MSA data.  
+    # So..let's consider these as part of the sequence data.
+    $retStr .= "#=GF SQ    " . $obj->alignmentCount() . "\n";
+    $retStr .= "#=GC RF    " . $obj->getRfLine() . "\n"
+        if ( $obj->getRfLine() );
+  
+    for ( my $i = 0 ; $i < $obj->alignmentCount() ; $i++ )
+    {
+      my ( $assemblyName, $sequenceName, $start, $end, $orient, $sequence ) =
+          $obj->getAlignment( $i );
+  
+      my $id;
+      $id = "$assemblyName:" if ( $assemblyName );
+      $id .= "$sequenceName:";
+      if ( $orient eq "+" )
+      {
+        $id .= "$start-$end";
+      } else
+      {
+        $id .= "$end-$start";
+      }
+      $retStr .= "$id    $sequence\n";
+    }
+    $retStr .= "//\n";
+  }
   return ( $retStr );
 }
 

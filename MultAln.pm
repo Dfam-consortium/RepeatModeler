@@ -1682,13 +1682,20 @@ sub _alignFromSeedAlignment {
 
     my $ID = "";
     $ID .= "$assemblyName:" if ( $assemblyName );
-    $ID .= "$sequenceName:";
-    if ( $orient eq "+" ) {
-      $ID .= "$start-$end";
-    }
-    else {
-      $ID .= "$end-$start";
-    }
+    $ID .= "$sequenceName";
+# 5/22/21 : This was taken out because roundtripping a seed alignment
+#           with IDs like 'foo:1-200' got broken down into 
+#           seqName = 'foo', start=1, end=200 above and reassembled
+#           back into 'foo:1-200' and stored in the obj as the AlignedName.
+#           When toSTK was called it appended the start/end positions
+#           and wrote out 'foo:1-200:1-200'.
+#    $ID .= "$sequenceName:";
+#    if ( $orient eq "+" ) {
+#      $ID .= "$start-$end";
+#    }
+#    else {
+#      $ID .= "$end-$start";
+#    }
     $object->setAlignedName( $l, $ID );
     $object->setAlignedSeqStart( $l, $start );
     $object->setAlignedSeqEnd( $l, $end );
@@ -3542,7 +3549,9 @@ sub _getEndStartPairs {
 =head2 toSTK()
 
   Use: $obj->toSTK( filename => "filename",
-                    includeReference => 1, header => "## foo", 
+                    includeReference => 1, 
+                    headerOverride => "",
+                    header => "## foo", 
                     id => "fullID", includeTemplate => 1 );
 
   Export the multiple alignment data to a file in the Stockholm 1.0
@@ -3574,11 +3583,10 @@ sub toSTK {
   }
 
   # Print header
-  print $OUT "# STOCKHOLM 1.0\n";
-  print $OUT "#=GF ID $id\n";
   if ( $parameters{'includeTemplate'} ) {
-
     # Print Dfam variant
+    print $OUT "# STOCKHOLM 1.0\n";
+    print $OUT "#=GF ID $id\n";
     print $OUT "#=GF DE My favorite ERVL ~:Title\n";
     print $OUT "#=GF AU Foobar Jones ~:Author\n";
     print $OUT "#=GF TP LTR/ERVL ~:Classification\n";
@@ -3598,23 +3606,31 @@ sub toSTK {
     print $OUT
 "#=GF ** BufferStages: 3[1-2], 5[3-6], 5 ~: 'stage'[start-end] or just 'stage'\n";
     print $OUT "#=GF ** HC: CACTACCCCC ~: Handbuilt consensus\n";
-  }
-  else {
+    print $OUT "#=GF BM RepeatModeler/MultAln\n";
+  }elsif ( $parameters{'headerOverride'} ) {
+    # NOTE: This must include all the minimal Stockholm fields no validation is
+    #       performed here.  Also this must not include the "GF SQ" or "GF RF" fields
+    #       as these are MSA specific and will be attached below.
+    print $OUT $parameters{'headerOverride'};
+  }else {
+    print $OUT "# STOCKHOLM 1.0\n";
+    print $OUT "#=GF ID $id\n";
     print $OUT "#=GF CC refLength="
         . $object->getGappedReferenceLength()
         . " refName="
         . $object->getReferenceName() . "\n";
+    print $OUT "#=GF BM RepeatModeler/MultAln\n";
   }
-  print $OUT "#=GF BM RepeatModeler/MultAln\n";
 
-  my $numSeqs = $object->getNumAlignedSeqs();
-  $numSeqs += 1 if ( defined $parameters{'includeReference'} );
-  print $OUT "#=GF SQ $numSeqs\n";
-
+  # Extra header details
   if ( $parameters{'header'} ) {
     print $OUT "$parameters{'header'}";
     print $OUT "\n" if ( $parameters{'header'} !~ /.*[\n\r]$/ );
   }
+
+  my $numSeqs = $object->getNumAlignedSeqs();
+  $numSeqs += 1 if ( defined $parameters{'includeReference'} );
+  print $OUT "#=GF SQ $numSeqs\n";
 
   # Generate identifiers and find max length
   my @ids = ();
@@ -3694,7 +3710,7 @@ sub toSTK {
        || defined $parameters{'includeReferenceNoPrefix'} )
   {
     $seq = $object->getReferenceSeq();
-    $seq =~ s/-/./g;
+    $seq =~ s/[-\s]/./g;
 
     my $name = shift @ids;
     if ( length( $name ) <= $maxNameLen ) {

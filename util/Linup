@@ -40,8 +40,9 @@ Linup - Display or convert MSA into various formats
 =head1 SYNOPSIS
 
   Linup [-version] [-i] [-matrix <matrix_file>
-                        [-cgParam #] [-taParam # ] [-cgTransParam #] ]
-                        [ -trimLeft # | -trimRight # | -revcomp ] 
+                          [-cgParam #] [-taParam # ] [-cgTransParam #]
+                        ]
+                        [[[-trimLeft #] [-trimRight #]] | -revcomp] 
                         [-name familyname]
                         [-normalizeCoord] [-showScore] 
                         [-includeFlanking # -genome <2bit_file>]
@@ -303,6 +304,7 @@ open IN, "<$inputFile" or die "Could not open $inputFile for reading!\n";
 my $maxLines = 10000;
 my $fileType = "Unknown";
 my $foundFastaHdr = 0;
+my $foundConsensusHdr = 0;
 while ( <IN> )
 {
   next if (    /^\s*$/ 
@@ -321,6 +323,13 @@ while ( <IN> )
   if ( /^\s*\d+\s+[\d\.]+\s+[\d\.]+\s+[\d\.]+\s+\S+\s+\d+\s+\d+\s+\(\d+\)/ )
   {
     $fileType = "crossmatch";
+    last;
+  }
+  if ( /^consensus\s+\d+\s+\S+\s+\d+\s*$/ ) {
+    $foundConsensusHdr = 1;
+  }
+  if ( $foundConsensusHdr && /^ref:\s+/ ) {
+    $fileType = "linup";
     last;
   }
   $foundFastaHdr = 1 if ( /^>\S+.*/ );
@@ -355,6 +364,7 @@ if ( $fileType eq "Unknown" )
 }
 
 my $mAlign;
+my $seedAlign;
 if ( $fileType eq "crossmatch" )
 {
   my $resultCollection =
@@ -394,7 +404,7 @@ if ( $fileType eq "crossmatch" )
 } elsif ( $fileType eq "stockholm" )
 {
   open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
-  my $seedAlign = SeedAlignment->new();
+  $seedAlign = SeedAlignment->new();
   $seedAlign->read_stockholm( $IN );
   close $IN;
   $mAlign = MultAln->new( seedAlignment => $seedAlign );
@@ -458,6 +468,57 @@ if ( $fileType eq "crossmatch" )
 }elsif ( $fileType eq "malign" ){
   $mAlign = MultAln->new();
   $mAlign = $mAlign->serializeIN( $inputFile );
+}elsif ( $fileType eq "linup" ) {
+  open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
+  # Linup format
+  my %seqHash = ();
+  while (<$IN>) {
+    next if ( /^(consensus|ref:)\s+/ );
+    if ( /^(\S+)\s+(\d+)\s(.*)\s\s\s\s(\d+)\s*$/ ) 
+    {
+      my $id = $1;
+      my $start = $2;
+      my $seq =$3;
+      my $end = $4;
+      warn "Oops end is less than start ( $start - $end )\n";
+      if ( exists $seqHash{$id} ) {
+        $seqHash{$id}->{'start'} = $start if ( $seqHash{$id}->{'start'} > $start );
+        $seqHash{$id}->{'end'} = $start if ( $seqHash{$id}->{'end'} < $end );
+        $seqHash{$id}->{'seq'} .= $seq;
+      }else {
+        $seqHash{$id} = {};
+        $seqHash{$id}->{'start'} = $start;
+        $seqHash{$id}->{'end'} = $start;
+        $seqHash{$id}->{'seq'} = $seq;
+      }
+    }
+  }
+  my @seqs;
+  foreach my $id ( keys %seqHash ) {
+    my $seq = $seqHash{$id}->{'seq'};
+    my $start = $seqHash{$id}->{'start'};
+    my $end = $seqHash{$id}->{'end'};
+    my $len = $end - $start + 1;
+    $seq =~ s/[-\s]/\./g;
+    if ( $id =~ /(\S+)\:(\d+)-(\d+)/ ) {
+      my $newStart;
+      my $newEnd;
+      my $newID;
+      if ( $2 > $3 ) {
+        # Reverse
+        $newStart = $2 - $start + 1;
+        $newEnd = $newStart - ( $len );
+      }else {
+        $newStart = $2 + $start - 1;
+        $newEnd = $newStart + ( $len );
+      }
+      $newID = $1 . ":" . $newStart . "-" . $newEnd;
+      $id = $newID;
+    }
+#print "Adding: $id $seq\n";
+    push @seqs, [ $id, $seq ];
+  }
+  $mAlign = MultAln->new( sequences => \@seqs );
 }else {
   die "Support for $fileType is not complete yet ";
 }
@@ -502,7 +563,13 @@ if ( $options{'stockholm'} )
   if ( $options{'name'} ) { 
     $mAlign->setReferenceName( $options{'name'} );
   }
-  $mAlign->toSTK( includeTemplate => $inclTempl, nuclRF => 1 );
+  if ( defined $seedAlign ) {
+    # NOTE: This doesn't provide a way to force the use of a template at this time
+    my $header = $seedAlign->toString(SeedAlignment::ExportHeadersOnly);
+    $mAlign->toSTK( headerOverride => $header, nuclRF => 1 );
+  }else {
+    $mAlign->toSTK( includeTemplate => $inclTempl, nuclRF => 1 );
+  }
 
   # TODO : streamline STK generation.  Perhaps have
   #        MultAln produce a "SeedAlignment" object.
