@@ -1671,7 +1671,6 @@ sub _alignFromSeedAlignment {
 
     # Convert "." in SeedAlignment to "-" for MultAln
     $sequence =~ s/\./\-/g;
-
     # The SeedAlignment object stores sequences with padding.  I.e
     # all sequences are the same length.  This makes it easy to
     # translate to a MultAln object because all sequences start at 0
@@ -2391,40 +2390,65 @@ sub trimAlignments {
     $rightCols--;
   }
 
-  for ( my $i = 0 ; $i < $this->getNumAlignedSeqs() ; $i++ ) {
+  # go from high to low so we may remove sequences
+  my $max = $this->getNumAlignedSeqs()-1;
+  for ( my $i = $max; $i >= 0; $i-- ) {
     my $relStart = $this->getAlignedStart( $i );
     my $relEnd   = $this->getAlignedEnd( $i );
     my $seq      = $this->getAlignedSeq( $i );
-
+    my $relCutoff = $maLen - $rightCols;
+    
     # Do the suffix first
-    if ( $relEnd >= ( $maLen - $rightCols ) ) {
-      my $pos = $relEnd - ( $maLen - $rightCols ) + 1;
-      my $trimSeq = substr( $seq, length( $seq ) - $pos, $pos );
-      substr( $seq, length( $seq ) - $pos, $pos ) = "";
-
-      #$this->setAlignedEnd( $i, $relEnd - length($trimSeq) );
-      $this->setAlignedEnd( $i, $relEnd - length( $trimSeq ) - $leftCols );
-      $trimSeq =~ s/-//g;
-      $this->setAlignedSeqEnd( $i,
-                           $this->getAlignedSeqEnd( $i ) - length( $trimSeq ) );
-    }
-    else {
+    if ( $relEnd >= $relCutoff ) {
+      # end overlaps trimming region
+      if ( $relStart < $relCutoff ) {
+        # start is outside trimming region
+        my $seqTrimLen = $relEnd - $relCutoff + 1;
+        my $trimSeq = substr( $seq, length( $seq ) - $seqTrimLen, $seqTrimLen );
+        substr( $seq, length( $seq ) - $seqTrimLen, $seqTrimLen ) = "";
+        $relEnd -= $seqTrimLen;
+        if ( $seq =~ /([^\.\s\-])([\.\s\-]+)$/ ) {
+          $seq = substr( $seq, 0, length( $seq ) - length( $2 ) );
+          $relEnd -= length($2);
+        }
+        $this->setAlignedEnd( $i, $relEnd - $leftCols );
+        $trimSeq =~ s/-//g;
+        $this->setAlignedSeqEnd( $i,
+                               $this->getAlignedSeqEnd( $i ) - length( $trimSeq ) );
+      }else {
+        # contained....must delete
+        # Don't forget that index = 0 is reserved for the reference sequence.
+        splice(@{ $this->{'alignCol'} }, $i+1, 1);
+        next;
+      }
+    }else {
       $this->setAlignedEnd( $i, $relEnd - $leftCols );
     }
 
     if ( $relStart < $leftCols ) {
-      my $pos = $leftCols - $relStart;
-      my $trimSeq = substr( $seq, 0, $pos );
-      substr( $seq, 0, $pos ) = "";
-
-      #$this->setAlignedStart( $i, $relStart + length($trimSeq) );
-      $this->setAlignedStart( $i, 0 );
-      $trimSeq =~ s/-//g;
-      $this->setAlignedSeqStart( $i,
-                         $this->getAlignedSeqStart( $i ) + length( $trimSeq ) );
-    }
-    else {
-      $this->setAlignedStart( $i, $relStart - $leftCols );
+      # start overlaps trimming region
+      if ( $relEnd >= $leftCols ) {
+        # end extends past trimming region
+        my $seqTrimLen = $leftCols - $relStart;
+        my $trimSeq = substr( $seq, 0, $seqTrimLen );
+        substr( $seq, 0, $seqTrimLen ) = "";
+        $relStart += $seqTrimLen;
+        if ( $seq =~ /^([\.\s\-]+)/ ) {
+          $relStart += length($1);
+          $seq = substr( $seq, length($1) );
+        }
+        $this->setAlignedStart( $i, $relStart-$leftCols );
+        $trimSeq =~ s/-//g;
+        $this->setAlignedSeqStart( $i,
+                           $this->getAlignedSeqStart( $i ) + length( $trimSeq ) );
+      }else {
+        # contained...must delete
+        # Don't forget that index = 0 is reserved for the reference sequence.
+        splice(@{ $this->{'alignCol'} }, $i+1, 1);
+        next;
+      }
+    }else {
+      $this->setAlignedStart( $i, $relStart-$leftCols );
     }
     $this->setAlignedSeq( $i, $seq );
   }
