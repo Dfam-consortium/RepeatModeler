@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/local/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) alignAndCallConsensus.pl
@@ -888,7 +888,9 @@ while ( 1 ) {
     unlink "$outdir/$consID.malign" if ( -e "$outdir/$consID.malign" );
   
     if ( $options{'stockholm'} ) {
-      system "$FindBin::RealBin/Linup $includeRef $outdir/$consID.out -matrix $FindBin::RealBin/../Matrices/linupmatrix -stockholm > $outdir/$consID.stk";
+      # RMH: 6/15/21 - Not sure why -matrix was provided but it no longer works without also providing cgParam
+      #system "$FindBin::RealBin/Linup $includeRef $outdir/$consID.out -matrix $FindBin::RealBin/../Matrices/linupmatrix -stockholm > $outdir/$consID.stk";
+      system "$FindBin::RealBin/Linup $includeRef $outdir/$consID.out -stockholm > $outdir/$consID.stk";
     }
   
     unless ( $options{'quiet'} ) {

@@ -2301,12 +2301,10 @@ sub getLowScoringAlignmentColumns {
   #print "RTA: " . Dumper($ruzzoTompaArr) . "\n";
   undef $ruzzoTompaArr, $intervalArr;
 
-  # Calc the average
-  my @seqPosAvg = @{$valArray};
-
-  # Find low quality columns
+  # Find low quality columns ( using block total score )
   my $inCol    = 0;
   my $colStart = -1;
+  my @seqPosAvg = @{$valArray};
   for ( my $i = 0 ; $i <= $#seqPosAvg ; $i++ ) {
     if ( $seqPosAvg[ $i ] >= $threshold ) {
       if ( $colStart == -1 ) {
@@ -2621,10 +2619,6 @@ sub getAlignmentBlock {
          && $end <= $this->getAlignedEnd( $j ) )
     {
       if ( defined $parameters{'rawSequences'} ) {
-
-        #my $seq = substr( $this->seq( $j ),
-        #                  $start - $this->start( $j ),
-        #                  $end - $start + 1 );
         my $seq = substr( $this->getAlignedSeq( $j ),
                           $start - $this->getAlignedStart( $j ),
                           $end - $start + 1 );
@@ -2633,10 +2627,6 @@ sub getAlignmentBlock {
       }
       else {
         push @results,
-
-            #substr( $this->seq( $j ),
-            #        $start - $this->start( $j ),
-            #        $end - $start + 1 );
             substr( $this->getAlignedSeq( $j ),
                     $start - $this->getAlignedStart( $j ),
                     $end - $start + 1 );
@@ -2644,7 +2634,11 @@ sub getAlignmentBlock {
     }
   }
 
-  return ( shift @results, \@results );
+  my $subRef = substr( $this->getReferenceSeq(),
+                    $start,
+                    $end - $start + 1 );
+
+  return ( $subRef, \@results );
 
 }
 
@@ -2680,7 +2674,8 @@ sub getAlignmentBlock {
 ##             [[4], [3], [1, 2, -2, 2, -2, 1, 5]]
 ##
 ##      Additionally this implementation provides the interval as a list
-##      of [start, end] lists.  For the example above:
+##      of [start, end] lists.  For the example above would be reported in 
+##      zero-based, half-open coordinates as:
 ##
 ##             [[0, 1], [2, 3], [4, 11]]
 ##        

@@ -149,7 +149,7 @@ BEGIN {
                           "POSIX",       "File::Copy",
                           "File::Path",  "Data::Dumper",
                           "Cwd",         "JSON", "JSON::PP",
-                          "File::Which", "URI",
+                          "File::Which", "URI", "Devel::Size",
                           "LWP::UserAgent", "Storable"
   );
 

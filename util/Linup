@@ -152,6 +152,7 @@ use Data::Dumper;
 use Cwd;
 use File::Spec;
 use File::Basename;
+use File::Temp qw/ tempfile tempdir /;
 
 # RepeatModeler Libraries
 use lib $FindBin::RealBin;
@@ -171,7 +172,8 @@ use FastaDB;
 
 
 my $Version    = $RepModelConfig::VERSION;
-my $ucscToolsDir = "/usr/local/bin";
+#my $ucscToolsDir = "/usr/local/bin";
+my $ucscToolsDir =  $RepModelConfig::configuration->{'UCSCTOOLS_DIR'}->{'value'};
 
 #
 # Magic numbers/constants here
