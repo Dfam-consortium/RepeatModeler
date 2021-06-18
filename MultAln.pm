@@ -2351,6 +2351,9 @@ sub getLowScoringAlignmentColumns {
         Seq4:  A-TCTG...
 
   NOTE: This currently does not include the reference in this operation.
+ 
+ If left and/or right are negative numbers, this routine will 
+ trim back to the first non-ambig consensus base.
 
 =cut
 
@@ -2370,22 +2373,56 @@ sub trimAlignments {
   my $maLen = $this->getGappedReferenceLength();
 
   if ( defined $parameters{'left'} ) {
-    while ( $leftCols <= $maLen ) {
-      my $str = substr( $consensus, 0, $leftCols );
-      $str =~ s/-//g;
-      last if ( length( $str ) == $parameters{'left'} + 1 );
-      $leftCols++;
+    if ( $parameters{'left'} > 0 ) {
+      #while ( $leftCols <= $maLen ) {
+      #  my $str = substr( $consensus, 0, $leftCols );
+      #  $str =~ s/-//g;
+      #  last if ( length( $str ) == $parameters{'left'} + 1 );
+      #  $leftCols++;
+      #}
+      #$leftCols--;
+      my $str;
+      while ( $leftCols <= $maLen ) {
+        my $cBase = substr( $consensus, $leftCols, 1 );
+        $str .= $cBase if ( $cBase ne '-' );
+        last if ( length( $str ) == $parameters{'left'} + 1 );
+        $leftCols++;
+      }
+    }else {
+      # Chew back to first non-ambig
+      my $str;
+      while ( $leftCols <= $maLen ) {
+        my $cBase = substr( $consensus, $leftCols, 1 );
+        last if ( $cBase =~ /[ACGT]/i );
+        $leftCols++;
+      }
     }
-    $leftCols--;
   }
   if ( defined $parameters{'right'} ) {
-    while ( $rightCols <= $maLen ) {
-      my $str = substr( $consensus, $maLen - $rightCols, $rightCols );
-      $str =~ s/-//g;
-      last if ( length( $str ) == $parameters{'right'} + 1 );
-      $rightCols++;
+    if ( $parameters{'right'} > 0  ) {
+      #while ( $rightCols <= $maLen ) {
+      #  my $str = substr( $consensus, $maLen - $rightCols, $rightCols );
+      #  $str =~ s/-//g;
+      #  last if ( length( $str ) == $parameters{'right'} + 1 );
+      #  $rightCols++;
+      #}
+      #$rightCols--;
+      my $str;
+      while ( $rightCols <= $maLen ) {
+        my $cBase = substr( $consensus, $maLen - $rightCols - 1, 1 );
+        $str .= $cBase if ( $cBase ne '-' );
+        last if ( length( $str ) == $parameters{'right'} + 1 );
+        $rightCols++;
+      }
+    }else {
+      # Chew back to first non-ambig
+      my $str;
+      while ( $rightCols <= $maLen ) {
+        my $cBase = substr( $consensus, $maLen - $rightCols - 1, 1 );
+        last if ( $cBase =~ /[ACGT]/i );
+        $rightCols++;
+      }
     }
-    $rightCols--;
   }
 
   # go from high to low so we may remove sequences
@@ -2458,6 +2495,7 @@ sub trimAlignments {
          )
   );
   $this->resetGappedReferenceLength();
+  return( $leftCols, $rightCols );
 }
 
 # New method added 3/15/21 -- needs to be ported to Python object

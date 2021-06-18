@@ -42,7 +42,7 @@ Linup - Display or convert MSA into various formats
   Linup [-version] [-i] [-matrix <matrix_file>
                           [-cgParam #] [-taParam # ] [-cgTransParam #]
                         ]
-                        [[[-trimLeft #] [-trimRight #]] | -revcomp] 
+                        [[[-trimLeft #] [-trimRight #] [-trimAmbig]] | -revcomp] 
                         [-name familyname]
                         [-normalizeCoord] [-showScore] 
                         [-includeFlanking # -genome <2bit_file>]
@@ -127,6 +127,11 @@ Serialize the state of the MultAln object to file.  May be read
 back in as input at a later time or used to by utilities that 
 support MultAln.
 
+=item -trimLeft # | -trimRight #
+
+Trim the left or right side of the MSA by provided number of 
+consensus bases ( not alignment columns ).  
+
 =back
 
 =head1 SEE ALSO
@@ -204,6 +209,7 @@ my @getopt_args = (
                     '-name=s',
                     '-trimLeft=s',
                     '-trimRight=s',
+                    '-trimAmbig',
                     '-normalizeCoord',
                     '-matrix=s',
                     '-revcomp',
@@ -534,6 +540,12 @@ if ( $trimLeft || $trimRight )
 {
   print STDERR "Trimming alignment: left = $trimLeft, right = $trimRight\n";
   $mAlign->trimAlignments( left => $trimLeft, right => $trimRight );
+}
+if ( exists $options{'trimAmbig'} ) {
+  my ($ambigLeft, $ambigRight) = $mAlign->trimAlignments( left => -1, right => -1 );
+  if ( $ambigLeft > 0 || $ambigRight > 0 ) {
+    print STDERR "Ambiguous edges trimmed: left = $ambigLeft, right = $ambigRight\n";
+  }
 }
 if ( defined $options{'normalizeCoord'} ) {
     $mAlign->normalizeSeqRefs();
