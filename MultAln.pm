@@ -3735,6 +3735,14 @@ sub toSTK {
     $maxNameLen = 255;
   }
 
+  # RMH: This needs revisiting.  The concept of a transitive alignment
+  #      with the reference being special ( e.g. a highly curated consensus )
+  #      where the occupancy of the reference should be preserved despite what
+  #      the MSA would indicate if a consensus is called.  This opposed to
+  #      the MSA *is* authoritative and the RF line should be drawn from
+  #      the derived consensus.  Dfam 1.x used the former while later familes
+  #      employ the later.
+  #
   # Print out the reference using the #=GC RF line
   my $seq = $object->getReferenceSeq();
 

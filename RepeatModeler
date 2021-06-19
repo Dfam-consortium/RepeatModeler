@@ -407,16 +407,46 @@ else {
   $dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
 }
 
+# Initialize working directory and logging
+my $tmpDir;
+my $LOG;
+if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
+  $tmpDir =  abs_path($options{'recoverDir'});
+  open $LOG, ">>", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing (appending)!\n";
+}else {
+  #
+  # Create temp directory
+  #
+  my @tmpDirPath =
+      ( getcwd(), ( File::Spec->splitpath( $options{'database'} ) )[ 1 ] );
+
+  if ( -d $options{'dir'} ) {
+    $tmpDir = $options{'dir'};
+  }
+  else {
+    $tmpDir = createTempDir( \@tmpDirPath );
+  }
+  open $LOG, ">", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing!\n";
+}
+
+# print to screen and log
+sub log_print {
+  my $string = shift;
+  print "$string";
+  print $LOG "$string";
+}
+
 #
 # Print greeting
 #
 my $title = "RepeatModeler Version $version";
-print "$title\n";
-print "=" x length( $title ) . "\n";
-print "Search Engine = $engine " . $searchEngineN->getVersion() . "\n";
-print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_PRGM") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . "\n";
+log_print "$title\n";
+log_print "=" x length( $title ) . "\n";
+log_print "Using output directory = $tmpDir\n";
+log_print "Search Engine = $engine " . $searchEngineN->getVersion() . "\n";
+log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_PRGM") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . "\n";
 if ( $options{'LTRStruct'} ) {
-  print "LTR Structural Analysis: Enabled ( " . 
+  log_print "LTR Structural Analysis: Enabled ( " . 
       "GenomeTools " . RepModelConfig::getDependencyVersion("GENOMETOOLS_DIR") . ", " .
       "LTR_Retriever " . RepModelConfig::getDependencyVersion("LTR_RETRIEVER_DIR") . ",\n" .
       "                                   Ninja " . RepModelConfig::getDependencyVersion("NINJA_DIR") . ", " .
@@ -424,32 +454,25 @@ if ( $options{'LTRStruct'} ) {
       "                                   CD-HIT " . RepModelConfig::getDependencyVersion("CDHIT_DIR") . " )\n";
 }
 else {
-  print "LTR Structural Analysis: Disabled [use -LTRStruct to enable]\n";
+  log_print "LTR Structural Analysis: Disabled [use -LTRStruct to enable]\n";
 }
-print "Random Number Seed: $seed\n";
-print "Database = $genomeDB ";
+log_print "Random Number Seed: $seed\n";
+log_print "Database = $genomeDB ";
 
-#my %dbSeqs;    # Hash containing the names of all the DB seq IDs and their size
-#my @dbSeqIDArray = ();
 my $dbSize       = 0;
 my @contigSizes  = ();
 while ( $dbIndex =~ />?(\S+)\s+(\d+)\s*$/mg ) {
-  #print "." if ( ( $#dbSeqIDArray % 10000 ) == 0 );
   print "." if ( ( $#contigSizes % 10000 ) == 0 );
-  #$dbSeqs{$1} = $2;
   push @contigSizes,  $2;
-  #push @dbSeqIDArray, $1;
   $dbSize += $2;
 }
 undef $dbIndex;
 print "\n";
-#die "Database $genomeDB does not contain any sequences!\n"
-#    if ( keys( %dbSeqs ) == 0 );
+
 die "Database $genomeDB does not contain any sequences!\n"
     if ( scalar(@contigSizes) < 1 );
-#print "  - Sequences = " . ( $#dbSeqIDArray + 1 ) . "\n";
-print "  - Sequences = " . ( $#contigSizes + 1 ) . "\n";
-print "  - Bases = $dbSize\n";
+log_print "  - Sequences = " . ( $#contigSizes + 1 ) . "\n";
+log_print "  - Bases = $dbSize\n";
 
 if ( @contigSizes > 100 ) {
   # Should be longest to shortest for N50 calc: Fixed 20210225
@@ -463,14 +486,14 @@ if ( @contigSizes > 100 ) {
     $N50 = $contigSizes[ $i ];
     last if ( $tabSize + $contigSizes[ $i ] > $halfAssembly );
   }
-  print "  - N50 = $N50\n";
+  log_print "  - N50 = $N50\n";
 
   # Sort shortest to longest for histogram
   @contigSizes = sort { $a <=> $b } @contigSizes;
-  print "  - Contig Histogram:\n";
-  print
+  log_print "  - Contig Histogram:\n";
+  log_print
 "  Size(bp)                                                        Count\n";
-  print
+  log_print
 "  -----------------------------------------------------------------------\n";
   my @bins          = ();
   my $numBins       = 15;
@@ -500,21 +523,21 @@ if ( @contigSizes > 100 ) {
     if ( $i == $numBins - 1 ) {
       $rangeStr = "$rangeStart-$contigSizes[$#contigSizes]";
     }
-    print "  $rangeStr" . " " x ( $labelWidth - length( $rangeStr ) ) . " |";
-    print "*" x ( int( $bins[ $i ] / $markTic ) )
+    log_print "  $rangeStr" . " " x ( $labelWidth - length( $rangeStr ) ) . " |";
+    log_print "*" x ( int( $bins[ $i ] / $markTic ) )
         . " " x ( $histoWidth - int( $bins[ $i ] / $markTic ) )
         . " [ $bins[$i] ]\n";
   }
-  print "\n";
+  log_print "\n";
   undef @bins;
   if ( $N50 < 10000 ) {
-    print
+    log_print
 "  WARN: The N50 for this assembly is low ( <10,000 ).  The de novo methods\n";
-    print
+    log_print
 "        employed by RepeatModeler are intended for use with long contiguous\n";
-    print
+    log_print
 "        sequences and may not perform well with an over-abundance of short\n";
-    print "        contigs in the database.\n";
+    log_print "        contigs in the database.\n";
   }
 }
 undef @contigSizes;
@@ -549,7 +572,7 @@ else {
 #
 # Setup initial parameters
 #
-my $tmpDir;
+
 my $round = 1;
 $round = 2 if ( $options{'skipRS'} );
 my $totSampledBP = 0;
@@ -565,9 +588,6 @@ if ( $options{'skipRS'} ) {
     print "   - Increasing sample size to include end piece now = ";
     $sampleSize += ( $dbSize - ( $totSampledBP + $sampleSize ) );
     print "$sampleSize\n";
-
- #$familyCutoff = $minFamilySize;
- #print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
   }
 }
 
@@ -577,7 +597,6 @@ if ( $options{'skipRS'} ) {
 #
 if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
   my $recoverDir = $options{'recoverDir'};
-  $tmpDir = abs_path( $recoverDir );
   ## Determine highest successful round
   my $i                = 0;
   my $highestGoodRound = 0;
@@ -681,23 +700,6 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
   $sampleSize = $genomeSampleSizeMax
       if ( $sampleSize > $genomeSampleSizeMax );
 }
-else {
-
-  #
-  # Create temp directory
-  #
-  my @tmpDirPath =
-      ( getcwd(), ( File::Spec->splitpath( $options{'database'} ) )[ 1 ] );
-
-  if ( -d $options{'dir'} ) {
-    $tmpDir = $options{'dir'};
-  }
-  else {
-    $tmpDir = createTempDir( \@tmpDirPath );
-  }
-  print "Using output directory = $tmpDir\n";
-
-}
 
 #
 # Evaluate storage performance  : This program is heavily filesystem
@@ -719,11 +721,11 @@ elsif ( $throughput >= 700 && $throughput < 1000 ) {
 elsif ( $throughput >= 1000 ) {
   $performance = "excellent";
 }
-print "Storage Throughput = $performance ( "
+log_print "Storage Throughput = $performance ( "
     . sprintf( "%0.2f", $throughput )
     . " MB/s )\n";
 if ( $performance eq "poor" ) {
-  print
+  log_print
 "  - NOTE: Poor storage througput will have a large impact on RepeatModeler\n"
       . "          performance.  The low throughput observed above may be due to\n"
       . "          transient usage patterns on the system and may not reflect the\n"
@@ -775,10 +777,10 @@ while ( 1 ) {
 
   my $seqRemaining = ( $dbSize - ( $totSampledBP + $sampleSize ) );
 
-  print "\n\nRepeatModeler Round # $round\n";
-  print "========================\n";
-  print "Searching for Repeats\n";
-  print " -- Sampling from the database...\n";
+  log_print "\n\nRepeatModeler Round # $round\n";
+  log_print "========================\n";
+  log_print "Searching for Repeats\n";
+  log_print " -- Sampling from the database...\n";
 
   if (
        (
@@ -799,7 +801,7 @@ while ( 1 ) {
     #print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
     #$familyCutoff = $minFamilySize;
     if ( $options{'onlyIns'} ) {
-      print "   - Last round, lowering family cutoff to $insertMinFamilySize elements.\n";
+      log_print "   - Last round, lowering family cutoff to $insertMinFamilySize elements.\n";
       $familyCutoff = $insertMinFamilySize;
     }
   }
@@ -818,7 +820,7 @@ while ( 1 ) {
   # Sample from the input database
   my $usedBlockIndex = ();
   if ( $round == 1 ) {
-    print "   - Gathering up to $rsSampleSize bp\n";
+    log_print "   - Gathering up to $rsSampleSize bp\n";
     $usedBlockIndex = &sampleFromDB(
                                      sampleSizeMax  => $rsSampleSize,
                                      dbSourceBlocks => $dbSourceList,
@@ -831,7 +833,7 @@ while ( 1 ) {
   }
   else {
     if ( $options{'onlyIns'} ) {
-      print "   - Gathering up to $sampleSize bp ( with replacement )\n";
+      log_print "   - Gathering up to $sampleSize bp ( with replacement )\n";
       &sampleFromDB(
                      sampleSizeMax   => $sampleSize,
                      dbSourceBlocks  => $dbSourceList,
@@ -846,7 +848,7 @@ while ( 1 ) {
       &fisherYatesShuffle( $dbSourceList );
     }
     else {
-      print "   - Gathering up to $sampleSize bp\n";
+      log_print "   - Gathering up to $sampleSize bp\n";
       &sampleFromDB(
                      sampleSizeMax  => $sampleSize,
                      dbSourceBlocks => $dbSourceList,
@@ -875,13 +877,13 @@ while ( 1 ) {
   #print "sampleContigs = " . total_size(\%sampleContigs) . "\n";
 
   if ( $round == 1 ) {
-    print "   - Final Sample Size = $actualGenomeSampleSize "
+    log_print "   - Final Sample Size = $actualGenomeSampleSize "
         . "bp ( $preMaskNonAmbigBases non ambiguous )\n";
-    print "   - Num Contigs Represented = "
+    log_print "   - Num Contigs Represented = "
         . scalar( keys( %sampleContigs ) ) . "\n";
-    print "   - Sequence extraction : " . elapsedTime( 3 ) . "\n";
+    log_print "   - Sequence extraction : " . elapsedTime( 3 ) . "\n";
     elapsedTime("repeatscout");
-    print " -- Running RepeatScout on the sequences...\n";
+    log_print " -- Running RepeatScout on the sequences...\n";
     &runRepeatScout(
                      workDir     => $roundTmpDir,
                      rscoutPath  => $RSCOUT_DIR,
@@ -890,7 +892,7 @@ while ( 1 ) {
                      fastaFile   => $sampleFastaFile,
                      seqSize     => $actualGenomeSampleSize
     );
-    print "   - RepeatScout: " . elapsedTime( "repeatscout" ) . "\n";
+    log_print "   - RepeatScout: " . elapsedTime( "repeatscout" ) . "\n";
 
     if ( -s "$sampleFastaFile.rscons.filtered" ) {
       system( "cp $sampleFastaFile.rscons.filtered $roundConsensiFile" );
@@ -926,7 +928,7 @@ while ( 1 ) {
     }
     else {
       system( "touch $sampleFastaFile.rscons.filtered" );
-      print "NOTE: RepeatScout did not return any models.\n";
+      log_print "NOTE: RepeatScout did not return any models.\n";
     }
     $round++;
 
@@ -941,10 +943,10 @@ while ( 1 ) {
   #print "engine size = " . total_size($engine) . "\n";
   #print "usedBlockIndex= " . total_size($usedBlockIndex) . "\n";
 
-  print "   - Sequence extraction : " . elapsedTime( 3 ) . "\n";
+  log_print "   - Sequence extraction : " . elapsedTime( 3 ) . "\n";
 
   # TRF sample
-  print " -- Running TRFMask on the sequence...\n";
+  log_print " -- Running TRFMask on the sequence...\n";
 
   # copy sample file for mask processing
   system( "cp $sampleFastaFile $roundTmpDir/tmpSample.fa" );
@@ -953,11 +955,11 @@ while ( 1 ) {
   if ( -s "$roundTmpDir/tmpSample.fa.masked" ) {
     system( "mv $roundTmpDir/tmpSample.fa.masked $roundTmpDir/tmpSample.fa" );
   }
-  print "   - TRFMask time " . elapsedTime( 3 ) . "\n";
+  log_print "   - TRFMask time " . elapsedTime( 3 ) . "\n";
 
   # Mask repeats from previous round*s* - if there are any
   if ( -s $consensiFile ) {
-    print " -- Masking repeats from the previous rounds...\n";
+    log_print " -- Masking repeats from the previous rounds...\n";
 
     $searchEngineN->setMinScore( 250 );
     $searchEngineN->setGenerateAlignments( 1 );
@@ -997,7 +999,7 @@ while ( 1 ) {
     if ( -s "$roundTmpDir/tmpSample.fa.masked" ) {
       system( "mv $roundTmpDir/tmpSample.fa.masked $roundTmpDir/tmpSample.fa" );
     }
-    print "   - TE Masking time " . elapsedTime( 3 ) . "\n";
+    log_print "   - TE Masking time " . elapsedTime( 3 ) . "\n";
 
     if ( $options{'onlyIns'} ) {
 
@@ -1050,7 +1052,7 @@ while ( 1 ) {
       }
       close OUT;
       if ( $seqsCut > 0 ) {
-        print
+        log_print
 "       Removed $seqsCut sequences from sample containing mostly Ns ( <30bp non-N blocks )...\n";
       }
     }
@@ -1069,15 +1071,15 @@ while ( 1 ) {
   }
   undef $sampleDB;
 
-  print " -- Sample Stats:\n";
-  print "       Sample Size $actualGenomeSampleSize bp\n";
-  print "       Num Contigs Represented = "
+  log_print " -- Sample Stats:\n";
+  log_print "       Sample Size $actualGenomeSampleSize bp\n";
+  log_print "       Num Contigs Represented = "
       . scalar( keys( %sampleContigs ) ) . "\n";
-  print "       Non ambiguous bp:\n";
-  print "             Initial: $preMaskNonAmbigBases bp\n";
-  print "             After Masking: $postMaskNonAmbigBases bp\n";
+  log_print "       Non ambiguous bp:\n";
+  log_print "             Initial: $preMaskNonAmbigBases bp\n";
+  log_print "             After Masking: $postMaskNonAmbigBases bp\n";
   if ( $preMaskNonAmbigBases > 0 ) {
-    print "             Masked: "
+    log_print "             Masked: "
         . sprintf(
                    "%0.2f",
                    (
@@ -1089,7 +1091,7 @@ while ( 1 ) {
         . " % \n";
   }
   else {
-    print "             Masked: 0\n";
+    log_print "             Masked: 0\n";
   }
 
   if ( $engine eq "abblast" ) {
@@ -1133,10 +1135,10 @@ while ( 1 ) {
   }
   undef $sampleIndex;
   $totSampledBP += $sampleDBLen;
-  print " -- Input Database Coverage: $totSampledBP bp out of $dbSize bp ( "
+  log_print " -- Input Database Coverage: $totSampledBP bp out of $dbSize bp ( "
       . sprintf( "%0.2f", ( $totSampledBP / $dbSize ) * 100 )
       . " % )\n";
-  print "Sampling Time: " . elapsedTime( 2 ) . "\n";
+  log_print "Sampling Time: " . elapsedTime( 2 ) . "\n";
 
   #
   # Run all-by-other combinations
@@ -1168,7 +1170,7 @@ while ( 1 ) {
 
   my $numHSPs = 0;    # Number of High Scoring Pairs produced
   unless ( -f "$roundTmpDir/msps.out" ) {
-    print "Running all-by-other comparisons...\n";
+    log_print "Running all-by-other comparisons...\n";
     my $totalComparisons =
         ( ( $sampleDBSize * $sampleDBSize ) - $sampleDBSize ) / 2;
     my $completedComparisons = 0;
@@ -1310,12 +1312,12 @@ while ( 1 ) {
                   if ( $DEBUG );
               $batchStatus{$batchNum}->{'retry'}++;
               $batchStatus{$batchNum}->{'childPID'} = -1;
-              print "WARNING: Retrying batch ( $batchNum ) [ $retVal ]...\n";
+              log_print "WARNING: Retrying batch ( $batchNum ) [ $retVal ]...\n";
             }
             else {
               ## Too many retries.
               ## We are out of here!
-              print "\n\nFATAL ERROR: RepeatModeler giving up. One or more\n"
+              log_print "\n\nFATAL ERROR: RepeatModeler giving up. One or more\n"
                   . "batches failed!  Unfortunately this type of error\n"
                   . "cannot be recovered from. Please submit the following\n"
                   . "details to the feedback page at the repeatmasker\n"
@@ -1329,16 +1331,16 @@ while ( 1 ) {
                   . "Disk Space:\n"
                   . `df $tmpDir` . "\n";
               if ( -e "/proc/meminfo" ) {
-                print "System Memory:\n";
+                log_print "System Memory:\n";
                 open IN, "</proc/meminfo";
                 while ( <IN> ) {
-                  print if ( /Mem|Cache|Swap/ );
+                  log_print if ( /Mem|Cache|Swap/ );
                 }
                 close IN;
               }
-              print "Further details about this problem may be found in\n"
+              log_print "Further details about this problem may be found in\n"
                   . "the directory: $tmpDir\n";
-              print "\n\n";
+              log_print "\n\n";
               exit( -1 );
             }
           }
@@ -1504,7 +1506,7 @@ while ( 1 ) {
       print "Parent waiting for child to finish...\n" if ( $DEBUG );
 
     }    # MAIN BATCH LOOP
-    print "Comparison Time: "
+    log_print "Comparison Time: "
         . elapsedTime( 2 )
         . ", $numHSPs HSPs Collected\n";
   }
@@ -1563,7 +1565,7 @@ while ( 1 ) {
       $numModels += $tmpNumModels;
     }
     else {
-      print "\n  - Recon did not produce any element definitions.\n\n";
+      log_print "\n  - Recon did not produce any element definitions.\n\n";
     }
   }
 
@@ -1587,7 +1589,7 @@ while ( 1 ) {
     closedir( DIR );
   }
 
-  print "Round Time: " . elapsedTime( 1 ) . "\n";
+  log_print "Round Time: " . elapsedTime( 1 ) . "\n";
 
 # How do we proceed from here
 #
@@ -1635,9 +1637,9 @@ while ( 1 ) {
   # we don't run out of sequence.
   if ( !$options{'onlyIns'} ) {
     if ( $seqRemaining > 0 && $seqRemaining <= ( $sampleSize / 2 ) ) {
-      print "   - Increasing sample size to include end piece now = ";
+      log_print "   - Increasing sample size to include end piece now = ";
       $sampleSize += $seqRemaining;
-      print "$sampleSize\n";
+      log_print "$sampleSize\n";
     }
   }
 
@@ -1647,7 +1649,7 @@ while ( 1 ) {
 
   $round++;
 }    # Main Loop while(...
-print "\nRepeatScout/RECON discovery complete: $numModels families found\n";
+log_print "\nRepeatScout/RECON discovery complete: $numModels families found\n";
 
 ## TODO: Use the last round's masking data to re-estimate the
 ##       abundance of families found in previous rounds.
@@ -1655,8 +1657,8 @@ print "\nRepeatScout/RECON discovery complete: $numModels families found\n";
 # Optionally perform LTR structural search
 if ( $options{'LTRStruct'} ) {
   elapsedTime( 1 );
-  print "\n\nLTR Structural Analysis\n";
-  print "=======================\n";
+  log_print "\n\nLTR Structural Analysis\n";
+  log_print "=======================\n";
 
   # Save genome to sequence file
   open OUT, ">$tmpDir/tmpInputSeq"
@@ -1717,7 +1719,7 @@ if ( $options{'LTRStruct'} ) {
       #   ( for RECON/RepeatScout clusters ) or in favor of LTRPipeline in mixed
       #   clusters.  Keep all LtrPipeline produced results.
       #
-      print "  -- Clustering results with previous rounds...\n";
+      log_print "  -- Clustering results with previous rounds...\n";
 
       # 1. Combine results from both pipelines into a file
       system(
@@ -1821,8 +1823,8 @@ if ( $options{'LTRStruct'} ) {
         # TODO: Do we really want to keep this?
         #unlink("$tmpDir/cd-hit-out.clstr" );
       }
-      print "       - $rrFamCnt RepeatScout/RECON families\n";
-      print "       - $ltrFamCnt LTRPipeline families\n";
+      log_print "       - $rrFamCnt RepeatScout/RECON families\n";
+      log_print "       - $ltrFamCnt LTRPipeline families\n";
       if ( keys( %redundant_families ) ) {
         system(
                "mv $tmpDir/consensi.fa $tmpDir/consensi.fa.recon_rscout_only" );
@@ -1910,10 +1912,10 @@ if ( $options{'LTRStruct'} ) {
         }
         close IN;
         close OUT;
-        print "       - Removed "
+        log_print "       - Removed "
             . scalar( keys( %redundant_families ) )
             . " redundant LTR families.\n";
-        print "       - Final family count = "
+        log_print "       - Final family count = "
             . (
             ( $rrFamCnt + $ltrFamCnt ) - scalar( keys( %redundant_families ) ) )
             . "\n";
@@ -1921,15 +1923,15 @@ if ( $options{'LTRStruct'} ) {
     }
   }
   else {
-    print
+    log_print
 "\nWARNING: Could not create input file for LTRPipeline from $genomeDB! Continuing using\nresults from RepeatScout/RECON pipeline only.\n";
   }
-  print "LTRPipeline Time: " . elapsedTime( 1 ) . "\n";
+  log_print "LTRPipeline Time: " . elapsedTime( 1 ) . "\n";
 }
 
 elapsedTime( 1 );
 if ( $numModels > 0 ) {
-  print "\n\n";
+  log_print "\n\n";
   my $origDir = getcwd();
   chdir( $tmpDir );
   my $addlOpts = "";
@@ -1937,10 +1939,10 @@ if ( $numModels > 0 ) {
   system(   "$FindBin::RealBin/RepeatClassifier "
           . "-consensi consensi.fa -stockholm families.stk" );
   chdir( $origDir );
-  print "Classification Time: " . elapsedTime( 1 ) . "\n";
+  log_print "Classification Time: " . elapsedTime( 1 ) . "\n";
 }
 
-print "\n\nProgram Time: " . elapsedTime( "runtime" ) . "\n";
+log_print "\n\nProgram Time: " . elapsedTime( "runtime" ) . "\n";
 print "Working directory:  $tmpDir\n";
 print "may be deleted unless there were problems with the run.\n";
 
@@ -1949,11 +1951,15 @@ if ( $numModels > 0 ) {
       if ( -s "$tmpDir/consensi.fa.classified" );
   system( "cp $tmpDir/families-classified.stk $genomeDB-families.stk" )
       if ( -s "$tmpDir/families-classified.stk" );
+  system( "cp $tmpDir/rmod.log $genomeDB-rmod.log" )
+      if ( -s "$tmpDir/rmod.log" );
   print "\nThe results have been saved to:\n";
   print
 "  $genomeDB-families.fa  - Consensus sequences for each family identified.\n";
   print
-"  $genomeDB-families.stk - Seed alignments for each family identified.\n\n";
+"  $genomeDB-families.stk - Seed alignments for each family identified.\n";
+  print
+"  $genomeDB-rmod.log     - Execution log.  Useful for reproducing results.\n\n";
   print "The RepeatModeler stockholm file is formatted so that it can\n";
   print
 "easily be submitted to the Dfam database.  Please consider contributing\n";
