@@ -10,7 +10,7 @@
 ##      the consensus models of putative repeats.
 ##
 #******************************************************************************
-#* Copyright (C) Institute for Systems Biology 2008-2019 Developed by
+#* Copyright (C) Institute for Systems Biology 2008-2021 Developed by
 #* Arian Smit and Robert Hubley.
 #*
 #* This work is licensed under the Open Source License v2.1.  To view a copy
@@ -90,7 +90,7 @@ RepeatMasker, RMBlast
 
 =head1 COPYRIGHT
 
- Copyright 2005-2019 Institute for Systems Biology
+ Copyright 2005-2021 Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -179,7 +179,9 @@ my @getopt_args = (
                     '-LTRMaxSeqLen=i',
                     '-onlyRS',
                     '-skipRS',
-                    '-onlyIns',
+                    '-onlyIns',                     # For internal use only
+                    '-recon_batch_size=i',          # For debugging only 
+                    '-recon_sample_size_start=i',   # For debugging only
 );
 
 # Add configuration parameters as additional command-line options
@@ -242,14 +244,14 @@ my $RMBLASTN_PRGM   = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $XDFORMAT_PRGM   = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
 my $XDGET_PRGM      = $config->{'ABBLAST_DIR'}->{'value'} . "/xdget";
 my $WUBLASTN_PRGM   = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
-my $TRF_PRGM        = $config->{'TRF_PRGM'}->{'value'};
+my $TRF_DIR         = $config->{'TRF_DIR'}->{'value'};
 my $RSCOUT_DIR      = $config->{'RSCOUT_DIR'}->{'value'};
 my $RECON_DIR       = $config->{'RECON_DIR'}->{'value'};
 my $CDHIT_DIR       = $config->{'CDHIT_DIR'}->{'value'};
 
 ## validate params
 # Minimal commands
-foreach my $param ( "RMBLAST_DIR", "TRF_PRGM", "RSCOUT_DIR", "RECON_DIR" ) {
+foreach my $param ( "RMBLAST_DIR", "TRF_DIR", "RSCOUT_DIR", "RECON_DIR" ) {
   if ( !RepModelConfig::validateParam( $param ) ) {
     die
 "\n  RepeatModeler dependency missing or incorrectly set for $param!\n  Rerun ./configure or check your command line to ensure that RepeatModeler\n  has access to and the correct version of this dependency.\n\n";
@@ -360,6 +362,13 @@ $rsSampleSize = $options{'rsSampleSize'} if ( $options{'rsSampleSize'} );
 $genomeSampleSizeMax = $options{'genomeSampleSizeMax'}
     if ( $options{'genomeSampleSizeMax'} );
 
+#
+# Override RECON parameters
+#   - internal use only
+#
+$fragmentSize = $options{'recon_batch_size'} if ( exists $options{'recon_batch_size'} );
+$reconSampleSizeStart = $options{'recon_sample_size_start'} if ( exists $options{'recon_sample_size_start'} );
+
 # The normal RECON/RS family size minimum for which
 #   we are interested in building models for.
 my $recommendedFamilySize = 15;
@@ -444,7 +453,7 @@ log_print "$title\n";
 log_print "=" x length( $title ) . "\n";
 log_print "Using output directory = $tmpDir\n";
 log_print "Search Engine = $engine " . $searchEngineN->getVersion() . "\n";
-log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_PRGM") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . "\n";
+log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_DIR") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . "\n";
 if ( $options{'LTRStruct'} ) {
   log_print "LTR Structural Analysis: Enabled ( " . 
       "GenomeTools " . RepModelConfig::getDependencyVersion("GENOMETOOLS_DIR") . ", " .
@@ -887,7 +896,7 @@ while ( 1 ) {
     &runRepeatScout(
                      workDir     => $roundTmpDir,
                      rscoutPath  => $RSCOUT_DIR,
-                     trfPrgm     => $TRF_PRGM,
+                     trfPrgm     => "$TRF_DIR/trf",
                      dustmskPrgm => $DUSTMASKER_PRGM,
                      fastaFile   => $sampleFastaFile,
                      seqSize     => $actualGenomeSampleSize

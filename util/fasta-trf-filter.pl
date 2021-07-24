@@ -96,7 +96,7 @@ my $Version = $RepModelConfig::VERSION;
 # Paths
 #
 my $config           = $RepModelConfig::configuration;
-my $TRF_PRGM        = $config->{'TRF_PRGM'}->{'value'};
+my $TRF_PRGM        = $config->{'TRF_DIR'}->{'value'} . "/trf";
 
 #
 # Option processing

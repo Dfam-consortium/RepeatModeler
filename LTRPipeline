@@ -178,6 +178,10 @@ my $LTR_RETRIEVER_DIR = $config->{'LTR_RETRIEVER_DIR'}->{'value'};
 my $MAFFT_DIR         = $config->{'MAFFT_DIR'}->{'value'};
 my $NINJA_DIR         = $config->{'NINJA_DIR'}->{'value'};
 my $GENOMETOOLS_DIR   = $config->{'GENOMETOOLS_DIR'}->{'value'};
+my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
+my $RMBLAST_DIR = $config->{'RMBLAST_DIR'}->{'value'};
+my $CDHIT_DIR = $config->{'CDHIT_DIR'}->{'value'};
+my $TRF_DIR = $config->{'TRF_DIR'}->{'value'};
 
 my $ltrSeqLimit = 10000;
 $ltrSeqLimit = $options{'LTRSeqLimit'} if ( $options{'LTRSeqLimit'} );
@@ -594,8 +598,15 @@ sub runLtrRetriever {
   my $full_seqFile = File::Spec->rel2abs( $seqFile );
   symlink( $full_seqFile, "$tmpDir/seq.fa" );
   my $full_annotFile = File::Spec->rel2abs( $annotFile );
-  my $cmd            =
-"cd $tmpDir; $binDir/LTR_retriever -genome seq.fa -inharvest $full_annotFile -noanno";
+  # NOTE: in LTR_retriever 2.9.0 trf_path is not the path
+  #       to the directory containing the binary but rather 
+  #       the full path to the binary itself.
+  my $cmd            = "cd $tmpDir; $binDir/LTR_retriever " .
+                       " -repeatmasker $REPEATMASKER_DIR" .
+                       " -blastplus $RMBLAST_DIR" .
+                       " -cdhit_path $CDHIT_DIR" .
+                       " -trf_path $TRF_DIR/trf" . 
+                       " -genome seq.fa -inharvest $full_annotFile -noanno";
   if ( $threads > 1 ) {
     $cmd .= " -threads $threads";
   }
