@@ -172,12 +172,12 @@ unless ( GetOptions( \%options, @getopt_args ) )
   usage();
 }
 
-sub usage
-{
+sub usage {
   print "$0 - $Version\n";
-  exec "pod2text $0";
-  exit;
+  exec "pod2text $0 | less";
+  exit( 1 );
 }
+
 
 if ( $options{'version'} )
 {
@@ -189,7 +189,9 @@ my $aggregationMethod = "tile";
 if ( $options{'aggregation_method'} ) {
   if ( $options{'aggregation_method'} eq "cluster" ) {
     $aggregationMethod = "cluster";
-  }else{
+  }elsif ( $options{'aggregation_method'} eq "tile" ) {
+    # already default
+  }else {
     print "Unknow aggregation method $options{'aggregation_method'}, please use 'tile' or 'cluster'.\n";
   }
 }
@@ -473,7 +475,7 @@ sub clusterBlocks {
   my $matrix = shift;
 
   my @newRanges = ();
-  #Sort by start column and longest block first
+  # Sort by start column and longest block first
   my @currRanges = sort { $a->[1] <=> $b->[1] ||
                           $b->[2] <=> $a->[2] } @{$ranges};
   my $prevBlock;
@@ -659,8 +661,8 @@ sub evalMSABlock{
 
 
 sub printSequenceDiffs {
-  my $seq1 = uc(shift);
-  my $seq2 = uc(shift);
+  my $seq1 = uc(shift); # Old
+  my $seq2 = uc(shift); # New
   my $prefix = shift;
 
   # For the purposes of labeling substitutions.
@@ -706,7 +708,7 @@ sub printSequenceDiffs {
       $diffLine .= " ";
     }
   }
-  return ( $prefix.$seq1 . "\n" . $prefix.$diffLine . "\n" . $prefix.$seq2 . "\n" );
+  return ( "    Orig: " . $seq1 . "\n" . "          ".$diffLine . "\n" . "     New: ".$seq2 . "\n" );
 }
   
 ##
