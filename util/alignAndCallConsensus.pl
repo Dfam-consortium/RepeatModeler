@@ -1061,6 +1061,16 @@ while ( 1 ) {
        }
     );
     open OUT,">$outdir/$conFile.out" or die "could not open \'$conFile.out\' for writing\n";
+    print OUT "#\n";
+    print OUT "# Search Parameters:\n";
+    print OUT "#    Matrix    :  $matSpec\n";
+    print OUT "#    gapInit   :  $gapInit\n";
+    print OUT "#    insGapExt :  $insGapExt\n";
+    print OUT "#    delGapExt :  $delGapExt\n";
+    print OUT "#    minmatch  :  $minmatch\n";
+    print OUT "#    minscore  :  $minscore\n";
+    print OUT "#    bandwidth :  $bandwidth\n";
+    print OUT "#\n";
     for ( my $k = 0 ; $k < $newResultCollection->size() ; $k++ ) {
       my $resultRef = $newResultCollection->get( $k );
       print OUT "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
