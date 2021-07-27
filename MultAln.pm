@@ -3740,21 +3740,48 @@ sub toSTK {
   #      where the occupancy of the reference should be preserved despite what
   #      the MSA would indicate if a consensus is called.  This opposed to
   #      the MSA *is* authoritative and the RF line should be drawn from
-  #      the derived consensus.  Dfam 1.x used the former while later familes
+  #      the derived consensus.  Dfam 1.x used the former method while later familes
   #      employ the later.  We have adopted the convention that if "x/." are
   #      used in the RF line then it represents the occupancy of the sequence
   #      all members were aligned to.  If it includes residues it represents
   #      the called consensus on the transitive MSA.
   #
-  # Print out the reference using the #=GC RF line
-  my $seq;
-
   # NOTE: The reference sequence could have been obtained using
   #       only the alignment data.  This means that a portion of
   #       the reference sequence that is not covered by an alignemnt
   #       will have spaces in the appropriate places in the reference
-  #       sequence.  Treat these spaces as consensus positions in the
-  #       RF line. 8/21/2015
+  #       sequence.  
+  # 
+  #    eg:
+  #
+  #       consA = AGGTTGAACCA
+  #
+  #       pair1:
+  #         consA AGGT*******
+  #         seq1  AGGT
+  #
+  #       pair2:
+  #         consA ******AACCA
+  #         seq2        AACCA 
+  #
+  #      This would generate a transitive MSA like:
+  #
+  #         ref   AGGT  AACCA
+  #         seq1  AGGT
+  #         seq2        AACCA 
+  #
+  #       The "TG" in the center was not aligned to any bases fed
+  #       into MultAln and therefore the REF line cannot be 
+  #       reconstructed from the alignments alone.  We would need
+  #       to also pass in the reference sequence for this to be
+  #       guaranteed.
+  #
+  #       Until we refactor to require the reference sequence, treat
+  #       these spaces as "N" reference positions in the
+  #       RF line.  E.g in the above we would consider the reference
+  #       sequence "AGGTNNAACCA" and generate a RF line "xxxxxxxxxxx".
+  #       8/21/2015
+  my $seq;
   if ( $parameters{'consRF'} || $parameters{'nuclRF'} ) {
     # 7/26/21 : Moving towards the convention that residues in the RF line
     #           indicate that the RF data is derived from the MSA consensus
@@ -3770,6 +3797,7 @@ sub toSTK {
     $seq =~ s/ /x/g;
     $seq =~ s/[ACGTBDHVRYKMSWN]/x/ig;
   }
+  # Print out the reference using the #=GC RF line
   my $name = "#=GC RF ";
   if ( length( $name ) <= $maxNameLen ) {
     $name = $name . " " x ( $maxNameLen - length( $name ) );
@@ -4792,9 +4820,6 @@ sub buildConsensusFromArray {
     my $i = 0;
     grep $profile[ $i++ ]{$_}++, split( '', $seq );
   }
-  foreach my $i ( 0 .. $#profile ) {
-    print "col $i " . Dumper($profile[$i]) . "\n";
-  }
 
   #
   # Generate a first pass consensus
@@ -4811,8 +4836,6 @@ sub buildConsensusFromArray {
       my $score = 0;
       foreach $b ( keys %{ $profile[ $i ] } ) {
         next if ( $b eq " " );
-
-        #print "    -- tabulating $b\n" if ( $i == 235 );
         croak $CLASS
             . "::buildConsensusFromArray: Matrix alphabet doesn't include\n"
             . "three-way IUB codes: $a -> $b\n"
@@ -4821,32 +4844,25 @@ sub buildConsensusFromArray {
       }
       $nScore = $score if ( $a eq "N" );
 
-      #if ( $i == 235 )
-      #{
-      #   print "235 : $a = $score\n";
-      #}
       if ( $score > $maxScore ) {
         $n        = $a;
         $maxScore = $score;
       }
     }
     if ( $n ne "N" && $nScore == $maxScore ) {
-
-      #print "Setting $i to N\n";
       $n = "N";
     }
     $consensus .= $n;
 
-    #print "col $i ( $n ): " . Dumper($profile[$i]) . "\n";
     my $foo = $consensus;
     $foo =~ s/-//g;
-    print "col $i conspos " .length($foo).": max_base = $n max_score = $maxScore\n";
+    #print "col $i conspos " .length($foo).": max_base = $n max_score = $maxScore\n";
     push @cScore, $maxScore;
   }
-  print "precons=$consensus\n";
+  #print "precons=$consensus\n";
   my $foo = $consensus;
   $foo =~ s/-//g;
-  print "Leng = " . length($foo) . "\n";
+  #print "Leng = " . length($foo) . "\n";
 
   #
   #   go through the consensus and consider changing each dinucleotide

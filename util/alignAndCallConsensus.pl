@@ -21,6 +21,7 @@ alignAndCallConsensus.pl - Align TE consensus to a set of instances and call con
                  [-d(ivergencemax) #] [-sc(ore) #] [-mi(nmatch) #]
                  [-b(andwidth) #] [-cr(ossmatch)] [-rm(blast)]
                  [-f(inishedext) <str>] [-ma(trix) <str>]
+                 [-ex(p_pen_drop) #]
                  [-ht(ml)] [-st(ockholm)] [-q(uiet)]
                  [-re(fine)|-re(fine) #] [-fi(lter_overlap)]
                  [-inc(lude_reference)] [-outdir <val]
@@ -290,6 +291,7 @@ my @getopt_args = (
                     '-interactive|int',
                     '-prune|p=s',
                     '-html|ht',
+                    '-exp_pen_drop|ex=i',
                     '-hpad|hp=i',
                     '-quiet|q',
                     '-refine|re:s',
@@ -340,7 +342,7 @@ my $outdir = cwd;
 
 #
 # Process the consensus file:
-#    - Unless specifified default to "rep"
+#    - Unless specified default to "rep"
 #
 #    - If it contains more than one sequence we assume that we are 
 #      in a mode to compete and build several subfamilies against each
@@ -481,6 +483,11 @@ if ( ! -s "$matrixPath/$matSpec" ) {
   die "Error: Matrix parameter resolved to $matrixPath/$matSpec, which doesn't exist!\n";
 }
 
+if ( $options{'exp_pen_drop'} ) {
+  $insGapExt += $options{'exp_pen_drop'};
+  $delGapExt += $options{'exp_pen_drop'};
+}
+
 my $minmatch  = 7;
 $minmatch = $options{'minmatch'} if ( exists $options{'minmatch'} );
 
@@ -606,8 +613,12 @@ while ( 1 ) {
 
   unless ( $engine eq "crossmatch" ) {
     # Always make a database as the sequence may have changed
-    system(   "$RMBLAST_DIR/makeblastdb -blastdb_version 4 -out $conFile "
-            . "-parse_seqids -dbtype nucl -in $conFile >/dev/null 2>&1");
+    my $buildCmd = "$RMBLAST_DIR/makeblastdb -blastdb_version 4 -out $conFile "
+            . "-parse_seqids -dbtype nucl -in $conFile >/dev/null 2>&1";
+    system($buildCmd);
+    if ( ! -s "$conFile.nsq" ) {
+      die "ERROR running makeblastdb.  The full command run: $buildCmd\n";
+    }
   }
  
   my %collected = ();
@@ -848,7 +859,7 @@ while ( 1 ) {
     # order to $consID.out
     $newResultCollection->sort(
       sub ($$) {
-        $_[ 0 ]->getQueryName() <=> $_[ 1 ]->getQueryName() ||
+        $_[ 0 ]->getQueryName() cmp $_[ 1 ]->getQueryName() ||
         $_[ 0 ]->getQueryStart() <=> $_[ 1 ]->getQueryStart() ||
         $_[ 1 ]->getQueryEnd() <=> $_[ 0 ]->getQueryEnd();
        }
@@ -1044,7 +1055,7 @@ while ( 1 ) {
 
     $newResultCollection->sort(
       sub ($$) {
-        $_[ 0 ]->getQueryName() <=> $_[ 1 ]->getQueryName() ||
+        $_[ 0 ]->getQueryName() cmp $_[ 1 ]->getQueryName() ||
         $_[ 0 ]->getQueryStart() <=> $_[ 1 ]->getQueryStart() ||
         $_[ 1 ]->getQueryEnd() <=> $_[ 0 ]->getQueryEnd();
        }
