@@ -580,9 +580,9 @@ if ( $options{'stockholm'} )
   if ( defined $seedAlign ) {
     # NOTE: This doesn't provide a way to force the use of a template at this time
     my $header = $seedAlign->toString(SeedAlignment::ExportHeadersOnly);
-    $mAlign->toSTK( headerOverride => $header, nuclRF => 1 );
+    $mAlign->toSTK( headerOverride => $header, consRF => 1 );
   }else {
-    $mAlign->toSTK( includeTemplate => $inclTempl, nuclRF => 1 );
+    $mAlign->toSTK( includeTemplate => $inclTempl, consRF => 1 );
   }
 
   # TODO : streamline STK generation.  Perhaps have

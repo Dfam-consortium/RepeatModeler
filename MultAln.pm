@@ -3741,10 +3741,13 @@ sub toSTK {
   #      the MSA would indicate if a consensus is called.  This opposed to
   #      the MSA *is* authoritative and the RF line should be drawn from
   #      the derived consensus.  Dfam 1.x used the former while later familes
-  #      employ the later.
+  #      employ the later.  We have adopted the convention that if "x/." are
+  #      used in the RF line then it represents the occupancy of the sequence
+  #      all members were aligned to.  If it includes residues it represents
+  #      the called consensus on the transitive MSA.
   #
   # Print out the reference using the #=GC RF line
-  my $seq = $object->getReferenceSeq();
+  my $seq;
 
   # NOTE: The reference sequence could have been obtained using
   #       only the alignment data.  This means that a portion of
@@ -3752,13 +3755,18 @@ sub toSTK {
   #       will have spaces in the appropriate places in the reference
   #       sequence.  Treat these spaces as consensus positions in the
   #       RF line. 8/21/2015
-  $seq =~ s/-/./g;
-  if ( $parameters{'nuclRF'} ) {
-    # 3/27/2020 - TODO: Consider why gaps like this exist in the first place.
+  if ( $parameters{'consRF'} || $parameters{'nuclRF'} ) {
+    # 7/26/21 : Moving towards the convention that residues in the RF line
+    #           indicate that the RF data is derived from the MSA consensus
+    #           rather than the transitive reference.
+    $seq = $object->consensus();
+    $seq =~ s/-/./g;
     $seq =~ s/ /N/g;
     $seq = uc( $seq );
   }
   else {
+    $seq = $object->getReferenceSeq();
+    $seq =~ s/-/./g;
     $seq =~ s/ /x/g;
     $seq =~ s/[ACGTBDHVRYKMSWN]/x/ig;
   }
@@ -4784,6 +4792,9 @@ sub buildConsensusFromArray {
     my $i = 0;
     grep $profile[ $i++ ]{$_}++, split( '', $seq );
   }
+  foreach my $i ( 0 .. $#profile ) {
+    print "col $i " . Dumper($profile[$i]) . "\n";
+  }
 
   #
   # Generate a first pass consensus
@@ -4827,8 +4838,15 @@ sub buildConsensusFromArray {
     $consensus .= $n;
 
     #print "col $i ( $n ): " . Dumper($profile[$i]) . "\n";
+    my $foo = $consensus;
+    $foo =~ s/-//g;
+    print "col $i conspos " .length($foo).": max_base = $n max_score = $maxScore\n";
     push @cScore, $maxScore;
   }
+  print "precons=$consensus\n";
+  my $foo = $consensus;
+  $foo =~ s/-//g;
+  print "Leng = " . length($foo) . "\n";
 
   #
   #   go through the consensus and consider changing each dinucleotide
