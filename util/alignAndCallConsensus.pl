@@ -20,6 +20,7 @@ alignAndCallConsensus.pl - Align TE consensus to a set of instances and call con
   alignAndCallConsensus.pl -c(onsensus) <*.fa> -e(lements) <*.fa> | -de(faults)
                  [-d(ivergencemax) #] [-sc(ore) #] [-mi(nmatch) #]
                  [-b(andwidth) #] [-cr(ossmatch)] [-rm(blast)]
+                 [-mas(klevel) #]
                  [-f(inishedext) <str>] [-ma(trix) <str>]
                  [-ex(p_pen_drop) #]
                  [-ht(ml)] [-st(ockholm)] [-q(uiet)]
@@ -157,6 +158,12 @@ The minimum word size for the alignment algorithm. Default: 7
 The alignment bandwidth for cross_match ( or equivalent x-drop cutoffs for rmblast )
 Default: 40
 
+=item -mas(klevel) #
+
+The masklevel parameter for rmblast/cross_match.  This controls the amount of 
+overlap between high scoring hits.
+Default: 80
+
 =item -ma(trix) <value>
 
 Default 25; If a number 14,18,20 or 25 is given the matrix ##p41g.matrix is chosen.
@@ -286,6 +293,7 @@ my @getopt_args = (
                     '-minmatch|mi=s',
                     '-score|sc=s',
                     '-stockholm|st',
+                    '-masklevel|mas=s',
                     '-outdir=s',
                     '-include_reference|inc',
                     '-interactive|int',
@@ -494,6 +502,9 @@ $minmatch = $options{'minmatch'} if ( exists $options{'minmatch'} );
 my $minscore = 200;
 $minscore = $options{'score'} if ( exists $options{'score'} );
 
+my $masklevel = 80;
+$masklevel = $options{'masklevel'} if ( exists $options{'masklevel'} );
+
 my $bandwidth = 40;
 $bandwidth = $options{'bandwidth'} if ( exists $options{'bandwidth'} );
 
@@ -561,7 +572,7 @@ unless ( $options{'quiet'} ) {
   print "\n";
   print "# Engine: $engine  Matrix: $matSpec, Bandwidth: $bandwidth,\n";
   print "#                  Minmatch: $minmatch, Minscore: $minscore,\n";
-  print "#                  Maxdiv: $maxdiv, GapInit: $gapInit,\n";
+  print "#                  Maxdiv: $maxdiv, GapInit: $gapInit, Masklevel: $masklevel\n";
   print "#                  InsGapExt: $insGapExt, DelGapExt: $delGapExt\n";
   if ( $prunecutoff > 0 ) {
     print "# Prune alignment edges where coverage is less than $prunecutoff sequences.\n";
@@ -594,8 +605,7 @@ if ( $engine eq "crossmatch" ) {
 
 $searchEngineN->setGenerateAlignments( 1 );
 $searchEngineN->setMatrix("$matrixPath/$matSpec");
-# Default for crossmatch
-$searchEngineN->setMaskLevel( 80 );
+$searchEngineN->setMaskLevel( $masklevel );
 $searchEngineN->setMinScore( $minscore );
 $searchEngineN->setGapInit( $gapInit );
 $searchEngineN->setInsGapExt( $insGapExt );

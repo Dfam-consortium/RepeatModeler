@@ -1956,9 +1956,22 @@ sub _alignFromSearchResultCollection {
   #   in the reference sequence
   #
   my @totalGaps;
-  $totalGaps[ 0 ] = 0;
-  foreach $j ( 1 .. $len ) {
-    $totalGaps[ $j ] = $totalGaps[ $j - 1 ] + $refGapPattern[ $j - 1 ];
+  my $useOldBuggyVersion = 0;
+  $useOldBuggyVersion = 1 if ( exists $parameters{'bug'} );
+  if ( $useOldBuggyVersion ) { 
+    # BUG: This one-off error was compensated for later.  But the 
+    #      consequence was that it inserted extra "-" characters 
+    #      prior to the start of the first aligned base in some
+    #      circumstances.
+    $totalGaps[ 0 ] = 0;
+    foreach $j ( 1 .. $len ) {
+      $totalGaps[ $j ] = $totalGaps[ $j - 1 ] + $refGapPattern[ $j - 1 ];
+    }
+  }else{
+    $totalGaps[ 0 ] = $refGapPattern[0];
+    foreach $j ( 1 .. $len ) {
+      $totalGaps[ $j ] = $totalGaps[ $j - 1 ] + $refGapPattern[ $j ];
+    }
   }
 
   for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ ) {
@@ -1973,10 +1986,12 @@ sub _alignFromSearchResultCollection {
       my $n = substr( $result->$instSeq(), $j, 1 );
       my $a = substr( $result->$refSeq(),  $j, 1 );
       if ( $a ne '-' ) {
-        my $numgaps = $refGapPattern[ $k ];
-        $numgaps -= $gapPattern[ $l ][ $k ]
-            if ( defined $gapPattern[ $l ][ $k ] );
-        $seq .= '-' x $numgaps;
+        if ( $useOldBuggyVersion || ($j > 0 && $j < $len) ) {
+          my $numgaps = $refGapPattern[ $k ];
+          $numgaps -= $gapPattern[ $l ][ $k ]
+              if ( defined $gapPattern[ $l ][ $k ] );
+          $seq .= '-' x $numgaps;
+        }
         $k++;
       }
       $seq .= $n;
@@ -4132,7 +4147,9 @@ sub printAlignments {
   $showScore = 1 if ( $parameters{'showScore'} );
 
   my $consensus = "";
+  my $maxIDLen    = 0;
   if ( $parameters{'showCons'} ) {
+    $maxIDLen  = length("consensus");
     $consensus = $object->consensus( inclRef => $inclRef );
   }
 
@@ -4143,7 +4160,8 @@ sub printAlignments {
     } ( 0 .. ( $object->getNumAlignedSeqs() - 1 ) );
   }
 
-  my $maxIDLen    = length( $object->getReferenceName() );
+  $maxIDLen    = length( $object->getReferenceName() )
+    if ( $maxIDLen < length( $object->getReferenceName() ) );
   my $maxCoordLen = 0;
   my @seqCoordIdx = ();
   foreach my $i ( @sortedIndexes ) {
@@ -4841,6 +4859,7 @@ sub buildConsensusFromArray {
             . "three-way IUB codes: $a -> $b\n"
             if ( !defined $matrix_r->{ $a . $b } );
         $score += $profile[ $i ]{$b} * $matrix_r->{ $a . $b };
+        #if ( $i == 3 ) { print " profile[]{$b} = $profile[ $i ]{$b} and matrix_r{$a $b} = " . $matrix_r->{ $a . $b } . "\n"; }
       }
       $nScore = $score if ( $a eq "N" );
 
@@ -4854,20 +4873,21 @@ sub buildConsensusFromArray {
     }
     $consensus .= $n;
 
-    my $foo = $consensus;
-    $foo =~ s/-//g;
+    #my $foo = $consensus;
+    #$foo =~ s/-//g;
     #print "col $i conspos " .length($foo).": max_base = $n max_score = $maxScore\n";
     push @cScore, $maxScore;
   }
   #print "precons=$consensus\n";
-  my $foo = $consensus;
-  $foo =~ s/-//g;
+  #my $foo = $consensus;
+  #$foo =~ s/-//g;
   #print "Leng = " . length($foo) . "\n";
 
   #
   #   go through the consensus and consider changing each dinucleotide
   #   to a 'CG'
   #
+  #print "Consensus = $consensus\n";
 FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
     next if ( substr( $consensus, $i, 1 ) eq '-' );
     my $CGscore = 0;
@@ -4883,6 +4903,7 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
       last FLOOP if ( $k >= length( $consensus ) );
     }
     my $consDNRight = substr( $consensus, $k, 1 );
+    #print "cons: $consDNLeft$consDNRight\n";
     foreach ( @{$sequences} ) {
       my $j = $i;
       next if ( $j >= length( $_ ) );
@@ -4950,13 +4971,13 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
       }
       elsif ( $hitDN eq "AA" || $hitDN eq "GA" ) {
         $CGscore += $CGTransParam + ( $matrix_r->{ "C" . $hitDNLeft } );
-
         # same as above
       }
       else {
         $CGscore += $matrix_r->{ "C" . $hitDNLeft };
         $CGscore += $matrix_r->{ "G" . $hitDNRight };
       }
+      #print " -- hitDN=$hitDN CGScore = $CGscore dnScore =  $dnScore\n";
     }
     if ( $CGscore > $dnScore ) {
       substr( $consensus, $i, 1 ) = 'C';

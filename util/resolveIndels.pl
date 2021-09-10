@@ -41,6 +41,7 @@ resolveIndels - Remove rare indels in the MSA consensus
                  [-min_copy #]
                  [-min_ratio #]
                  [-cons <output consensus filename>]
+                 [-interactive]
                  -msa <Linup *.ali|*.fasta|*.multaln|*.out>
 
 =head1 DESCRIPTION
@@ -157,6 +158,7 @@ my @getopt_args = (
                     '-aggregation_method=s',
                     '-ruzzo_tompa_threshold=s',
                     '-discrete_windows=s',
+                    '-interactive',
                     '-window_min=s',
                     '-window_max=s',
                     '-min_gap=s',
@@ -272,6 +274,20 @@ my $verbose = 1;
 my $mAlign = openAsMultAln( $inputFile );
 my $cons = $mAlign->consensus();
 
+# Create an array to determine consensus position from msa column
+# in 1-based coordinates.
+#   ie.
+#              cons: A--GTTA-TTT--
+#      msaToConsPos: 1112345567888
+#
+my @msaToConPos = ();
+my $cIdx = 1;
+for ( my $i=0; $i < length($cons); $i++ ) {
+  my $char = substr($cons,$i,1);
+  $cIdx++ if ( $char ne "-" );
+  push @msaToConPos, $cIdx;
+}
+
 if ( $verbose ) {
   print STDERR "##\n";
   print STDERR "## resolveIndels.pl\n";
@@ -331,7 +347,7 @@ if ( $method eq "ruzzo_tompa" ) {
   $ranges = &identifyUnstableBlockerWindows( $mAlign, \@windowSizes, $copymin, $ratio, \%matrix );
 }
 
-# Sort by start position
+# Sort by ratio position
 my @sortedRanges = sort { $b->[0] <=> $a->[0] } @{$ranges};
 
 # Just print them out
@@ -354,25 +370,68 @@ if ( $aggregationMethod eq "tile" ) {
   }else {
     print "Tiling Path: max overlap" . abs($minSep) . "\n";
   }
-  print "  Ratio   Range      Consensus\n";
-  print "  -------------------------------\n";
   foreach my $range ( @sortedRanges ) {
     my $overlap = 0;
+    my $rangeID = 0;
     foreach my $existingRange ( @tilingPath ) {
+      $rangeID++;
       if ( ( $range->[1] >= $existingRange->[1]-$minSep && $range->[1] <= $existingRange->[2]+$minSep ) ||
            ( $range->[2] >= $existingRange->[1]-$minSep && $range->[2] <= $existingRange->[2]+$minSep ) ||
            ( $range->[1] < $existingRange->[1]-$minSep && $range->[2] > $existingRange->[2]+$minSep) ) {
         # Overlaps disqualify
-        $overlap = 1;
+        $overlap = $rangeID;
         last;
       }
     }
     unless ( $overlap ) {
       push @tilingPath, $range;
-      print "" . sprintf("%7.2f",$range->[0]) . " : " . $range->[1] . " - " . $range->[2] . ", " . $range->[3] . "\n";
+      push @{$range}, "*";
+      push @{$range}, scalar(@tilingPath);
+    }else {
+      push @{$range}, " ";
+      push @{$range}, $overlap;
     }
   }
+  #print "  Ratio   Range      Consensus\n";
+  #print "  -------------------------------\n";
+  #foreach my $range ( @tilingPath ) {
+  #    print "" . sprintf("%7.2f",$range->[0]) . " : " . $range->[1] . " - " . $range->[2] . ", " . $range->[3] . "\n";
+  #}
+  #print "\n";
+  # Alternate Report
+  print "  Sel? Ratio  MSA_Range  Cons_Range   Consensus\n"; 
+  print "  -------------------------------------------------------\n";
+  @sortedRanges = sort { $a->[1] <=> $b->[1] || $b->[2] <=> $a->[2] } @{$ranges};
+  my $grpIdx = 0;
+  my $minRange;
+  my $maxRange;
+  for ( my $i = 0; $i <= $#sortedRanges; $i++ ) {
+    my $range = $sortedRanges[$i];
+    
+    # Segment tilling group and look-ahead to get min/max msa col range
+    if ( $range->[5] != $grpIdx ) {
+      $minRange = 99999999;
+      $maxRange = -99999999;
+      $grpIdx = $range->[5];
+      for ( my $j = $i; $j <= $#sortedRanges; $j++ ) {
+        my $srange = $sortedRanges[$j];
+        last if ( $srange->[5] != $grpIdx );
+        $minRange = $srange->[1] if ( $srange->[1] < $minRange );
+        $maxRange = $srange->[2] if ( $srange->[2] > $maxRange );
+      }
+      my $consSegment = substr($cons,$minRange, $maxRange-$minRange+1);
+      $consSegment =~ s/-//g;
+      print "Region Consensus:        " . 
+            $msaToConPos[$minRange] .  " - " . $msaToConPos[$maxRange] . ", " .
+            "$consSegment\n";
+    }
+    print "  " . $range->[4] . " " . sprintf("%7.2f",$range->[0]) . 
+            " : " . $range->[1] . " - " . $range->[2] . 
+            ", " . $msaToConPos[$range->[1]] .  " - " . $msaToConPos[$range->[2]] . 
+            ", " . " "x($msaToConPos[$range->[1]] - $msaToConPos[$minRange]) . $range->[3] . "\n";
+  }
   print "\n";
+  
 }elsif ( $aggregationMethod eq "cluster" ) {
   # Cluster
   my $clusters = &clusterBlocks($mAlign, $ranges, 0, $copymin, $ratio, $cons, \%matrix);
@@ -388,18 +447,31 @@ if ( $aggregationMethod eq "tile" ) {
 
 # Alter the consensus
 #   - sort from high to low ranges keep range indexes valid during replacement
-#print "New Consensus = $cons\n";
 @tilingPath = sort { $a->[1] <=> $b->[1] } @tilingPath;
 for ( my $i = $#tilingPath; $i >= 0; $i-- ) {
   my $range = $tilingPath[$i];
   my $oldCons = substr($cons, $range->[1], $range->[2]-$range->[1]+1);
-  substr($cons, $range->[1], $range->[2]-$range->[1]+1) = $range->[3];
-  #print "Replacing $oldCons with " . $range->[3] . " from " . $range->[1] . " to " . $range->[2] . "\n";
-  print "Consensus Changes:\n";
   my $cOldCons = $oldCons;
   $cOldCons =~ s/-//g;
+
+  print "Consensus Change:\n";
   print "" . printSequenceDiffs($cOldCons, $range->[3], "   ");
   print "\n";
+ 
+  if ( $options{'interactive'} ) {
+    print STDERR "s(kip),d(one) or press enter to keep\n";
+    my $answer = <STDIN>;
+    while ($answer !~ /^[sd]?$/ ) {
+      print STDERR "Could not process $answer\nType 's','d' or press enter.\n";
+      $answer = <STDIN>;
+    }
+    chomp $answer;
+    last if ( $answer eq "d" );
+    next if ( $answer eq "s" );
+    substr($cons, $range->[1], $range->[2]-$range->[1]+1) = $range->[3];
+  }else {
+    substr($cons, $range->[1], $range->[2]-$range->[1]+1) = $range->[3];
+  }
 }
 $cons =~ s/-//g;
 print ">cons\n$cons\n";
@@ -653,7 +725,7 @@ sub evalMSABlock{
   {
     return ( $bestcnt, $conscnt, $newconsensus, $newlength, $ncount, $secondbestcnt, $secondbestlength);
   }else {
-    #print "bestcnt = $bestcnt ($copymin) conscnt = $conscnt ncount = $ncount  newlength = $newlength\n";
+    #print "bestcnt = $bestcnt ($copymin) conscnt = $conscnt adjustedratio = $adjustedratio ncount = $ncount  newlength = $newlength\n";
     return ( 0, 0, "", 0, 0, 0, 0 );
   }
 }
@@ -1077,13 +1149,19 @@ sub openAsMultAln{
     open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
     # Linup format
     my %seqHash = ();
+    my $blockLen = 0;
+    my $alignCols = 0;
     while (<$IN>) {
-      next if ( /^(consensus|ref:)/ );
-      if ( /^(\S+)\s+(\d+)\s(.*)\s+(\d+)\s*$/ ) 
+      next if ( /^ref:/ );
+      if ( /^consensus\s+\d+\s+(\S+)/ ){
+        $blockLen = length($1);
+        $alignCols += $blockLen;
+      }
+      if ( /^(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s*$/ ) 
       {
         my $id = $1;
         my $start = $2;
-        my $seq =$3;
+        my $seq = $3;
         my $end = $4;
         warn "Oops end is less than start ( $start - $end )\n" if ( $end < $start );
         if ( exists $seqHash{$id} ) {
@@ -1094,7 +1172,7 @@ sub openAsMultAln{
           $seqHash{$id} = {};
           $seqHash{$id}->{'start'} = $start;
           $seqHash{$id}->{'end'} = $start;
-          $seqHash{$id}->{'seq'} = $seq;
+          $seqHash{$id}->{'seq'} = ' 'x($alignCols-length($seq)) . $seq;
         }
       }
     }
@@ -1105,21 +1183,21 @@ sub openAsMultAln{
       my $end = $seqHash{$id}->{'end'};
       my $len = $end - $start + 1;
       $seq =~ s/[-\s]/\./g;
-      if ( $id =~ /(\S+)\:(\d+)-(\d+)/ ) {
-        my $newStart;
-        my $newEnd;
-        my $newID;
-        if ( $2 > $3 ) {
-          # Reverse
-          $newStart = $2 - $start + 1;
-          $newEnd = $newStart - ( $len );
-        }else {
-          $newStart = $2 + $start - 1;
-          $newEnd = $newStart + ( $len );
-        }
-        $newID = $1 . ":" . $newStart . "-" . $newEnd;
-        $id = $newID;
-      }
+      #if ( $id =~ /(\S+)\:(\d+)-(\d+)/ ) {
+      #  my $newStart;
+      #  my $newEnd;
+      #  my $newID;
+      #  if ( $2 > $3 ) {
+      #    # Reverse
+      #    $newStart = $2 - $start + 1;
+      #    $newEnd = $newStart - ( $len );
+      #  }else {
+      #    $newStart = $2 + $start - 1;
+      #    $newEnd = $newStart + ( $len );
+      #  }
+      #  $newID = $1 . ":" . $newStart . "-" . $newEnd;
+      #  $id = $newID;
+      #}
       push @seqs, [ $id, $seq ];
     }
     $mAlign = MultAln->new( sequences => \@seqs );

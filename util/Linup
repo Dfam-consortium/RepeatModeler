@@ -336,7 +336,7 @@ while ( <IN> )
   if ( /^consensus\s+\d+\s+\S+\s+\d+\s*$/ ) {
     $foundConsensusHdr = 1;
   }
-  if ( $foundConsensusHdr && /^ref:\s+/ ) {
+  if ( $foundConsensusHdr && /^ref:/ ) {
     $fileType = "linup";
     last;
   }
@@ -480,9 +480,17 @@ if ( $fileType eq "crossmatch" )
   open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
   # Linup format
   my %seqHash = ();
+  my $blockLen = 0;
+  my $alignCols = 0;
   while (<$IN>) {
-    next if ( /^(consensus|ref:)\s+/ );
-    if ( /^(\S+)\s+(\d+)\s(.*)\s\s\s\s(\d+)\s*$/ ) 
+    #next if ( /^(consensus|ref:)/ );
+    next if ( /^ref:/ );
+    if ( /^consensus\s+\d+\s+(\S+)/ ){
+      $blockLen = length($1);
+      $alignCols += $blockLen;
+      next;
+    }
+    if ( /^(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s*$/ ) 
     {
       my $id = $1;
       my $start = $2;
@@ -497,7 +505,8 @@ if ( $fileType eq "crossmatch" )
         $seqHash{$id} = {};
         $seqHash{$id}->{'start'} = $start;
         $seqHash{$id}->{'end'} = $start;
-        $seqHash{$id}->{'seq'} = $seq;
+        #$seqHash{$id}->{'seq'} = $seq;
+        $seqHash{$id}->{'seq'} = ' 'x($alignCols-length($seq)) . $seq;
       }
     }
   }
