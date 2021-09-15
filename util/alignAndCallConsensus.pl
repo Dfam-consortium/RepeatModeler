@@ -945,8 +945,6 @@ while ( 1 ) {
       }
     }else {
       print "Consensus Changes:\n\n$diffStr\n" unless ( $options{'quiet'} );
-      #print "new: $testCons\n";
-      #print "old: " . $consRecs->{$consID}->{'seq'} ."\n";
       $changedCnt++;
       $consRecs->{$consID}->{'iteration'}++;
 

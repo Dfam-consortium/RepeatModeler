@@ -4279,7 +4279,6 @@ sub printAlignments {
 
       # and our name is...
       $name = $object->getAlignedName( $i );
-
  
       #if ( $seqStart == 0 ) {
       #  $start = $object->getAlignedSeqStart( $i );

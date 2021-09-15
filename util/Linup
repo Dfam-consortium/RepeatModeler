@@ -168,6 +168,7 @@ use MultAln;
 use SeedAlignment;
 
 # RepeatMasker Libraries
+use RepeatUtil;
 use SearchResult;
 use SearchResultCollection;
 use WUBlastSearchEngine;
@@ -305,240 +306,7 @@ if ( $options{'includeFlanking'} && ! ( $options{'genome'} && $options{'msa'} ) 
   usage();
 }
 
-##
-## Determine file type
-##
-open IN, "<$inputFile" or die "Could not open $inputFile for reading!\n";
-my $maxLines = 10000;
-my $fileType = "Unknown";
-my $foundFastaHdr = 0;
-my $foundConsensusHdr = 0;
-while ( <IN> )
-{
-  next if (    /^\s*$/ 
-            || /^(\W+).*Score:/ );
-  last if ( $maxLines-- < 0 );
-  if ( /^#\s+STOCKHOLM/ )
-  {
-    if ( $options{'includeFlanking'} ) 
-    {
-      print "\n\nThe includeFlanking parameter currently only works with *.out files!\n\n";
-      usage();
-    }
-    $fileType = "stockholm";
-    last;
-  }
-  if ( /^\s*\d+\s+[\d\.]+\s+[\d\.]+\s+[\d\.]+\s+\S+\s+\d+\s+\d+\s+\(\d+\)/ )
-  {
-    $fileType = "crossmatch";
-    last;
-  }
-  if ( /^consensus\s+\d+\s+\S+\s+\d+\s*$/ ) {
-    $foundConsensusHdr = 1;
-  }
-  if ( $foundConsensusHdr && /^ref:/ ) {
-    $fileType = "linup";
-    last;
-  }
-  $foundFastaHdr = 1 if ( /^>\S+.*/ );
-  if ( $foundFastaHdr && /^\s*[ACGTUMRWSYKVHDBNacgtumrwsykvhdbn\-\.]+\s*$/ )
-  {
-    if ( $options{'includeFlanking'} ) 
-    {
-      print "\n\nThe includeFlanking parameter currently only works with *.out files!\n\n";
-      usage();
-    }
-    $fileType = "msa-fasta";
-    last;
-  }
-  if ( /^\s+\'alignCol\'\s+=>/ )
-  {
-    if ( $options{'includeFlanking'} ) 
-    {
-      print "\n\nThe includeFlanking parameter currently only works with *.out files!\n\n";
-      usage();
-    }
-    $fileType = "malign";
-    last;
-  }
-    
-}
-close IN;
-
-if ( $fileType eq "Unknown" )
-{
-  die "Could not determine filetype for $inputFile.  Verify that\n"
-      . "the file is either a cross_match, stockholm or an msa-fasta file.\n";
-}
-
-my $mAlign;
-my $seedAlign;
-if ( $fileType eq "crossmatch" )
-{
-  my $resultCollection =
-      CrossmatchSearchEngine::parseOutput( searchOutput => $inputFile );
-
-  # TODO: Deprecate this and move it to SearchResultCollection.pm
-  # Auto detect which input ( query/subject ) is the static sequence for
-  # which all other sequences are aligned.
-  my $queryID;
-  my $subjID;
-  my $staticQuery   = 1;
-  my $staticSubject = 1;
-  for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ )
-  {
-    my $result = $resultCollection->get( $i );
-    my $qID    = $result->getQueryName();
-    my $sID    = $result->getSubjName();
-    $staticQuery   = 0 if ( defined $queryID && $queryID ne $qID );
-    $staticSubject = 0 if ( defined $subjID  && $subjID  ne $sID );
-    die "Strange...this appears not to be a multiple alignment!"
-        if ( $staticQuery == 0 && $staticSubject == 0 );
-    $queryID = $qID;
-    $subjID  = $sID;
-  }
-  die "Could not determine reference sequence.  This doesn't look like\n"
-      . "a multiple alignment to one reference sequence!\n"
-      if ( $staticQuery && $staticSubject );
-
-  my $refInput = MultAln::Subject;
-  $refInput = MultAln::Query if ( $staticQuery );
-
-  $mAlign = MultAln->new(
-                        referenceSeq              => "",
-                        searchCollection          => $resultCollection,
-                        searchCollectionReference => $refInput
-                         );
-} elsif ( $fileType eq "stockholm" )
-{
-  open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
-  $seedAlign = SeedAlignment->new();
-  $seedAlign->read_stockholm( $IN );
-  close $IN;
-  $mAlign = MultAln->new( seedAlignment => $seedAlign );
-}elsif ( $fileType eq "msa-fasta" )
-{ 
-  my @seqs;
-  my $seq;
-  my $id;
-  open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
-  # Simple FASTA reader
-  my %idHash = ();
-  while (<$IN>) {
-    if ( /^>(\S+)/ ) 
-    {
-      my $tmpID = $1;
-      if ( defined $idHash{$tmpID} ) {
-        my $ver = 1;
-        while ( defined $idHash{$tmpID . "_$ver"} ) 
-        {
-          $ver++;
-        }
-        warn "WARN File contains a duplicate identifier \"$tmpID\".  A suffix of \"_$ver\"\n" .
-             "     will be appended to this occurence.\n";
-        $tmpID = $tmpID . "_$ver";
-      }
-      $idHash{$tmpID}++;
-      if ( $seq )
-      {
-        $seq = uc($seq);
-        # Convert prefix/suffix "-"s to spacers
-        if ( $seq =~ /^(\-+)/ ){
-          substr($seq,0,length($1)) = " "x(length($1));
-        }
-        if ( $seq =~ /(\-+)$/ ) {
-          substr($seq,length($seq)-length($1)-1) = " "x(length($1));
-        }
-        push @seqs, [ $id, $seq ];
-      }
-      $seq = "";
-      $id = $tmpID;
-      next;
-    }
-    s/[\s\n\r]+//g;
-    $seq .= $_;
-  }
-  if ( $seq )
-  {
-    # Convert prefix/suffix "-"s to spacers
-    if ( $seq =~ /^(\-+)/ ){
-      substr($seq,0,length($1)) = " "x(length($1));
-    }
-    if ( $seq =~ /(\-+)$/ ) {
-      substr($seq,length($seq)-length($1)-1) = " "x(length($1));
-    }
- 
-    $seq = uc($seq);
-    push @seqs, [ $id, $seq ];
-  }
-  close $IN;
-  $mAlign = MultAln->new( sequences => \@seqs );
-}elsif ( $fileType eq "malign" ){
-  $mAlign = MultAln->new();
-  $mAlign = $mAlign->serializeIN( $inputFile );
-}elsif ( $fileType eq "linup" ) {
-  open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
-  # Linup format
-  my %seqHash = ();
-  my $blockLen = 0;
-  my $alignCols = 0;
-  while (<$IN>) {
-    #next if ( /^(consensus|ref:)/ );
-    next if ( /^ref:/ );
-    if ( /^consensus\s+\d+\s+(\S+)/ ){
-      $blockLen = length($1);
-      $alignCols += $blockLen;
-      next;
-    }
-    if ( /^(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s*$/ ) 
-    {
-      my $id = $1;
-      my $start = $2;
-      my $seq =$3;
-      my $end = $4;
-      warn "Oops end is less than start ( $start - $end )\n";
-      if ( exists $seqHash{$id} ) {
-        $seqHash{$id}->{'start'} = $start if ( $seqHash{$id}->{'start'} > $start );
-        $seqHash{$id}->{'end'} = $start if ( $seqHash{$id}->{'end'} < $end );
-        $seqHash{$id}->{'seq'} .= $seq;
-      }else {
-        $seqHash{$id} = {};
-        $seqHash{$id}->{'start'} = $start;
-        $seqHash{$id}->{'end'} = $start;
-        #$seqHash{$id}->{'seq'} = $seq;
-        $seqHash{$id}->{'seq'} = ' 'x($alignCols-length($seq)) . $seq;
-      }
-    }
-  }
-  my @seqs;
-  foreach my $id ( keys %seqHash ) {
-    my $seq = $seqHash{$id}->{'seq'};
-    my $start = $seqHash{$id}->{'start'};
-    my $end = $seqHash{$id}->{'end'};
-    my $len = $end - $start + 1;
-    $seq =~ s/[-\s]/\./g;
-    if ( $id =~ /(\S+)\:(\d+)-(\d+)/ ) {
-      my $newStart;
-      my $newEnd;
-      my $newID;
-      if ( $2 > $3 ) {
-        # Reverse
-        $newStart = $2 - $start + 1;
-        $newEnd = $newStart - ( $len );
-      }else {
-        $newStart = $2 + $start - 1;
-        $newEnd = $newStart + ( $len );
-      }
-      $newID = $1 . ":" . $newStart . "-" . $newEnd;
-      $id = $newID;
-    }
-#print "Adding: $id $seq\n";
-    push @seqs, [ $id, $seq ];
-  }
-  $mAlign = MultAln->new( sequences => \@seqs );
-}else {
-  die "Support for $fileType is not complete yet ";
-}
+my ($mAlign, $fileType) = RepeatUtil::openAsMultAln($inputFile);
 
 my $trimLeft = 0;
 $trimLeft = $options{'trimLeft'} if ( defined $options{'trimLeft'} );
@@ -586,8 +354,12 @@ if ( $options{'stockholm'} )
   if ( $options{'name'} ) { 
     $mAlign->setReferenceName( $options{'name'} );
   }
-  if ( defined $seedAlign ) {
+  if ( $fileType eq "stockholm" ) {
     # NOTE: This doesn't provide a way to force the use of a template at this time
+    open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
+    my $seedAlign = SeedAlignment->new();
+    $seedAlign->read_stockholm( $IN );
+    close $IN;
     my $header = $seedAlign->toString(SeedAlignment::ExportHeadersOnly);
     $mAlign->toSTK( headerOverride => $header, consRF => 1 );
   }else {
@@ -597,7 +369,7 @@ if ( $options{'stockholm'} )
   # TODO : streamline STK generation.  Perhaps have
   #        MultAln produce a "SeedAlignment" object.
   #        Then this object can be manipulated and
-  #        experted as STK.
+  #        exported as STK.
   #my $seedAlign = SeedAlignment->new();
   #$seedAlign->read_stockholm( $IN );
  
