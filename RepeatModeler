@@ -137,7 +137,7 @@ use SimpleBatcher;
 use FastaDB;
 
 
-use Devel::Size qw(size total_size);
+# use Devel::Size qw(size total_size);
 
 #
 # Global Class Variables/Constants
