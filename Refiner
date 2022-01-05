@@ -323,6 +323,11 @@ foreach my $file ( @ARGV ) {
     $maSize  = 1;
     $avgKDiv = 0;
 
+    my $db = FastaDB->new( fileName => $file,
+                        openMode => SeqDBI::ReadOnly );
+
+    adjustIdentifiers($malign, $db);
+
 #$malign->toSTK( filename => "$file.refiner.stk", id => $id, includeTemplate => 1, nuclRF => 1 );
     $malign->toSTK( filename => "$file.refiner.stk", id => $id );
   }
@@ -808,6 +813,22 @@ sub buildConsensus {
   #print OUT $unalignedFastaSeqs;
   #close OUT;
 
+  adjustIdentifiers($malign, $db);
+
+  #$malign->toSTK( filename => "$pathToFastaFile.refiner.stk", includeTemplate => 1, nuclRF => 1 );
+  $malign->toSTK( filename => "$pathToFastaFile.refiner.stk" );
+
+  print "  Build Consensus: " . elapsedTime( 0 ) . "\n"
+      unless ( $options{'quiet'} );
+  undef @multiSeqs;
+  return $cons, $finalMultiAlignmentSize, $avgKDiv;
+
+}
+
+sub adjustIdentifiers {
+  my $malign = shift;
+  my $db = shift;
+
   # Adjust identifiers in MultAln
   my %onlyUniq;
   # 01/31/22: RMH - This "delete in forward iteration" error causes
@@ -880,15 +901,6 @@ sub buildConsensus {
     }
     $onlyUniq{$finalID} = 1;
   }
-
-  #$malign->toSTK( filename => "$pathToFastaFile.refiner.stk", includeTemplate => 1, nuclRF => 1 );
-  $malign->toSTK( filename => "$pathToFastaFile.refiner.stk" );
-
-  print "  Build Consensus: " . elapsedTime( 0 ) . "\n"
-      unless ( $options{'quiet'} );
-  undef @multiSeqs;
-  return $cons, $finalMultiAlignmentSize, $avgKDiv;
-
 }
 
 ##############################################################################
