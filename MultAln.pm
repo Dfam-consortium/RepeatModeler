@@ -1730,7 +1730,7 @@ sub _importAlignedSeqs {
     $tmpSeq =~ s/[\.\-\s]//g;
     my $orient = "+";
 
-    my $assemblyName   = "Unknown";
+    my $assemblyName   = "";
     my $sequenceName   = $sequences->[ $l ]->[ 0 ];
     my $alignedBaseLen = length( $tmpSeq );
     my $startPos       = 1;
