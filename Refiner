@@ -421,9 +421,11 @@ sub buildConsensus {
       if ( $DEBUG );
 
   my $round = "1";
+  print "Params: " . $srchEngAllVsAll->getParameters() . "\n"
+            if ( $DEBUG );
   my ( $runStat, $familyCollection ) = $srchEngAllVsAll->search();
 
-#$familyCollection->write( "foo", SearchResult::AlignWithQuerySeq);
+  print "Search complete\n" if ( $DEBUG );
 
   ## Cleanup after run
   if ( $engine eq "abblast" ) {
@@ -459,6 +461,38 @@ sub buildConsensus {
     my $refID =
         &findHighestScoringAlignmentSet(
                                         searchCollection => $familyCollection );
+
+    ##
+    ## Prototype
+    ##
+    #if ( 1 ) {
+    #  print "#\n";
+    #  print "# PROTOTYPE: running Tensor Sketch to caculate distances...\n";
+    #  print "#\n";
+    #  system("$FindBin::RealBin/sketch --tuple_length 3 --embed_dim 16 --window_size 30 --stride 3 --alphabet dna5 -i $pathToFastaFile -o $wrkDir/sketch-dist.tsv >& /dev/null");
+    #  open TSS,"<$wrkDir/sketch-dist.tsv" or die "Could not open $wrkDir/sketch-dist.tsv\n";
+    #  my %tssSumDistsHash = ();
+    #  my @tssSumDistsArray = ();
+    #  while ( <TSS> ){
+    #    if ( /^(\S+)\s+([\d\.]+)/ ) {
+    #      push @tssSumDistsArray, [$1,$2];
+    #      $tssSumDistsHash{$1} = $2;
+    #    }
+    #  }
+    #  close TSS;
+    #  @tssSumDistsArray = sort { $a->[1] <=> $b->[1] } @tssSumDistsArray;
+    #  print "# Ten lowest sum distances according to TSS:\n";
+    #  my $inTop = 0;
+    #  for ( my $l = 0; $l < 5; $l++ ) {
+    #    print "#  " . $tssSumDistsArray[$l]->[0] . "    " . $tssSumDistsArray[$l]->[1] . "\n";
+    #    $inTop = 1 if ( $tssSumDistsArray[$l]->[0] eq $refID );
+    #  }
+    #  print "#\n";
+    #  print "# Highest scoring sequence according to blast: $refID\n";
+    #  print "#\n";
+    #  #print "# Overriding refID with TSS result\n";
+    #  #$refID = $tssSumDistsArray[0]->[0];
+    #}
 
     if ( $familyCollection->size() > 0 ) {
 
@@ -545,6 +579,7 @@ sub buildConsensus {
       my $prevCons = "";
       my $newConsBlocks;
       my $finalRound = 0;
+      my $sumScore = 0;
       do {
         print $MOUT "\n<br>\n<br><hr>\n<br>\n<br>";
         $round++;
@@ -561,7 +596,6 @@ sub buildConsensus {
             . "mulitiple alignment)\n";
         my $consFa = $cons;
         $consFa =~ s/-//g;
-
         print CONF "$consFa\n";
         close CONF;
         $leftMostSequence  = "";
@@ -572,7 +606,6 @@ sub buildConsensus {
                   . "$wrkDir/setdb.log 2>&1" );
         }
         else {
-
           # MAKEBLASTDB the database
           #. "-parse_seqids -dbtype nucl -in "
           system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out "
@@ -587,7 +620,7 @@ sub buildConsensus {
         $srchEngOneVsAll->setQuery( $pathToFastaFile );
 
         print $CLASS
-            . "::buildConsensus(): Cons-vs-All WUBlastP "
+            . "::buildConsensus(): Cons-vs-All "
             . "$consName\n"
             if ( $DEBUG );
 
@@ -699,6 +732,7 @@ sub buildConsensus {
           my %seqNames = ();
           my $sbjID    = $familyCollection->get( 0 )->getSubjName();
           $seqNames{$sbjID} = 1;
+          $sumScore = 0;
           for ( my $j = 0 ; $j < $familyCollection->size() ; $j++ ) {
 
             # Testing
@@ -706,6 +740,7 @@ sub buildConsensus {
             #    . $familyCollection->get( $j )
             #    ->toStringFormatted( SearchResult::AlignWithQuerySeq ) . "\n";
             my $qryID = $familyCollection->get( $j )->getQueryName();
+            $sumScore += $familyCollection->get( $j )->getScore();
             $seqNames{$qryID} = 1;
           }
           $unAlignSeqs        = "";
@@ -746,8 +781,10 @@ sub buildConsensus {
 
       my $gaplessCons = $cons;
       $gaplessCons =~ s/-//g;
+      #print "  - sumScore = $sumScore\n";
       unless ( $options{'quiet'} ) {
         print "  - numRounds = $round\n";
+        print "  - sumScore = $sumScore\n";
         print "  - Consensus Length = "
             . length( $gaplessCons )
             . " ( orig = $round1ConsLen )\n";
@@ -773,7 +810,12 @@ sub buildConsensus {
 
   # Adjust identifiers in MultAln
   my %onlyUniq;
-  for ( my $i = 0 ; $i < $malign->getNumAlignedSeqs() ; $i++ ) {
+  # 01/31/22: RMH - This "delete in forward iteration" error causes
+  #                 some sequences to retain the 'gi|#' identifier
+  #                 rather than being correctly translated back to
+  #                 genomic identifiers.
+  #for ( my $i = 0 ; $i < $malign->getNumAlignedSeqs() ; $i++ ) {
+  for ( my $i = $malign->getNumAlignedSeqs()-1; $i >= 0 ; $i-- ) {
     my $id     = $malign->getAlignedName( $i );
     my $dbDesc = $db->getDescription( $id );
 
