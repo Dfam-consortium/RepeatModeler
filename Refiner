@@ -839,7 +839,9 @@ sub adjustIdentifiers {
   for ( my $i = $malign->getNumAlignedSeqs()-1; $i >= 0 ; $i-- ) {
     my $id     = $malign->getAlignedName( $i );
     my $dbDesc = $db->getDescription( $id );
+    my $refOrient = $malign->getAlignedOrientation( $i );
 
+#print "i=$i, id=$id, dbDesc = $dbDesc ";
     # If we are provided a translation system -- do the translation
     #  e.g hg38:chr1:300-400
     #    or
@@ -869,6 +871,7 @@ sub adjustIdentifiers {
       # We don't have a recognizable identifier
       $seqID = $id;
     }
+#print "seqID:$seqID, start=$start, end=$end ";
 
     if ( $seqID && $start && $end ) {
       if ( $options{'giToID'}
@@ -879,28 +882,69 @@ sub adjustIdentifiers {
       $malign->setAlignedName( $i, $seqID );
       my $adjStart;
       my $adjEnd;
+
+      #if ( $end < $start ) {
+      #  $malign->setAlignedOrientation( $i, "-" );
+      #  $adjStart = $malign->getAlignedSeqStart( $i ) + $end - 1;
+      #  $adjEnd   = $malign->getAlignedSeqEnd( $i ) + $end - 1;
+      #}
+      #else {
+      #  $adjStart = $malign->getAlignedSeqStart( $i ) + $start - 1;
+      #  $adjEnd   = $malign->getAlignedSeqEnd( $i ) + $start - 1;
+      #}
+      # 2/1/22: RMH - Fixed a bug with coordinate translation.  The
+      #               coordinates stored in the Family-#.fa file
+      #               are one-based, fully-closed.  They are also
+      #               stored in reversed order if the sequence
+      #               is reverse complemented.  In the above code
+      #               we added the coordinates to the end position
+      #               rather than subtracting them from the start!
       if ( $end < $start ) {
-        $malign->setAlignedOrientation( $i, "-" );
-        $adjStart = $malign->getAlignedSeqStart( $i ) + $end - 1;
-        $adjEnd   = $malign->getAlignedSeqEnd( $i ) + $end - 1;
+#print " [-] ";
+        if ( $refOrient eq "C" || $refOrient eq "-" ) {
+#print " <-> ";
+          $malign->setAlignedOrientation( $i, "+" );
+        }else{
+#print " <+> ";
+          $malign->setAlignedOrientation( $i, "-" );
+        }
+        # AlignedStart is always lower than AlignedEnd in the MALIGN obj
+        $adjEnd = $start - $malign->getAlignedSeqStart( $i ) + 1;
+        $adjStart   = $start - $malign->getAlignedSeqEnd( $i ) + 1;
       }
-      else {
-        $adjStart = $malign->getAlignedSeqStart( $i ) + $start - 1;
-        $adjEnd   = $malign->getAlignedSeqEnd( $i ) + $start - 1;
+      else { 
+
+       if ( $refOrient eq "C" || $refOrient eq "-" ) {
+#print " <-> ";
+          $malign->setAlignedOrientation( $i, "-" );
+        }else{
+#print " <+> ";
+          $malign->setAlignedOrientation( $i, "+" );
+        }
+ 
+#print " [+] ";
+        $adjStart = $start + $malign->getAlignedSeqStart( $i ) - 1;
+        $adjEnd   = $start + $malign->getAlignedSeqEnd( $i ) - 1;
       }
+#print " alignS:" . $malign->getAlignedSeqStart( $i ) . ", alignE:" . $malign->getAlignedSeqEnd( $i ) . " ";
+#print " adjStart:$adjStart, adjEnd:$adjEnd final orient = " . $malign->getAlignedOrientation( $i ) . " ";
       $malign->setAlignedSeqStart( $i, $adjStart );
       $malign->setAlignedSeqEnd( $i, $adjEnd );
     }
     elsif ( $dbDesc ) {
       warn "Could not parse identifier: $dbDesc\n";
     }
+#print "\n ";
+#print "" . Dumper($malign->{'alignCol'}->[$i+1]) . "\n";
     my $finalID = "$seqID:" . $malign->getAlignedSeqStart( $i ) . "-" . $malign->getAlignedSeqEnd( $i );
     if ( exists $onlyUniq{$finalID}  ) {
-      print "  - Removing sequence duplicate artefact ( $finalID )\n";
-      splice @{ $malign->{'alignCol'} }, $i+1, 1;
+      print "  - Removing sequence duplicate artefact ( $finalID ) i = $i\n";
+      # TODO: make this an function of MultAln
+      splice(@{ $malign->{'alignCol'} }, $i+1, 1);
     }
     $onlyUniq{$finalID} = 1;
   }
+#  print "" . Dumper($malign->{'alignCol'}) . "\n";
 }
 
 ##############################################################################

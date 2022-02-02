@@ -361,25 +361,35 @@ sub setRightFlankingSequence {
 =cut
 
 ##---------------------------------------------------------------------##
+# 2/1/2022 : RMH - Bug this was not accounting for '0' being the ref
+#                  sequence.
 sub getAlignedOrientation {
   my $this   = shift;
   my $seqNum = shift;
 
-  return $this->{'alignCol'}->[ $seqNum ]->{'orient'};
+  croak $CLASS. "::getAlignedOrientation( $this, $seqNum ): Index out of bounds!\n"
+      if ( $seqNum < 0 || $seqNum > ( $#{ $this->{'alignCol'} } - 1 ) );
+
+  return $this->{'alignCol'}->[ $seqNum + 1 ]->{'orient'};
 }
 
+# 2/1/2022 : RMH - Bug this was not accounting for '0' being the ref
+#                  sequence.
 sub setAlignedOrientation {
   my $this   = shift;
   my $seqNum = shift;
   my $value  = shift;
+
+  croak $CLASS. "::setAlignedOrientation( $this, $seqNum, $value ): Index out of bounds!\n"
+      if ( $seqNum < 0 || $seqNum > ( $#{ $this->{'alignCol'} } - 1 ) );
 
   croak $CLASS
       . "::setAlignedOrientation( $seqNum, $value ): "
       . "Incorrect orientation value.  Should be \"+\" or \"-\"!\n"
       if ( $value ne "+" && $value ne "-" );
 
-  my $oldValue = $this->{'alignCol'}->[ $seqNum ]->{'orient'};
-  $this->{'alignCol'}->[ $seqNum ]->{'orient'} = $value;
+  my $oldValue = $this->{'alignCol'}->[ $seqNum + 1 ]->{'orient'};
+  $this->{'alignCol'}->[ $seqNum + 1 ]->{'orient'} = $value;
 
   return $oldValue;
 }

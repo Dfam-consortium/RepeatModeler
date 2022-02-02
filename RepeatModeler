@@ -2409,6 +2409,7 @@ sub buildRSConsensi {
     print "Filtering Results...\n" if ( $DEBUG );
     for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
       my $resultRef = $resultCollection->get( $k );
+      my $orient = $resultRef->getOrientation();
 
       # Extract the true seq name and keep track of how
       # many sequences this element is found -- used for
@@ -2418,17 +2419,21 @@ sub buildRSConsensi {
       if ( defined $usedBlockIndex->{$sampleID} ) {
         my $thisID = $usedBlockIndex->{$sampleID}->{'seqID'};
         $localizedToSeqNames{$thisID}++;
-        $seqID .=
+        # 1/31/2022 : RMH - Preserve orientation in family sequence file
+        if ( $orient eq "C" || $orient eq "-" ) {
+          $seqID .=
             $thisID . ":"
-            . (
-          $resultRef->getSubjStart() + $usedBlockIndex->{$sampleID}->{'start'} -
-              1 )
+            . ($resultRef->getSubjEnd() + $usedBlockIndex->{$sampleID}->{'start'} - 1)
             . "-"
-            . (
-            $resultRef->getSubjEnd() + $usedBlockIndex->{$sampleID}->{'start'} -
-                1 );
+            . ($resultRef->getSubjStart() + $usedBlockIndex->{$sampleID}->{'start'} - 1);
+        }else {
+          $seqID .=
+            $thisID . ":"
+            . ($resultRef->getSubjStart() + $usedBlockIndex->{$sampleID}->{'start'} - 1)
+            . "-"
+            . ($resultRef->getSubjEnd() + $usedBlockIndex->{$sampleID}->{'start'} - 1);
+        }
       }
-
       my $sequence = $resultRef->getSubjString();
       $sequence =~ s/-//g;
       push @{ $families{ $resultRef->getQueryName() }->{'elements'} },
@@ -2831,17 +2836,27 @@ sub buildReconConsensi {
         $sequence = reverse( $sequence );
         $sequence =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
         my $tmpOffset = $startOffset;
-        $startOffset = $endOffset;
-        $endOffset   = $tmpOffset;
+        # 2/1/22 : RMH - Bug these should be 1-based, fully closed coordinates
+        #$startOffset = $endOffset;
+        #$endOffset   = $tmpOffset;
+        $startOffset = $endOffset-1;
+        $endOffset   = $tmpOffset-1;
       }
 
       ## Save the sequence
       $elementRef->{'sequence'} = $sequence;
+      # 2/1/22 : RMH - Bug these should be 1-based, fully closed coordinates
+      #print FAM ">gi|$giID $genomicSeqID" . ":"
+      #    . ( $startOffset + $genomicStartPos - 1 ) . "-"
+      #    . ( $endOffset + $genomicStartPos - 1 )
+      #    . " element-"
+      #    . $elementRef->{'elementID'} . "\n";
       print FAM ">gi|$giID $genomicSeqID" . ":"
-          . ( $startOffset + $genomicStartPos - 1 ) . "-"
-          . ( $endOffset + $genomicStartPos - 1 )
+          . ( $startOffset + $genomicStartPos ) . "-"
+          . ( $endOffset + $genomicStartPos )
           . " element-"
           . $elementRef->{'elementID'} . "\n";
+ 
       print FAM "" . $elementRef->{'sequence'} . "\n";
       $giID++;
     }
@@ -3177,6 +3192,7 @@ sub initializeSampleSourceList {
 #    prohibitX : Convert 'x'/'X' to 'N'
 #    withReplacement : Allow sequences to be reused between
 #                      calls to this routine.
+#    dbSourceBlock coordinates are 1-based, fully closed.
 #
 sub sampleFromDB {
   my %parameters = @_;
@@ -3237,6 +3253,8 @@ sub sampleFromDB {
 
         # Renumber sequences
         my $sample = $blocks[ $giIndex - 1 ];
+        # NOTE: The coordinates stored in the SampleDB-#.fa files
+        #       is 1-based, fully closed coordinates!
         print FASTA ">gi|$giIndex "
             . $sample->{'seqID'} . ":"
             . $sample->{'start'} . "-"
