@@ -841,7 +841,6 @@ sub adjustIdentifiers {
     my $dbDesc = $db->getDescription( $id );
     my $refOrient = $malign->getAlignedOrientation( $i );
 
-#print "i=$i, id=$id, dbDesc = $dbDesc ";
     # If we are provided a translation system -- do the translation
     #  e.g hg38:chr1:300-400
     #    or
@@ -871,7 +870,6 @@ sub adjustIdentifiers {
       # We don't have a recognizable identifier
       $seqID = $id;
     }
-#print "seqID:$seqID, start=$start, end=$end ";
 
     if ( $seqID && $start && $end ) {
       if ( $options{'giToID'}
@@ -900,12 +898,9 @@ sub adjustIdentifiers {
       #               we added the coordinates to the end position
       #               rather than subtracting them from the start!
       if ( $end < $start ) {
-#print " [-] ";
         if ( $refOrient eq "C" || $refOrient eq "-" ) {
-#print " <-> ";
           $malign->setAlignedOrientation( $i, "+" );
         }else{
-#print " <+> ";
           $malign->setAlignedOrientation( $i, "-" );
         }
         # AlignedStart is always lower than AlignedEnd in the MALIGN obj
@@ -915,36 +910,27 @@ sub adjustIdentifiers {
       else { 
 
        if ( $refOrient eq "C" || $refOrient eq "-" ) {
-#print " <-> ";
           $malign->setAlignedOrientation( $i, "-" );
         }else{
-#print " <+> ";
           $malign->setAlignedOrientation( $i, "+" );
         }
  
-#print " [+] ";
         $adjStart = $start + $malign->getAlignedSeqStart( $i ) - 1;
         $adjEnd   = $start + $malign->getAlignedSeqEnd( $i ) - 1;
       }
-#print " alignS:" . $malign->getAlignedSeqStart( $i ) . ", alignE:" . $malign->getAlignedSeqEnd( $i ) . " ";
-#print " adjStart:$adjStart, adjEnd:$adjEnd final orient = " . $malign->getAlignedOrientation( $i ) . " ";
       $malign->setAlignedSeqStart( $i, $adjStart );
       $malign->setAlignedSeqEnd( $i, $adjEnd );
     }
     elsif ( $dbDesc ) {
       warn "Could not parse identifier: $dbDesc\n";
     }
-#print "\n ";
-#print "" . Dumper($malign->{'alignCol'}->[$i+1]) . "\n";
     my $finalID = "$seqID:" . $malign->getAlignedSeqStart( $i ) . "-" . $malign->getAlignedSeqEnd( $i );
     if ( exists $onlyUniq{$finalID}  ) {
-      print "  - Removing sequence duplicate artefact ( $finalID ) i = $i\n";
       # TODO: make this an function of MultAln
       splice(@{ $malign->{'alignCol'} }, $i+1, 1);
     }
     $onlyUniq{$finalID} = 1;
   }
-#  print "" . Dumper($malign->{'alignCol'}) . "\n";
 }
 
 ##############################################################################

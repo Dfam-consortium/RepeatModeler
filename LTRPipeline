@@ -182,6 +182,7 @@ my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLAST_DIR = $config->{'RMBLAST_DIR'}->{'value'};
 my $CDHIT_DIR = $config->{'CDHIT_DIR'}->{'value'};
 my $TRF_DIR = $config->{'TRF_DIR'}->{'value'};
+my $UCSCTOOLS_DIR = $config->{'UCSCTOOLS_DIR'}->{'value'};
 
 my $ltrSeqLimit = 10000;
 $ltrSeqLimit = $options{'LTRSeqLimit'} if ( $options{'LTRSeqLimit'} );
@@ -262,6 +263,9 @@ if ( !-s "$tempDir/LtrRetriever-redundant-results.fa" ) {
 }
 print "  : " . elapsedTime( "step" ) . "\n";
 
+#
+# Filter out sequences greater than LTRMaxSeqLen if requested
+#
 if ( $options{'LTRMaxSeqLen'} && $options{'LTRMaxSeqLen'} =~ /\d+/ ) {
   system(
 "mv $tempDir/LtrRetriever-redundant-results.fa $tempDir/LtrRetriever-redundant-results-orig.fa"
@@ -683,12 +687,144 @@ sub runLtrRetriever {
     }
   }
 
+  # Currently there isn't a way to get the orientation of the sequences other than comparing them with
+  # the input.  So here we go:
+  # Read in the library sequences and ranges
+  open IN,"<$outFile" or die;
+  my $seqID = "";
+  my $start = 0;
+  my $end = 0;
+  my $seq = "";
+  my @lib = ();
+  while ( <IN> ) {
+    if ( /^>(\S+):(\d+)\.\.(\d+).*/ ) {
+      my $tmpSeqID = $1;
+      my $tmpStart = $2;
+      my $tmpEnd = $3;
+      if ( $seqID ne "" ) {
+        push @lib,[ $seqID, $start, $end, $seq];
+      }
+      $seqID = $tmpSeqID;
+      $start = $tmpStart;
+      $end = $tmpEnd;
+      $seq = "";
+      next;
+    }
+    s/[\n\r\s]+//g;
+    $seq .= $_;
+  }
+  if ($seqID ne ""){
+    push @lib,[ $seqID, $start, $end, $seq];
+  }
+  close IN;
+
+  # Using the sequence file determine the orientation of each sequence
+  # NOTE: This also validates the sequence ranges and flags LTR_retriever
+  # results that have incorrect ranges
+  getOrientation(\@lib, $seqFile);
+  
+  # Backup original outFile and regenerate with oriented ranges.
+  system("mv $outFile $outFile.no_orient");
+  open OUT,">$outFile" or die;
+  foreach my $entry ( @lib ) {
+    my $id = $entry->[0] . ":";
+    if ( $entry->[4] eq "!" ) {
+      $id .= $entry->[1] . ".." . $entry->[2] . " [warning: bad ltr_retriever range]";
+    }elsif ( $entry->[4] eq "+" ) {
+      $id .= $entry->[1] . ".." . $entry->[2] . " [forward]";
+    }else {
+      $id .= $entry->[2] . ".." . $entry->[1] . " [reverse]";
+    }
+    print OUT ">$id\n$entry->[3]\n";
+  }
+  close OUT;
+
   unless ( $DEBUG || $error ) {
     rmtree( $tmpDir );
   }
 
   return $count;
 }
+
+
+sub getOrientation {
+  my $lib = shift;
+  my $seqFile = shift;
+
+  system("$UCSCTOOLS_DIR/faToTwoBit $seqFile $seqFile.2bit");
+  if ( ! -s "$seqFile.2bit" ) {
+    die "getOrientation: Something went wrong calling $UCSCTOOLS_DIR/faToTwoBit on $seqFile!\n";
+  }
+  my %lookup = ();
+  open OUT,">$seqFile.seqlist" or die;
+  foreach my $entry ( @{$lib} ) {
+    my $twoBitID = "$entry->[0]:" . ($entry->[1]-1) . "-$entry->[2]";
+    print OUT "$twoBitID\n";
+    $lookup{$twoBitID} = $entry;
+  }
+  close OUT;
+
+  open IN,"$UCSCTOOLS_DIR/twoBitToFa -seqList=$seqFile.seqlist $seqFile.2bit stdout|" or 
+      die "getOrientation: Something went wrong calling $UCSCTOOLS_DIR/twoBitToFa on $seqFile.2bit!\n";
+  my $resID = "";
+  my $seq;
+  while ( <IN> ) {
+    if ( /^>(\S+)/ ) {
+      my $tID = $1;
+      if ( $seq ne "" )
+      {
+        if ( exists $lookup{$resID} )
+        {
+          if ( $seq eq $lookup{$resID}->[3] ) {
+            # Forward range
+            push @{$lookup{$resID}}, "+";
+          }else {
+            $seq = reverse($seq);
+            $seq =~ tr/ACGTN/TGCAN/;
+            if ( $seq eq $lookup{$resID}->[3] ) {
+              # Reverse range
+              push @{$lookup{$resID}}, "-";
+            }else {
+              # Invalid range
+              push @{$lookup{$resID}}, "!";
+            }
+          }
+        }else {
+          warn "Oops...couldn't locate match to $resID in lookup table!\n";
+        }
+      }
+      $resID = $tID;
+      $seq = "";
+      next;
+    }
+    s/[\n\r\s]+//g;
+    $seq .= $_;
+  }
+  if ( $seq ne "" )
+  {
+    if ( exists $lookup{$resID} )
+    {
+      if ( $seq eq $lookup{$resID}->[3] ) {
+        # Forward range
+        push @{$lookup{$resID}}, "+";
+      }else {
+        $seq = reverse($seq);
+        $seq =~ tr/ACGTN/TGCAN/;
+        if ( $seq eq $lookup{$resID}->[3] ) {
+          # Reverse range
+          push @{$lookup{$resID}}, "-";
+        }else {
+          # Invalid range
+          push @{$lookup{$resID}}, "!";
+        }
+      }
+    }else {
+      warn "getOrientation: Oops...couldn't locate match to $resID in lookup table!\n";
+    }
+  }
+  close IN;
+}
+
 
 sub runLtrHarvest {
   my $binDir  = shift;
