@@ -236,7 +236,8 @@ $queryname, $beginalign, $hitname, $length, $transitions, $transversions, $indel
     $totalv += $transversions;
     $transitions = $transversions = $indels = $total = $length = $count = 0;
   }
-  unless ($totallength && $totaltotal) {
+  #unless ($totallength && $totaltotal) {
+  unless ($totallength) {
     print STDERR "$file does not contain a cross_match alignment\n";
     next;
   }

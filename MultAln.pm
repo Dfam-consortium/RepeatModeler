@@ -194,6 +194,64 @@ require Exporter;
 my $CLASS   = "MultAln";
 my $VERSION = 2.0;
 my $DEBUG   = 0;
+
+
+#
+# Mutation Types:
+#      Purines
+#      A--i--G
+#      | \ / |
+#      v  v  v
+#      | / \ |
+#      C--i--T
+#    Pyrimidines
+#  i = Transitions ( more frequent )
+#  v = Transversions ( rarer )
+#
+#  This lookup structure encodes
+#  transitions as "1" and transversions
+#  as "2".
+#
+my %mutType = (
+                "CT" => 1,
+                "TC" => 1,
+                "AG" => 1,
+                "GA" => 1,
+                "GT" => 2,
+                "TG" => 2,
+                "GC" => 2,
+                "CG" => 2,
+                "CA" => 2,
+                "AC" => 2,
+                "AT" => 2,
+                "TA" => 2
+);
+
+#
+# Well Characterized Alignment Pairings
+#   A well characterized pairing is one between a fixed
+#   consensus base ( not IUB codes ) and a fixed query
+#   base ( not IUB codes ).
+#
+my %wellCharacterizedBases = (
+                               'CG' => 1,
+                               'CA' => 1,
+                               'CC' => 1,
+                               'CT' => 1,
+                               'TA' => 1,
+                               'TC' => 1,
+                               'TG' => 1,
+                               'TT' => 1,
+                               'AA' => 1,
+                               'AC' => 1,
+                               'AG' => 1,
+                               'AT' => 1,
+                               'GA' => 1,
+                               'GC' => 1,
+                               'GG' => 1,
+                               'GT' => 1,
+);
+
 ##---------------------------------------------------------------------##
 ## Constructor
 ##---------------------------------------------------------------------##
@@ -303,25 +361,35 @@ sub setRightFlankingSequence {
 =cut
 
 ##---------------------------------------------------------------------##
+# 2/1/2022 : RMH - Bug this was not accounting for '0' being the ref
+#                  sequence.
 sub getAlignedOrientation {
   my $this   = shift;
   my $seqNum = shift;
 
-  return $this->{'alignCol'}->[ $seqNum ]->{'orient'};
+  croak $CLASS. "::getAlignedOrientation( $this, $seqNum ): Index out of bounds!\n"
+      if ( $seqNum < 0 || $seqNum > ( $#{ $this->{'alignCol'} } - 1 ) );
+
+  return $this->{'alignCol'}->[ $seqNum + 1 ]->{'orient'};
 }
 
+# 2/1/2022 : RMH - Bug this was not accounting for '0' being the ref
+#                  sequence.
 sub setAlignedOrientation {
   my $this   = shift;
   my $seqNum = shift;
   my $value  = shift;
+
+  croak $CLASS. "::setAlignedOrientation( $this, $seqNum, $value ): Index out of bounds!\n"
+      if ( $seqNum < 0 || $seqNum > ( $#{ $this->{'alignCol'} } - 1 ) );
 
   croak $CLASS
       . "::setAlignedOrientation( $seqNum, $value ): "
       . "Incorrect orientation value.  Should be \"+\" or \"-\"!\n"
       if ( $value ne "+" && $value ne "-" );
 
-  my $oldValue = $this->{'alignCol'}->[ $seqNum ]->{'orient'};
-  $this->{'alignCol'}->[ $seqNum ]->{'orient'} = $value;
+  my $oldValue = $this->{'alignCol'}->[ $seqNum + 1 ]->{'orient'};
+  $this->{'alignCol'}->[ $seqNum + 1 ]->{'orient'} = $value;
 
   return $oldValue;
 }
@@ -1252,6 +1320,117 @@ sub kimuraDivergence {
 
 ##---------------------------------------------------------------------##
 
+=head2 kimuraDivergenceAlt()
+
+  Use: $obj->kimuraDivergenceAlt( seqidx => #, [consensus => "A----AAAG"] );
+
+=cut
+
+##---------------------------------------------------------------------##
+sub kimuraDivergenceAlt {
+  my $object     = shift;
+  my %parameters = @_;
+
+  my $consensus = $object->getReferenceSeq();
+  if ( exists $parameters{'consensus'} ) {
+    $consensus = $parameters{'consensus'};
+    delete $parameters{'consensus'};
+  }
+  my $n;
+  if ( exists $parameters{'seqidx'} ) {
+    $n = $parameters{'seqidx'};
+    delete $parameters{'seqidx'};
+  }
+  if ( keys %parameters ) {
+    die "MultAln::kimuraDivergenceAlt() called with unrecognized parameters: " . join(",",keys(%parameters)) . "\n";
+  }
+
+  my $consensusRegion = substr($consensus,$object->getAlignedStart($n),
+                               ($object->getAlignedEnd($n)-$object->getAlignedStart($n)+1));
+  #my $sequenceRegion = substr($object->getAlignedSeq( $n ),$object->getAlignedStart($n),
+  #                            ($object->getAlignedEnd($n)-$object->getAlignedStart($n)+1));
+  my $sequenceRegion = $object->getAlignedSeq( $n );
+
+  my $transitions            = 0;
+  my $transversions          = 0;
+  my $transitionsMod         = 0;
+  my $CpGSites               = 0;
+  my $wellCharacterizedBases = 0;
+  my $pSBase                 = "";
+  my $prevTrans              = 0;
+  my @sBases                 = split //, $consensusRegion;
+  my @qBases                 = split //, $sequenceRegion;
+#print "C: $consensusRegion\n";
+#print "S: $sequenceRegion\n";
+  foreach my $i ( 0 .. ( length( $consensusRegion ) - 1 ) ) {
+    next if ( $sBases[ $i ] eq "-" );
+
+    $wellCharacterizedBases++
+        if ( $wellCharacterizedBases{ $qBases[ $i ] . $sBases[ $i ] } );
+
+    if ( $pSBase eq "C" && $sBases[ $i ] eq "G" ) {
+
+      # CpG
+      $CpGSites++;
+      my $mt = $mutType{ $qBases[ $i ] . $sBases[ $i ] } || 0;
+      if ( $mt == 1 ) {
+        $prevTrans++;
+        $transitions++;
+      }
+      elsif ( $mt == 2 ) {
+        $transversions++;
+      }
+      if ( $prevTrans == 2 ) {
+
+        # CpG sites contains 2 transitions ( treat as 1 trans )
+        $prevTrans = 1;
+      }
+      elsif ( $prevTrans == 1 ) {
+
+        # CpG sites contains 1 transition ( treat as 1/10 trans )
+        $prevTrans = 1 / 10;
+      }
+    }
+    else {
+      $transitionsMod += $prevTrans;
+      $prevTrans = 0;
+
+      # Normal
+      my $mt = $mutType{ $qBases[ $i ] . $sBases[ $i ] } || 0;
+      if ( $mt == 1 ) {
+        # Delay recording transition for CpG accounting
+        $prevTrans = 1;
+        $transitions++;
+      }
+      elsif ( $mt == 2 ) {
+        $transversions++;
+      }
+    }
+    $pSBase = $sBases[ $i ];
+  }
+  $transitionsMod += $prevTrans;
+
+  my $kimura = 100.00;
+  my $kimuraMod = 100.00;
+  if ( $wellCharacterizedBases >= 1 ) {
+    my $p          = $transitions / $wellCharacterizedBases;
+    my $q          = $transversions / $wellCharacterizedBases;
+    my $logOperand = ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 );
+    if ( $logOperand > 0 ) {
+      $kimura = ( abs( ( -0.5 * log( $logOperand ) ) ) * 100 );
+    }
+    $p          = $transitionsMod / $wellCharacterizedBases;
+    $logOperand = ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 );
+    if ( $logOperand > 0 ) {
+      $kimuraMod = ( abs( ( -0.5 * log( $logOperand ) ) ) * 100 );
+    }
+  }
+
+  return ( $transitions, $transversions, $transitionsMod, $kimura, $kimuraMod, $CpGSites, $wellCharacterizedBases  );
+}
+
+##---------------------------------------------------------------------##
+
 =head2 divergence()
 
   Use: $obj->divergence( $consensus );
@@ -1561,7 +1740,7 @@ sub _importAlignedSeqs {
     $tmpSeq =~ s/[\.\-\s]//g;
     my $orient = "+";
 
-    my $assemblyName   = "Unknown";
+    my $assemblyName   = "";
     my $sequenceName   = $sequences->[ $l ]->[ 0 ];
     my $alignedBaseLen = length( $tmpSeq );
     my $startPos       = 1;
@@ -1671,7 +1850,6 @@ sub _alignFromSeedAlignment {
 
     # Convert "." in SeedAlignment to "-" for MultAln
     $sequence =~ s/\./\-/g;
-
     # The SeedAlignment object stores sequences with padding.  I.e
     # all sequences are the same length.  This makes it easy to
     # translate to a MultAln object because all sequences start at 0
@@ -1682,13 +1860,20 @@ sub _alignFromSeedAlignment {
 
     my $ID = "";
     $ID .= "$assemblyName:" if ( $assemblyName );
-    $ID .= "$sequenceName:";
-    if ( $orient eq "+" ) {
-      $ID .= "$start-$end";
-    }
-    else {
-      $ID .= "$end-$start";
-    }
+    $ID .= "$sequenceName";
+# 5/22/21 : This was taken out because roundtripping a seed alignment
+#           with IDs like 'foo:1-200' got broken down into 
+#           seqName = 'foo', start=1, end=200 above and reassembled
+#           back into 'foo:1-200' and stored in the obj as the AlignedName.
+#           When toSTK was called it appended the start/end positions
+#           and wrote out 'foo:1-200:1-200'.
+#    $ID .= "$sequenceName:";
+#    if ( $orient eq "+" ) {
+#      $ID .= "$start-$end";
+#    }
+#    else {
+#      $ID .= "$end-$start";
+#    }
     $object->setAlignedName( $l, $ID );
     $object->setAlignedSeqStart( $l, $start );
     $object->setAlignedSeqEnd( $l, $end );
@@ -1950,9 +2135,22 @@ sub _alignFromSearchResultCollection {
   #   in the reference sequence
   #
   my @totalGaps;
-  $totalGaps[ 0 ] = 0;
-  foreach $j ( 1 .. $len ) {
-    $totalGaps[ $j ] = $totalGaps[ $j - 1 ] + $refGapPattern[ $j - 1 ];
+  my $useOldBuggyVersion = 0;
+  $useOldBuggyVersion = 1 if ( exists $parameters{'bug'} );
+  if ( $useOldBuggyVersion ) { 
+    # BUG: This one-off error was compensated for later.  But the 
+    #      consequence was that it inserted extra "-" characters 
+    #      prior to the start of the first aligned base in some
+    #      circumstances.
+    $totalGaps[ 0 ] = 0;
+    foreach $j ( 1 .. $len ) {
+      $totalGaps[ $j ] = $totalGaps[ $j - 1 ] + $refGapPattern[ $j - 1 ];
+    }
+  }else{
+    $totalGaps[ 0 ] = $refGapPattern[0];
+    foreach $j ( 1 .. $len ) {
+      $totalGaps[ $j ] = $totalGaps[ $j - 1 ] + $refGapPattern[ $j ];
+    }
   }
 
   for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ ) {
@@ -1967,10 +2165,12 @@ sub _alignFromSearchResultCollection {
       my $n = substr( $result->$instSeq(), $j, 1 );
       my $a = substr( $result->$refSeq(),  $j, 1 );
       if ( $a ne '-' ) {
-        my $numgaps = $refGapPattern[ $k ];
-        $numgaps -= $gapPattern[ $l ][ $k ]
-            if ( defined $gapPattern[ $l ][ $k ] );
-        $seq .= '-' x $numgaps;
+        if ( $useOldBuggyVersion || ($j > 0 && $j < $len) ) {
+          my $numgaps = $refGapPattern[ $k ];
+          $numgaps -= $gapPattern[ $l ][ $k ]
+              if ( defined $gapPattern[ $l ][ $k ] );
+          $seq .= '-' x $numgaps;
+        }
         $k++;
       }
       $seq .= $n;
@@ -2295,12 +2495,10 @@ sub getLowScoringAlignmentColumns {
   #print "RTA: " . Dumper($ruzzoTompaArr) . "\n";
   undef $ruzzoTompaArr, $intervalArr;
 
-  # Calc the average
-  my @seqPosAvg = @{$valArray};
-
-  # Find low quality columns
+  # Find low quality columns ( using block total score )
   my $inCol    = 0;
   my $colStart = -1;
+  my @seqPosAvg = @{$valArray};
   for ( my $i = 0 ; $i <= $#seqPosAvg ; $i++ ) {
     if ( $seqPosAvg[ $i ] >= $threshold ) {
       if ( $colStart == -1 ) {
@@ -2347,6 +2545,9 @@ sub getLowScoringAlignmentColumns {
         Seq4:  A-TCTG...
 
   NOTE: This currently does not include the reference in this operation.
+ 
+ If left and/or right are negative numbers, this routine will 
+ trim back to the first non-ambig consensus base.
 
 =cut
 
@@ -2366,58 +2567,117 @@ sub trimAlignments {
   my $maLen = $this->getGappedReferenceLength();
 
   if ( defined $parameters{'left'} ) {
-    while ( $leftCols <= $maLen ) {
-      my $str = substr( $consensus, 0, $leftCols );
-      $str =~ s/-//g;
-      last if ( length( $str ) == $parameters{'left'} + 1 );
-      $leftCols++;
+    if ( $parameters{'left'} > 0 ) {
+      #while ( $leftCols <= $maLen ) {
+      #  my $str = substr( $consensus, 0, $leftCols );
+      #  $str =~ s/-//g;
+      #  last if ( length( $str ) == $parameters{'left'} + 1 );
+      #  $leftCols++;
+      #}
+      #$leftCols--;
+      my $str;
+      while ( $leftCols <= $maLen ) {
+        my $cBase = substr( $consensus, $leftCols, 1 );
+        $str .= $cBase if ( $cBase ne '-' );
+        last if ( length( $str ) == $parameters{'left'} + 1 );
+        $leftCols++;
+      }
+    }else {
+      # Chew back to first non-ambig
+      my $str;
+      while ( $leftCols <= $maLen ) {
+        my $cBase = substr( $consensus, $leftCols, 1 );
+        last if ( $cBase =~ /[ACGT]/i );
+        $leftCols++;
+      }
     }
-    $leftCols--;
   }
   if ( defined $parameters{'right'} ) {
-    while ( $rightCols <= $maLen ) {
-      my $str = substr( $consensus, $maLen - $rightCols, $rightCols );
-      $str =~ s/-//g;
-      last if ( length( $str ) == $parameters{'right'} + 1 );
-      $rightCols++;
+    if ( $parameters{'right'} > 0  ) {
+      #while ( $rightCols <= $maLen ) {
+      #  my $str = substr( $consensus, $maLen - $rightCols, $rightCols );
+      #  $str =~ s/-//g;
+      #  last if ( length( $str ) == $parameters{'right'} + 1 );
+      #  $rightCols++;
+      #}
+      #$rightCols--;
+      my $str;
+      while ( $rightCols <= $maLen ) {
+        my $cBase = substr( $consensus, $maLen - $rightCols - 1, 1 );
+        $str .= $cBase if ( $cBase ne '-' );
+        last if ( length( $str ) == $parameters{'right'} + 1 );
+        $rightCols++;
+      }
+    }else {
+      # Chew back to first non-ambig
+      my $str;
+      while ( $rightCols <= $maLen ) {
+        my $cBase = substr( $consensus, $maLen - $rightCols - 1, 1 );
+        last if ( $cBase =~ /[ACGT]/i );
+        $rightCols++;
+      }
     }
-    $rightCols--;
   }
 
-  for ( my $i = 0 ; $i < $this->getNumAlignedSeqs() ; $i++ ) {
+  # go from high to low so we may remove sequences
+  my $max = $this->getNumAlignedSeqs()-1;
+  for ( my $i = $max; $i >= 0; $i-- ) {
     my $relStart = $this->getAlignedStart( $i );
     my $relEnd   = $this->getAlignedEnd( $i );
     my $seq      = $this->getAlignedSeq( $i );
-
+    my $relCutoff = $maLen - $rightCols;
+    
     # Do the suffix first
-    if ( $relEnd >= ( $maLen - $rightCols ) ) {
-      my $pos = $relEnd - ( $maLen - $rightCols ) + 1;
-      my $trimSeq = substr( $seq, length( $seq ) - $pos, $pos );
-      substr( $seq, length( $seq ) - $pos, $pos ) = "";
-
-      #$this->setAlignedEnd( $i, $relEnd - length($trimSeq) );
-      $this->setAlignedEnd( $i, $relEnd - length( $trimSeq ) - $leftCols );
-      $trimSeq =~ s/-//g;
-      $this->setAlignedSeqEnd( $i,
-                           $this->getAlignedSeqEnd( $i ) - length( $trimSeq ) );
-    }
-    else {
+    if ( $relEnd >= $relCutoff ) {
+      # end overlaps trimming region
+      if ( $relStart < $relCutoff ) {
+        # start is outside trimming region
+        my $seqTrimLen = $relEnd - $relCutoff + 1;
+        my $trimSeq = substr( $seq, length( $seq ) - $seqTrimLen, $seqTrimLen );
+        substr( $seq, length( $seq ) - $seqTrimLen, $seqTrimLen ) = "";
+        $relEnd -= $seqTrimLen;
+        if ( $seq =~ /([^\.\s\-])([\.\s\-]+)$/ ) {
+          $seq = substr( $seq, 0, length( $seq ) - length( $2 ) );
+          $relEnd -= length($2);
+        }
+        $this->setAlignedEnd( $i, $relEnd - $leftCols );
+        $trimSeq =~ s/-//g;
+        $this->setAlignedSeqEnd( $i,
+                               $this->getAlignedSeqEnd( $i ) - length( $trimSeq ) );
+      }else {
+        # contained....must delete
+        # Don't forget that index = 0 is reserved for the reference sequence.
+        splice(@{ $this->{'alignCol'} }, $i+1, 1);
+        next;
+      }
+    }else {
       $this->setAlignedEnd( $i, $relEnd - $leftCols );
     }
 
     if ( $relStart < $leftCols ) {
-      my $pos = $leftCols - $relStart;
-      my $trimSeq = substr( $seq, 0, $pos );
-      substr( $seq, 0, $pos ) = "";
-
-      #$this->setAlignedStart( $i, $relStart + length($trimSeq) );
-      $this->setAlignedStart( $i, 0 );
-      $trimSeq =~ s/-//g;
-      $this->setAlignedSeqStart( $i,
-                         $this->getAlignedSeqStart( $i ) + length( $trimSeq ) );
-    }
-    else {
-      $this->setAlignedStart( $i, $relStart - $leftCols );
+      # start overlaps trimming region
+      if ( $relEnd >= $leftCols ) {
+        # end extends past trimming region
+        my $seqTrimLen = $leftCols - $relStart;
+        my $trimSeq = substr( $seq, 0, $seqTrimLen );
+        substr( $seq, 0, $seqTrimLen ) = "";
+        $relStart += $seqTrimLen;
+        if ( $seq =~ /^([\.\s\-]+)/ ) {
+          $relStart += length($1);
+          $seq = substr( $seq, length($1) );
+        }
+        $this->setAlignedStart( $i, $relStart-$leftCols );
+        $trimSeq =~ s/-//g;
+        $this->setAlignedSeqStart( $i,
+                           $this->getAlignedSeqStart( $i ) + length( $trimSeq ) );
+      }else {
+        # contained...must delete
+        # Don't forget that index = 0 is reserved for the reference sequence.
+        splice(@{ $this->{'alignCol'} }, $i+1, 1);
+        next;
+      }
+    }else {
+      $this->setAlignedStart( $i, $relStart-$leftCols );
     }
     $this->setAlignedSeq( $i, $seq );
   }
@@ -2429,6 +2689,7 @@ sub trimAlignments {
          )
   );
   $this->resetGappedReferenceLength();
+  return( $leftCols, $rightCols );
 }
 
 # New method added 3/15/21 -- needs to be ported to Python object
@@ -2590,10 +2851,6 @@ sub getAlignmentBlock {
          && $end <= $this->getAlignedEnd( $j ) )
     {
       if ( defined $parameters{'rawSequences'} ) {
-
-        #my $seq = substr( $this->seq( $j ),
-        #                  $start - $this->start( $j ),
-        #                  $end - $start + 1 );
         my $seq = substr( $this->getAlignedSeq( $j ),
                           $start - $this->getAlignedStart( $j ),
                           $end - $start + 1 );
@@ -2602,10 +2859,6 @@ sub getAlignmentBlock {
       }
       else {
         push @results,
-
-            #substr( $this->seq( $j ),
-            #        $start - $this->start( $j ),
-            #        $end - $start + 1 );
             substr( $this->getAlignedSeq( $j ),
                     $start - $this->getAlignedStart( $j ),
                     $end - $start + 1 );
@@ -2613,7 +2866,11 @@ sub getAlignmentBlock {
     }
   }
 
-  return ( shift @results, \@results );
+  my $subRef = substr( $this->getReferenceSeq(),
+                    $start,
+                    $end - $start + 1 );
+
+  return ( $subRef, \@results );
 
 }
 
@@ -2649,7 +2906,8 @@ sub getAlignmentBlock {
 ##             [[4], [3], [1, 2, -2, 2, -2, 1, 5]]
 ##
 ##      Additionally this implementation provides the interval as a list
-##      of [start, end] lists.  For the example above:
+##      of [start, end] lists.  For the example above would be reported in 
+##      zero-based, half-open coordinates as:
 ##
 ##             [[0, 1], [2, 3], [4, 11]]
 ##        
@@ -3542,7 +3800,9 @@ sub _getEndStartPairs {
 =head2 toSTK()
 
   Use: $obj->toSTK( filename => "filename",
-                    includeReference => 1, header => "## foo", 
+                    includeReference => 1, 
+                    headerOverride => "",
+                    header => "## foo", 
                     id => "fullID", includeTemplate => 1 );
 
   Export the multiple alignment data to a file in the Stockholm 1.0
@@ -3574,11 +3834,10 @@ sub toSTK {
   }
 
   # Print header
-  print $OUT "# STOCKHOLM 1.0\n";
-  print $OUT "#=GF ID $id\n";
   if ( $parameters{'includeTemplate'} ) {
-
     # Print Dfam variant
+    print $OUT "# STOCKHOLM 1.0\n";
+    print $OUT "#=GF ID $id\n";
     print $OUT "#=GF DE My favorite ERVL ~:Title\n";
     print $OUT "#=GF AU Foobar Jones ~:Author\n";
     print $OUT "#=GF TP LTR/ERVL ~:Classification\n";
@@ -3598,23 +3857,31 @@ sub toSTK {
     print $OUT
 "#=GF ** BufferStages: 3[1-2], 5[3-6], 5 ~: 'stage'[start-end] or just 'stage'\n";
     print $OUT "#=GF ** HC: CACTACCCCC ~: Handbuilt consensus\n";
-  }
-  else {
+    print $OUT "#=GF BM RepeatModeler/MultAln\n";
+  }elsif ( $parameters{'headerOverride'} ) {
+    # NOTE: This must include all the minimal Stockholm fields no validation is
+    #       performed here.  Also this must not include the "GF SQ" or "GF RF" fields
+    #       as these are MSA specific and will be attached below.
+    print $OUT $parameters{'headerOverride'};
+  }else {
+    print $OUT "# STOCKHOLM 1.0\n";
+    print $OUT "#=GF ID $id\n";
     print $OUT "#=GF CC refLength="
         . $object->getGappedReferenceLength()
         . " refName="
         . $object->getReferenceName() . "\n";
+    print $OUT "#=GF BM RepeatModeler/MultAln\n";
   }
-  print $OUT "#=GF BM RepeatModeler/MultAln\n";
 
-  my $numSeqs = $object->getNumAlignedSeqs();
-  $numSeqs += 1 if ( defined $parameters{'includeReference'} );
-  print $OUT "#=GF SQ $numSeqs\n";
-
+  # Extra header details
   if ( $parameters{'header'} ) {
     print $OUT "$parameters{'header'}";
     print $OUT "\n" if ( $parameters{'header'} !~ /.*[\n\r]$/ );
   }
+
+  my $numSeqs = $object->getNumAlignedSeqs();
+  $numSeqs += 1 if ( defined $parameters{'includeReference'} );
+  print $OUT "#=GF SQ $numSeqs\n";
 
   # Generate identifiers and find max length
   my @ids = ();
@@ -3662,25 +3929,69 @@ sub toSTK {
     $maxNameLen = 255;
   }
 
-  # Print out the reference using the #=GC RF line
-  my $seq = $object->getReferenceSeq();
-
+  # RMH: This needs revisiting.  The concept of a transitive alignment
+  #      with the reference being special ( e.g. a highly curated consensus )
+  #      where the occupancy of the reference should be preserved despite what
+  #      the MSA would indicate if a consensus is called.  This opposed to
+  #      the MSA *is* authoritative and the RF line should be drawn from
+  #      the derived consensus.  Dfam 1.x used the former method while later familes
+  #      employ the later.  We have adopted the convention that if "x/." are
+  #      used in the RF line then it represents the occupancy of the sequence
+  #      all members were aligned to.  If it includes residues it represents
+  #      the called consensus on the transitive MSA.
+  #
   # NOTE: The reference sequence could have been obtained using
   #       only the alignment data.  This means that a portion of
   #       the reference sequence that is not covered by an alignemnt
   #       will have spaces in the appropriate places in the reference
-  #       sequence.  Treat these spaces as consensus positions in the
-  #       RF line. 8/21/2015
-  $seq =~ s/-/./g;
-  if ( $parameters{'nuclRF'} ) {
-    # 3/27/2020 - TODO: Consider why gaps like this exist in the first place.
+  #       sequence.  
+  # 
+  #    eg:
+  #
+  #       consA = AGGTTGAACCA
+  #
+  #       pair1:
+  #         consA AGGT*******
+  #         seq1  AGGT
+  #
+  #       pair2:
+  #         consA ******AACCA
+  #         seq2        AACCA 
+  #
+  #      This would generate a transitive MSA like:
+  #
+  #         ref   AGGT  AACCA
+  #         seq1  AGGT
+  #         seq2        AACCA 
+  #
+  #       The "TG" in the center was not aligned to any bases fed
+  #       into MultAln and therefore the REF line cannot be 
+  #       reconstructed from the alignments alone.  We would need
+  #       to also pass in the reference sequence for this to be
+  #       guaranteed.
+  #
+  #       Until we refactor to require the reference sequence, treat
+  #       these spaces as "N" reference positions in the
+  #       RF line.  E.g in the above we would consider the reference
+  #       sequence "AGGTNNAACCA" and generate a RF line "xxxxxxxxxxx".
+  #       8/21/2015
+  my $seq;
+  if ( $parameters{'consRF'} || $parameters{'nuclRF'} ) {
+    # 7/26/21 : Moving towards the convention that residues in the RF line
+    #           indicate that the RF data is derived from the MSA consensus
+    #           rather than the transitive reference.
+    $seq = $object->consensus();
+    $seq =~ s/-/./g;
     $seq =~ s/ /N/g;
     $seq = uc( $seq );
   }
   else {
+    $seq = $object->getReferenceSeq();
+    $seq =~ s/-/./g;
     $seq =~ s/ /x/g;
     $seq =~ s/[ACGTBDHVRYKMSWN]/x/ig;
   }
+  # Print out the reference using the #=GC RF line
   my $name = "#=GC RF ";
   if ( length( $name ) <= $maxNameLen ) {
     $name = $name . " " x ( $maxNameLen - length( $name ) );
@@ -3694,7 +4005,7 @@ sub toSTK {
        || defined $parameters{'includeReferenceNoPrefix'} )
   {
     $seq = $object->getReferenceSeq();
-    $seq =~ s/-/./g;
+    $seq =~ s/[-\s]/./g;
 
     my $name = shift @ids;
     if ( length( $name ) <= $maxNameLen ) {
@@ -4015,7 +4326,9 @@ sub printAlignments {
   $showScore = 1 if ( $parameters{'showScore'} );
 
   my $consensus = "";
+  my $maxIDLen    = 0;
   if ( $parameters{'showCons'} ) {
+    $maxIDLen  = length("consensus");
     $consensus = $object->consensus( inclRef => $inclRef );
   }
 
@@ -4025,8 +4338,16 @@ sub printAlignments {
       $object->getAlignedStart( $a ) <=> $object->getAlignedStart( $b )
     } ( 0 .. ( $object->getNumAlignedSeqs() - 1 ) );
   }
+  
+  # For new LINUP format
+  my @lineIDs = ();
+  my $idx = 1; # starting from 1
+  foreach my $sidx ( @sortedIndexes ) {
+     $lineIDs[$sidx] = $idx++;
+  }
 
-  my $maxIDLen    = length( $object->getReferenceName() );
+  $maxIDLen    = length( $object->getReferenceName() )
+    if ( $maxIDLen < length( $object->getReferenceName() ) );
   my $maxCoordLen = 0;
   my @seqCoordIdx = ();
   foreach my $i ( @sortedIndexes ) {
@@ -4144,7 +4465,6 @@ sub printAlignments {
 
       # and our name is...
       $name = $object->getAlignedName( $i );
-
  
       #if ( $seqStart == 0 ) {
       #  $start = $object->getAlignedSeqStart( $i );
@@ -4174,7 +4494,7 @@ sub printAlignments {
           . $seqCoordStart . " "
           . $seq
           . " " x ( $blockSize - length( $seq ) ) . "    "
-          . $seqCoordEnd . "\n";
+          . $seqCoordEnd . " [" . $lineIDs[$i] . "]\n";
       
 
       #my $outStr = $name
@@ -4719,40 +5039,40 @@ sub buildConsensusFromArray {
       my $score = 0;
       foreach $b ( keys %{ $profile[ $i ] } ) {
         next if ( $b eq " " );
-
-        #print "    -- tabulating $b\n" if ( $i == 235 );
         croak $CLASS
             . "::buildConsensusFromArray: Matrix alphabet doesn't include\n"
             . "three-way IUB codes: $a -> $b\n"
             if ( !defined $matrix_r->{ $a . $b } );
         $score += $profile[ $i ]{$b} * $matrix_r->{ $a . $b };
+        #if ( $i == 3 ) { print " profile[]{$b} = $profile[ $i ]{$b} and matrix_r{$a $b} = " . $matrix_r->{ $a . $b } . "\n"; }
       }
       $nScore = $score if ( $a eq "N" );
 
-      #if ( $i == 235 )
-      #{
-      #   print "235 : $a = $score\n";
-      #}
       if ( $score > $maxScore ) {
         $n        = $a;
         $maxScore = $score;
       }
     }
     if ( $n ne "N" && $nScore == $maxScore ) {
-
-      #print "Setting $i to N\n";
       $n = "N";
     }
     $consensus .= $n;
 
-    #print "col $i ( $n ): " . Dumper($profile[$i]) . "\n";
+    #my $foo = $consensus;
+    #$foo =~ s/-//g;
+    #print "col $i conspos " .length($foo).": max_base = $n max_score = $maxScore\n";
     push @cScore, $maxScore;
   }
+  #print "precons=$consensus\n";
+  #my $foo = $consensus;
+  #$foo =~ s/-//g;
+  #print "Leng = " . length($foo) . "\n";
 
   #
   #   go through the consensus and consider changing each dinucleotide
   #   to a 'CG'
   #
+  #print "Consensus = $consensus\n";
 FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
     next if ( substr( $consensus, $i, 1 ) eq '-' );
     my $CGscore = 0;
@@ -4768,6 +5088,7 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
       last FLOOP if ( $k >= length( $consensus ) );
     }
     my $consDNRight = substr( $consensus, $k, 1 );
+    #print "cons: $consDNLeft$consDNRight\n";
     foreach ( @{$sequences} ) {
       my $j = $i;
       next if ( $j >= length( $_ ) );
@@ -4835,13 +5156,13 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
       }
       elsif ( $hitDN eq "AA" || $hitDN eq "GA" ) {
         $CGscore += $CGTransParam + ( $matrix_r->{ "C" . $hitDNLeft } );
-
         # same as above
       }
       else {
         $CGscore += $matrix_r->{ "C" . $hitDNLeft };
         $CGscore += $matrix_r->{ "G" . $hitDNRight };
       }
+      #print " -- hitDN=$hitDN CGScore = $CGscore dnScore =  $dnScore\n";
     }
     if ( $CGscore > $dnScore ) {
       substr( $consensus, $i, 1 ) = 'C';

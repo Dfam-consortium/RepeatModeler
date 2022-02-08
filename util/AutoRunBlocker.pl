@@ -371,11 +371,13 @@ sub callBlocker {
      $newseq = $1;
      $newseq =~ s/^N+//; #otherwise the beg/end are not reported
      $newseq =~ s/N+$//;
-     $ncount = ($newseq =~ tr/N//);
+     # Get a count of the Ns ( NOTE: Not removing them )
+     $ncount = ($newseq =~ tr/N/N/);
   }
-  if ( $blockerout =~ /Sequence difference[\.\s]+(\d+)/) {
-     $numMajorityLen = $1;
-  }
+  # 6/2/21: RMH: We do not want sequence differences only.  There must be a change in the consensus lengnth.
+  #if ( $blockerout =~ /Sequence difference[\.\s]+(\d+)/) {
+  #   $numMajorityLen = $1;
+  #}
   my $newlength = length($newseq);
   my $adjustedratio = $ratio;
   my $nratiocut = 10;
@@ -383,6 +385,9 @@ sub callBlocker {
     $adjustedratio -= 0.5;
     $nratiocut -= ($newlength - $window)/4;
   }
+  #print "callBlocker( $startBlock $startColumn, $endBlock, $endColumn)\n";
+  #print "callBlocker: numMajorityLen = $numMajorityLen, numOrigLen = $numOrigLen, ncount = $ncount, newlength = $newlength\n";
+  # RMH: NOTE: This let's through any new consensus where there are more than copymin seqs and there is a sequence substitution.
   if ( $numMajorityLen >= $copymin && (!$numOrigLen || $numMajorityLen/$numOrigLen >= $adjustedratio) 
        && ($ncount < 2 || $newlength/$ncount > $nratiocut ) ) 
   {

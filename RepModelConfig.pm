@@ -74,7 +74,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 1,
-                           'value' => '/home/rhubley/src/cd-hit-v4.8.1-2019-0228'
+                           'value' => '/usr/local/cd-hit-v4.8.1-2019-0228'
                          },
           'GENOMETOOLS_DIR' => {
                                  'command_line_override' => 'genometools_dir',
@@ -85,18 +85,18 @@ BEGIN {
                                                         ],
                                  'param_type' => 'directory',
                                  'required' => 0,
-                                 'value' => '/home/rhubley/src/genometools-1.5.9/bin'
+                                 'value' => '/usr/local/genometools-1.5.10/bin'
                                },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
-                                   'description' => 'The path to the installation of the LTR_Retriever structural LTR analysis package.',
+                                   'description' => 'The path to the installation of the LTR_Retriever (v2.9.0 and higher) structural LTR analysis package.',
                                    'environment_override' => 'LTR_RETRIEVER_DIR',
                                    'expected_binaries' => [
                                                             'LTR_retriever'
                                                           ],
                                    'param_type' => 'directory',
                                    'required' => 0,
-                                   'value' => '/home/rhubley/src/LTR_retriever-2.6'
+                                   'value' => '/usr/local/LTR_retriever-2.9.0'
                                  },
           'MAFFT_DIR' => {
                            'command_line_override' => 'mafft_dir',
@@ -118,7 +118,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/home/rhubley/projects/NINJA/NINJA'
+                           'value' => '/usr/local/NINJA-0.95-cluster_only/NINJA'
                          },
           'RECON_DIR' => {
                            'command_line_override' => 'recon_dir',
@@ -157,7 +157,7 @@ BEGIN {
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast/bin'
+                             'value' => '/usr/local/rmblast-2.10.0/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
@@ -171,13 +171,14 @@ BEGIN {
                             'required' => 1,
                             'value' => '/usr/local/RepeatScout-1.0.6'
                           },
-          'TRF_PRGM' => {
-                          'command_line_override' => 'trf_prgm',
-                          'description' => 'The full path including the name for the TRF program ( 4.0.9 or higher )',
-                          'environment_override' => 'TRF_PRGM',
-                          'param_type' => 'program',
+          'TRF_DIR' => {
+                          'command_line_override' => 'trf_dir',
+                          'description' => 'The full path to TRF program.  TRF must be named \"trf\". ( 4.0.9 or higher )',
+                          'environment_override' => 'TRF_DIR',
+                          'param_type' => 'directory',
                           'required' => 1,
-                          'value' => '/usr/local/bin/trf409.linux64'
+                          'expected_binaries' => [ 'trf' ],
+                          'value' => '/usr/local/bin'
                         },
           'UCSCTOOLS_DIR' => {
                           'command_line_override' => 'ucsctools_dir',
@@ -207,7 +208,7 @@ BEGIN {
   #
   # Current version of the software
   #
-  $VERSION = "2.0.2";
+  $VERSION = "2.0.3";
 
   #
   # Set this flag to default to debug mode for the entire package
@@ -549,11 +550,11 @@ BEGIN {
         }
         close IN;
       }
-    }elsif ( $param eq "TRF_PRGM" ) { 
+    }elsif ( $param eq "TRF_DIR" ) { 
       # trf -V
       # Tandem Repeats Finder, Version 4.09
       # Copyright (C) Dr. Gary Benson 1999-2012. All rights reserved.
-      $tmpStr = `$value -V 2>&1`;
+      $tmpStr = `$value/trf -V 2>&1`;
       $tmpStr =~ /Version\s+(\d+\.\d+)/;
       $version = $1;
     }elsif ( $param eq "UCSCTOOLS_DIR" ) { 

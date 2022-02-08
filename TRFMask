@@ -92,7 +92,7 @@ my $CLASS = "TRFMask";
 my $DEBUG = 0;
 $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
 my $config   = $RepModelConfig::configuration;
-my $TRF_PRGM = $config->{'TRF_PRGM'}->{'value'};
+my $TRF_PRGM = $config->{'TRF_DIR'}->{'value'} . "/trf";
 
 #
 # Option processing

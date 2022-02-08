@@ -79,6 +79,12 @@ Source Distribution Installation
     http://www.repeatmasker.org/RMBlast.html
     We recommend using 2.9.0-p2 or higher.
 
+  UCSC genome browser command-line utilities - Some tools included with
+    RepeatModeler work with files in the 'twobit' file format using
+    these programs: twoBitToFa, faToTwoBit, and twoBitInfo.
+    Precompiled binaries and source for these programs can be found at
+    http://hgdownload.soe.ucsc.edu/downloads.html#utilities_downloads.
+
 **Optional. Additional search engine:**
   
   ABBlast - Sequence Search Engine, W. Gish et al.

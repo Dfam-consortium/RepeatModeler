@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/local/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) alignAndCallConsensus.pl
@@ -20,7 +20,9 @@ alignAndCallConsensus.pl - Align TE consensus to a set of instances and call con
   alignAndCallConsensus.pl -c(onsensus) <*.fa> -e(lements) <*.fa> | -de(faults)
                  [-d(ivergencemax) #] [-sc(ore) #] [-mi(nmatch) #]
                  [-b(andwidth) #] [-cr(ossmatch)] [-rm(blast)]
+                 [-mas(klevel) #]
                  [-f(inishedext) <str>] [-ma(trix) <str>]
+                 [-ex(p_pen_drop) #]
                  [-ht(ml)] [-st(ockholm)] [-q(uiet)]
                  [-re(fine)|-re(fine) #] [-fi(lter_overlap)]
                  [-inc(lude_reference)] [-outdir <val]
@@ -156,6 +158,12 @@ The minimum word size for the alignment algorithm. Default: 7
 The alignment bandwidth for cross_match ( or equivalent x-drop cutoffs for rmblast )
 Default: 40
 
+=item -mas(klevel) #
+
+The masklevel parameter for rmblast/cross_match.  This controls the amount of 
+overlap between high scoring hits.
+Default: 80
+
 =item -ma(trix) <value>
 
 Default 25; If a number 14,18,20 or 25 is given the matrix ##p41g.matrix is chosen.
@@ -285,11 +293,13 @@ my @getopt_args = (
                     '-minmatch|mi=s',
                     '-score|sc=s',
                     '-stockholm|st',
+                    '-masklevel|mas=s',
                     '-outdir=s',
                     '-include_reference|inc',
                     '-interactive|int',
                     '-prune|p=s',
                     '-html|ht',
+                    '-exp_pen_drop|ex=i',
                     '-hpad|hp=i',
                     '-quiet|q',
                     '-refine|re:s',
@@ -340,7 +350,7 @@ my $outdir = cwd;
 
 #
 # Process the consensus file:
-#    - Unless specifified default to "rep"
+#    - Unless specified default to "rep"
 #
 #    - If it contains more than one sequence we assume that we are 
 #      in a mode to compete and build several subfamilies against each
@@ -481,11 +491,19 @@ if ( ! -s "$matrixPath/$matSpec" ) {
   die "Error: Matrix parameter resolved to $matrixPath/$matSpec, which doesn't exist!\n";
 }
 
+if ( $options{'exp_pen_drop'} ) {
+  $insGapExt += $options{'exp_pen_drop'};
+  $delGapExt += $options{'exp_pen_drop'};
+}
+
 my $minmatch  = 7;
 $minmatch = $options{'minmatch'} if ( exists $options{'minmatch'} );
 
 my $minscore = 200;
 $minscore = $options{'score'} if ( exists $options{'score'} );
+
+my $masklevel = 80;
+$masklevel = $options{'masklevel'} if ( exists $options{'masklevel'} );
 
 my $bandwidth = 40;
 $bandwidth = $options{'bandwidth'} if ( exists $options{'bandwidth'} );
@@ -554,7 +572,7 @@ unless ( $options{'quiet'} ) {
   print "\n";
   print "# Engine: $engine  Matrix: $matSpec, Bandwidth: $bandwidth,\n";
   print "#                  Minmatch: $minmatch, Minscore: $minscore,\n";
-  print "#                  Maxdiv: $maxdiv, GapInit: $gapInit,\n";
+  print "#                  Maxdiv: $maxdiv, GapInit: $gapInit, Masklevel: $masklevel\n";
   print "#                  InsGapExt: $insGapExt, DelGapExt: $delGapExt\n";
   if ( $prunecutoff > 0 ) {
     print "# Prune alignment edges where coverage is less than $prunecutoff sequences.\n";
@@ -587,8 +605,7 @@ if ( $engine eq "crossmatch" ) {
 
 $searchEngineN->setGenerateAlignments( 1 );
 $searchEngineN->setMatrix("$matrixPath/$matSpec");
-# Default for crossmatch
-$searchEngineN->setMaskLevel( 80 );
+$searchEngineN->setMaskLevel( $masklevel );
 $searchEngineN->setMinScore( $minscore );
 $searchEngineN->setGapInit( $gapInit );
 $searchEngineN->setInsGapExt( $insGapExt );
@@ -606,8 +623,12 @@ while ( 1 ) {
 
   unless ( $engine eq "crossmatch" ) {
     # Always make a database as the sequence may have changed
-    system(   "$RMBLAST_DIR/makeblastdb -blastdb_version 4 -out $conFile "
-            . "-parse_seqids -dbtype nucl -in $conFile >/dev/null 2>&1");
+    my $buildCmd = "$RMBLAST_DIR/makeblastdb -blastdb_version 4 -out $conFile "
+            . "-parse_seqids -dbtype nucl -in $conFile >/dev/null 2>&1";
+    system($buildCmd);
+    if ( ! -s "$conFile.nsq" ) {
+      die "ERROR running makeblastdb.  The full command run: $buildCmd\n";
+    }
   }
  
   my %collected = ();
@@ -848,7 +869,7 @@ while ( 1 ) {
     # order to $consID.out
     $newResultCollection->sort(
       sub ($$) {
-        $_[ 0 ]->getQueryName() <=> $_[ 1 ]->getQueryName() ||
+        $_[ 0 ]->getQueryName() cmp $_[ 1 ]->getQueryName() ||
         $_[ 0 ]->getQueryStart() <=> $_[ 1 ]->getQueryStart() ||
         $_[ 1 ]->getQueryEnd() <=> $_[ 0 ]->getQueryEnd();
        }
@@ -888,7 +909,9 @@ while ( 1 ) {
     unlink "$outdir/$consID.malign" if ( -e "$outdir/$consID.malign" );
   
     if ( $options{'stockholm'} ) {
-      system "$FindBin::RealBin/Linup $includeRef $outdir/$consID.out -matrix $FindBin::RealBin/../Matrices/linupmatrix -stockholm > $outdir/$consID.stk";
+      # RMH: 6/15/21 - Not sure why -matrix was provided but it no longer works without also providing cgParam
+      #system "$FindBin::RealBin/Linup $includeRef $outdir/$consID.out -matrix $FindBin::RealBin/../Matrices/linupmatrix -stockholm > $outdir/$consID.stk";
+      system "$FindBin::RealBin/Linup $includeRef $outdir/$consID.out -stockholm > $outdir/$consID.stk";
     }
   
     unless ( $options{'quiet'} ) {
@@ -922,8 +945,6 @@ while ( 1 ) {
       }
     }else {
       print "Consensus Changes:\n\n$diffStr\n" unless ( $options{'quiet'} );
-      #print "new: $testCons\n";
-      #print "old: " . $consRecs->{$consID}->{'seq'} ."\n";
       $changedCnt++;
       $consRecs->{$consID}->{'iteration'}++;
 
@@ -1042,12 +1063,22 @@ while ( 1 ) {
 
     $newResultCollection->sort(
       sub ($$) {
-        $_[ 0 ]->getQueryName() <=> $_[ 1 ]->getQueryName() ||
+        $_[ 0 ]->getQueryName() cmp $_[ 1 ]->getQueryName() ||
         $_[ 0 ]->getQueryStart() <=> $_[ 1 ]->getQueryStart() ||
         $_[ 1 ]->getQueryEnd() <=> $_[ 0 ]->getQueryEnd();
        }
     );
     open OUT,">$outdir/$conFile.out" or die "could not open \'$conFile.out\' for writing\n";
+    print OUT "#\n";
+    print OUT "# Search Parameters:\n";
+    print OUT "#    Matrix    :  $matSpec\n";
+    print OUT "#    gapInit   :  $gapInit\n";
+    print OUT "#    insGapExt :  $insGapExt\n";
+    print OUT "#    delGapExt :  $delGapExt\n";
+    print OUT "#    minmatch  :  $minmatch\n";
+    print OUT "#    minscore  :  $minscore\n";
+    print OUT "#    bandwidth :  $bandwidth\n";
+    print OUT "#\n";
     for ( my $k = 0 ; $k < $newResultCollection->size() ; $k++ ) {
       my $resultRef = $newResultCollection->get( $k );
       print OUT "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );

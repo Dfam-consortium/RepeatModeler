@@ -29,7 +29,7 @@ generateSeedAlignments - Generate a seed alignments from RM *.align output
 
 =head1 SYNOPSIS
 
- generateSeedAlignments [-families "<id1> <id2> .."] [-includeRef]
+ generateSeedAlignments [-families "<id1> <id2> .."] [-consensusRF]
                         [-outSTKFile <*.stk>] [-taxon <ncbi_taxonomy_name>]
                         [-assemblyID <id>] [-minAlignedLength #]
                         [-verbose][-noColor] [-prefixAssembly]
@@ -51,6 +51,12 @@ Reverse engineer seed alignments using the following pipline:
   o Run this script using the RepeatMasker alignment output
     and the assembly in 2bit format to produce seed alignments
     for each family ( or a particular set ) in Stockholm format.
+    NOTE: The RF line in each Stockholm file represents the 
+    match states as defined by the consensus used by RepeatMasker.
+    This means that it may not match what would be derived by 
+    a consensus call on the MSA.  As such we use the "X/." symbols
+    in the RF line to indicate to Dfam that either "-use_ref_pos"
+    needs to be set or the RF line needs to be updated.
 
   o [optional] : If there is a high level of fragmentation in
     the original consensus library, run an extension algorithm
@@ -76,9 +82,15 @@ The options are:
 
 Only analyze a specific set of families from the RepeatMasker alignment file.
 
-=item -includeRef
+=item DEPRECATED: -nucleotideRF replaced with -consensusRF
 
-Use consensus sequence in the RF line rather than "x"s.
+=item -consensusRF
+
+The RF line produced by this tool is by-default derived from the sequence
+used by RepeatMasker to identify copies. The use of this new flag changes
+this behaviour by instead using the consensus derived directly from the 
+MSA itself. By the Dfam convention we use the "x/." symbols whenever the RF
+line is not a true consensus of the MSA and the consensus residues otherwise.
 
 =item -outSTKFile <*.stk>
 
@@ -188,8 +200,9 @@ my @getopt_args = (
                     '-verbose',
                     '-families=s',
                     '-assemblyFile=s',
+                    '-assemblyID=s',
                     '-taxon=s',
-                    '-includeRef',
+                    '-consensusRF',
                     '-outSTKFile=s',
                     '-prefixAssembly',
                     '-noColor',
@@ -832,6 +845,7 @@ foreach my $id ( keys( %alignByID ) )
     next;
   }
 
+  #print "DEBUG: " . $resultCol->toString( SearchResult::AlignWithQuerySeq ) . "\n";
   my $mAlign = MultAln->new( searchCollection          => $resultCol,
                              searchCollectionReference => MultAln::Subject );
 
@@ -845,11 +859,10 @@ foreach my $id ( keys( %alignByID ) )
   }
   
   $totalBuilt++;
-  if ( $options{'includeRef'} ) {
-                      #header           => $newHeaders{uc($id)}->{'header'},
+  if ( $options{'consensusRF'} ) {
     $mAlign->toSTK(
                       filename         => "$sanitizedID.stk",
-                      includeReference => 1,
+                      consRF => 1,
                       id               => $sanitizedID
       );
   } else

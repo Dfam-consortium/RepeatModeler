@@ -149,7 +149,7 @@ BEGIN {
                           "POSIX",       "File::Copy",
                           "File::Path",  "Data::Dumper",
                           "Cwd",         "JSON", "JSON::PP",
-                          "File::Which", "URI",
+                          "File::Which", "URI", "Devel::Size",
                           "LWP::UserAgent", "Storable"
   );
 
@@ -236,8 +236,8 @@ if ( !$options{'rscout_dir'} ) {
 if ( !$options{'dustmasker_prgm'} ) {
   RepModelConfig::promptForParam( 'DUSTMASKER_PRGM' );
 }
-if ( !$options{'trf_prgm'} ) {
-  RepModelConfig::promptForParam( 'TRF_PRGM' );
+if ( !$options{'trf_dir'} ) {
+  RepModelConfig::promptForParam( 'TRF_DIR' );
 }
 if ( !$options{'cdhit_dir'} ) {
   RepModelConfig::promptForParam( 'CDHIT_DIR' );

@@ -40,15 +40,16 @@ Linup - Display or convert MSA into various formats
 =head1 SYNOPSIS
 
   Linup [-version] [-i] [-matrix <matrix_file>
-                        [-cgParam #] [-taParam # ] [-cgTransParam #] ]
-                        [ -trimLeft # | -trimRight # | -revcomp ] 
+                          [-cgParam #] [-taParam # ] [-cgTransParam #]
+                        ]
+                        [[[-trimLeft #] [-trimRight #] [-trimAmbig]] | -revcomp] 
                         [-name familyname]
                         [-normalizeCoord] [-showScore] 
                         [-includeFlanking # -genome <2bit_file>]
                         [-malignOut <file>]
                         [-stockholm | -msf | 
                          -consensus | -msa
-                         -fasta ]
+                         -fasta | -stats]
         <crossmatch file> | <stockholm file> | <msa fasta> | <malign file>
 
 
@@ -126,6 +127,11 @@ Serialize the state of the MultAln object to file.  May be read
 back in as input at a later time or used to by utilities that 
 support MultAln.
 
+=item -trimLeft # | -trimRight #
+
+Trim the left or right side of the MSA by provided number of 
+consensus bases ( not alignment columns ).  
+
 =back
 
 =head1 SEE ALSO
@@ -151,6 +157,7 @@ use Data::Dumper;
 use Cwd;
 use File::Spec;
 use File::Basename;
+use File::Temp qw/ tempfile tempdir /;
 
 # RepeatModeler Libraries
 use lib $FindBin::RealBin;
@@ -161,6 +168,7 @@ use MultAln;
 use SeedAlignment;
 
 # RepeatMasker Libraries
+use RepeatUtil;
 use SearchResult;
 use SearchResultCollection;
 use WUBlastSearchEngine;
@@ -170,7 +178,8 @@ use FastaDB;
 
 
 my $Version    = $RepModelConfig::VERSION;
-my $ucscToolsDir = "/usr/local/bin";
+#my $ucscToolsDir = "/usr/local/bin";
+my $ucscToolsDir =  $RepModelConfig::configuration->{'UCSCTOOLS_DIR'}->{'value'};
 
 #
 # Magic numbers/constants here
@@ -201,9 +210,11 @@ my @getopt_args = (
                     '-name=s',
                     '-trimLeft=s',
                     '-trimRight=s',
+                    '-trimAmbig',
                     '-normalizeCoord',
                     '-matrix=s',
                     '-revcomp',
+                    '-stats',
                     '-genome=s',
                     '-includeFlanking=i',
                     '-noTemplate',
@@ -296,171 +307,7 @@ if ( $options{'includeFlanking'} && ! ( $options{'genome'} && $options{'msa'} ) 
   usage();
 }
 
-##
-## Determine file type
-##
-open IN, "<$inputFile" or die "Could not open $inputFile for reading!\n";
-my $maxLines = 10000;
-my $fileType = "Unknown";
-my $foundFastaHdr = 0;
-while ( <IN> )
-{
-  next if (    /^\s*$/ 
-            || /^(\W+).*Score:/ );
-  last if ( $maxLines-- < 0 );
-  if ( /^#\s+STOCKHOLM/ )
-  {
-    if ( $options{'includeFlanking'} ) 
-    {
-      print "\n\nThe includeFlanking parameter currently only works with *.out files!\n\n";
-      usage();
-    }
-    $fileType = "stockholm";
-    last;
-  }
-  if ( /^\s*\d+\s+[\d\.]+\s+[\d\.]+\s+[\d\.]+\s+\S+\s+\d+\s+\d+\s+\(\d+\)/ )
-  {
-    $fileType = "crossmatch";
-    last;
-  }
-  $foundFastaHdr = 1 if ( /^>\S+.*/ );
-  if ( $foundFastaHdr && /^\s*[ACGTUMRWSYKVHDBNacgtumrwsykvhdbn\-\.]+\s*$/ )
-  {
-    if ( $options{'includeFlanking'} ) 
-    {
-      print "\n\nThe includeFlanking parameter currently only works with *.out files!\n\n";
-      usage();
-    }
-    $fileType = "msa-fasta";
-    last;
-  }
-  if ( /^\s+\'alignCol\'\s+=>/ )
-  {
-    if ( $options{'includeFlanking'} ) 
-    {
-      print "\n\nThe includeFlanking parameter currently only works with *.out files!\n\n";
-      usage();
-    }
-    $fileType = "malign";
-    last;
-  }
-    
-}
-close IN;
-
-if ( $fileType eq "Unknown" )
-{
-  die "Could not determine filetype for $inputFile.  Verify that\n"
-      . "the file is either a cross_match, stockholm or an msa-fasta file.\n";
-}
-
-my $mAlign;
-if ( $fileType eq "crossmatch" )
-{
-  my $resultCollection =
-      CrossmatchSearchEngine::parseOutput( searchOutput => $inputFile );
-
-  # TODO: Deprecate this and move it to SearchResultCollection.pm
-  # Auto detect which input ( query/subject ) is the static sequence for
-  # which all other sequences are aligned.
-  my $queryID;
-  my $subjID;
-  my $staticQuery   = 1;
-  my $staticSubject = 1;
-  for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ )
-  {
-    my $result = $resultCollection->get( $i );
-    my $qID    = $result->getQueryName();
-    my $sID    = $result->getSubjName();
-    $staticQuery   = 0 if ( defined $queryID && $queryID ne $qID );
-    $staticSubject = 0 if ( defined $subjID  && $subjID  ne $sID );
-    die "Strange...this appears not to be a multiple alignment!"
-        if ( $staticQuery == 0 && $staticSubject == 0 );
-    $queryID = $qID;
-    $subjID  = $sID;
-  }
-  die "Could not determine reference sequence.  This doesn't look like\n"
-      . "a multiple alignment to one reference sequence!\n"
-      if ( $staticQuery && $staticSubject );
-
-  my $refInput = MultAln::Subject;
-  $refInput = MultAln::Query if ( $staticQuery );
-
-  $mAlign = MultAln->new(
-                        referenceSeq              => "",
-                        searchCollection          => $resultCollection,
-                        searchCollectionReference => $refInput
-                         );
-} elsif ( $fileType eq "stockholm" )
-{
-  open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
-  my $seedAlign = SeedAlignment->new();
-  $seedAlign->read_stockholm( $IN );
-  close $IN;
-  $mAlign = MultAln->new( seedAlignment => $seedAlign );
-}elsif ( $fileType eq "msa-fasta" )
-{ 
-  my @seqs;
-  my $seq;
-  my $id;
-  open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
-  # Simple FASTA reader
-  my %idHash = ();
-  while (<$IN>) {
-    if ( /^>(\S+)/ ) 
-    {
-      my $tmpID = $1;
-      if ( defined $idHash{$tmpID} ) {
-        my $ver = 1;
-        while ( defined $idHash{$tmpID . "_$ver"} ) 
-        {
-          $ver++;
-        }
-        warn "WARN File contains a duplicate identifier \"$tmpID\".  A suffix of \"_$ver\"\n" .
-             "     will be appended to this occurence.\n";
-        $tmpID = $tmpID . "_$ver";
-      }
-      $idHash{$tmpID}++;
-      if ( $seq )
-      {
-        $seq = uc($seq);
-        # Convert prefix/suffix "-"s to spacers
-        if ( $seq =~ /^(\-+)/ ){
-          substr($seq,0,length($1)) = " "x(length($1));
-        }
-        if ( $seq =~ /(\-+)$/ ) {
-          substr($seq,length($seq)-length($1)-1) = " "x(length($1));
-        }
-        push @seqs, [ $id, $seq ];
-      }
-      $seq = "";
-      $id = $tmpID;
-      next;
-    }
-    s/[\s\n\r]+//g;
-    $seq .= $_;
-  }
-  if ( $seq )
-  {
-    # Convert prefix/suffix "-"s to spacers
-    if ( $seq =~ /^(\-+)/ ){
-      substr($seq,0,length($1)) = " "x(length($1));
-    }
-    if ( $seq =~ /(\-+)$/ ) {
-      substr($seq,length($seq)-length($1)-1) = " "x(length($1));
-    }
- 
-    $seq = uc($seq);
-    push @seqs, [ $id, $seq ];
-  }
-  close $IN;
-  $mAlign = MultAln->new( sequences => \@seqs );
-}elsif ( $fileType eq "malign" ){
-  $mAlign = MultAln->new();
-  $mAlign = $mAlign->serializeIN( $inputFile );
-}else {
-  die "Support for $fileType is not complete yet ";
-}
+my ($mAlign, $fileType) = RepeatUtil::openAsMultAln($inputFile);
 
 my $trimLeft = 0;
 $trimLeft = $options{'trimLeft'} if ( defined $options{'trimLeft'} );
@@ -471,6 +318,12 @@ if ( $trimLeft || $trimRight )
 {
   print STDERR "Trimming alignment: left = $trimLeft, right = $trimRight\n";
   $mAlign->trimAlignments( left => $trimLeft, right => $trimRight );
+}
+if ( exists $options{'trimAmbig'} ) {
+  my ($ambigLeft, $ambigRight) = $mAlign->trimAlignments( left => -1, right => -1 );
+  if ( $ambigLeft > 0 || $ambigRight > 0 ) {
+    print STDERR "Ambiguous edges trimmed: left = $ambigLeft, right = $ambigRight\n";
+  }
 }
 if ( defined $options{'normalizeCoord'} ) {
     $mAlign->normalizeSeqRefs();
@@ -497,17 +350,28 @@ if ( $matrixFile eq "" )
 }
 
 my ( $null, $totDiv, $avgDiv ) = $mAlign->kimuraDivergence( $cons );
+
 if ( $options{'stockholm'} )
 {
   if ( $options{'name'} ) { 
     $mAlign->setReferenceName( $options{'name'} );
   }
-  $mAlign->toSTK( includeTemplate => $inclTempl, nuclRF => 1 );
+  if ( $fileType eq "stockholm" ) {
+    # NOTE: This doesn't provide a way to force the use of a template at this time
+    open my $IN, "<$inputFile" or die "Could not open $inputFile for reading";
+    my $seedAlign = SeedAlignment->new();
+    $seedAlign->read_stockholm( $IN );
+    close $IN;
+    my $header = $seedAlign->toString(SeedAlignment::ExportHeadersOnly);
+    $mAlign->toSTK( headerOverride => $header, consRF => 1 );
+  }else {
+    $mAlign->toSTK( includeTemplate => $inclTempl, consRF => 1 );
+  }
 
   # TODO : streamline STK generation.  Perhaps have
   #        MultAln produce a "SeedAlignment" object.
   #        Then this object can be manipulated and
-  #        experted as STK.
+  #        exported as STK.
   #my $seedAlign = SeedAlignment->new();
   #$seedAlign->read_stockholm( $IN );
  
@@ -541,6 +405,46 @@ if ( $options{'stockholm'} )
   }else {
     $mAlign->toFASTA();
   }
+}elsif ( $options{'stats'} ) {
+  print "Alignment Stats:\n";
+  print "\tReference Sequence\t\t\t\t\t\t\t\tConsensus Sequence\n";
+  print "seq_id\tTranS\tTranSMod\tTranV\tKimura\tKimuraMod\tCpGSites\tWellCharBases\t\tTranS\tTranSmod\tTranV\tKimura\tKimuraMod\tCpGSites\tWellCharBases\n";
+  my $count = 0;
+  my $sum_kimura = 0;
+  my $sum_kimuraMod = 0;
+  my $sum_ckimura = 0;
+  my $sum_ckimuraMod = 0;
+  for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs() ; $i++ ) {
+    my $start = $mAlign->getAlignedStart( $i );
+    my $end   = $mAlign->getAlignedEnd( $i );
+    my $name = $mAlign->getAlignedName( $i );
+    my $kdOrig = $mAlign->getAlignedDiv( $i );
+ 
+    my ( $trans, $transv, $transMod, $kimura, $kimuraMod, $cpgSites, $wcb ) =
+                                            $mAlign->kimuraDivergenceAlt( seqidx => $i );
+    $sum_kimura += $kimura;
+    $sum_kimuraMod += $kimuraMod;
+    $kimura = sprintf("%0.2f",$kimura);
+    $kimuraMod = sprintf("%0.2f",$kimuraMod);
+    my ( $ctrans, $ctransv, $ctransMod, $ckimura, $ckimuraMod, $ccpgSites, $cwcb ) =
+                                            $mAlign->kimuraDivergenceAlt( seqidx => $i, consensus => $cons );
+    $sum_ckimura += $ckimura;
+    $sum_ckimuraMod += $ckimuraMod;
+    $ckimura = sprintf("%0.2f",$ckimura);
+    $ckimuraMod = sprintf("%0.2f",$ckimuraMod);
+
+   print "$name\t$trans\t$transMod\t$transv\t$kimura\t$kimuraMod\t$cpgSites\t$wcb\t\t";
+   print "$ctrans\t$ctransv\t$ctransMod\t$ckimura\t$ckimuraMod\t$ccpgSites\t$cwcb\n";
+   $count++;
+  }
+  print "\n\n";
+  print "Total sequences: $count\n";
+  print "Relative to Reference Sequence (if available):\n";
+  print "\tKimura Divergence:\t" . sprintf("%0.2f", $sum_kimura / $count) . "\n";
+  print "\tKimura Divergence (CpG Mod):\t" . sprintf("%0.2f", $sum_kimuraMod / $count) . "\n\n";
+  print "Relative to Consensus Sequence:\n";
+  print "\tKimura Divergence:\t" . sprintf("%0.2f", $sum_ckimura / $count) . "\n";
+  print "\tKimura Divergence (CpG Mod):\t" . sprintf("%0.2f", $sum_ckimuraMod / $count) . "\n\n";
 }else
 {
   $mAlign->printAlignments(
