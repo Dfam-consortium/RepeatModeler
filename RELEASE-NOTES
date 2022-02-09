@@ -1,3 +1,12 @@
+RepeatModeler 2.0.3
+===================
+  - The program now generates a logfile in the working directory named
+    <seqfile>-rmod.log.  This file contains the random seed number used
+    and some high level stats on the run for use with reporting problems
+    with the program. 
+  - Fixed a problem with the orientation/coordinates provided in the
+    Stockholm output format that affected a subset of the sequences.
+  - Fixed a bug affecting the trim functions of the Linup tool.
 
 RepeatModeler 2.0.2
 ===================
