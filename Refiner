@@ -421,6 +421,8 @@ sub buildConsensus {
       if ( $DEBUG );
 
   my $round = "1";
+  print "Params: " . $srchEngAllVsAll->getParameters() . "\n"
+            if ( $DEBUG );
   my ( $runStat, $familyCollection ) = $srchEngAllVsAll->search();
 
 #$familyCollection->write( "foo", SearchResult::AlignWithQuerySeq);
