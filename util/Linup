@@ -49,7 +49,7 @@ Linup - Display or convert MSA into various formats
                         [-malignOut <file>]
                         [-stockholm | -msf | 
                          -consensus | -msa
-                         -fasta ]
+                         -fasta | -stats]
         <crossmatch file> | <stockholm file> | <msa fasta> | <malign file>
 
 
@@ -214,6 +214,7 @@ my @getopt_args = (
                     '-normalizeCoord',
                     '-matrix=s',
                     '-revcomp',
+                    '-stats',
                     '-genome=s',
                     '-includeFlanking=i',
                     '-noTemplate',
@@ -349,6 +350,7 @@ if ( $matrixFile eq "" )
 }
 
 my ( $null, $totDiv, $avgDiv ) = $mAlign->kimuraDivergence( $cons );
+
 if ( $options{'stockholm'} )
 {
   if ( $options{'name'} ) { 
@@ -403,6 +405,46 @@ if ( $options{'stockholm'} )
   }else {
     $mAlign->toFASTA();
   }
+}elsif ( $options{'stats'} ) {
+  print "Alignment Stats:\n";
+  print "\tReference Sequence\t\t\t\t\t\t\t\tConsensus Sequence\n";
+  print "seq_id\tTranS\tTranSMod\tTranV\tKimura\tKimuraMod\tCpGSites\tWellCharBases\t\tTranS\tTranSmod\tTranV\tKimura\tKimuraMod\tCpGSites\tWellCharBases\n";
+  my $count = 0;
+  my $sum_kimura = 0;
+  my $sum_kimuraMod = 0;
+  my $sum_ckimura = 0;
+  my $sum_ckimuraMod = 0;
+  for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs() ; $i++ ) {
+    my $start = $mAlign->getAlignedStart( $i );
+    my $end   = $mAlign->getAlignedEnd( $i );
+    my $name = $mAlign->getAlignedName( $i );
+    my $kdOrig = $mAlign->getAlignedDiv( $i );
+ 
+    my ( $trans, $transv, $transMod, $kimura, $kimuraMod, $cpgSites, $wcb ) =
+                                            $mAlign->kimuraDivergenceAlt( seqidx => $i );
+    $sum_kimura += $kimura;
+    $sum_kimuraMod += $kimuraMod;
+    $kimura = sprintf("%0.2f",$kimura);
+    $kimuraMod = sprintf("%0.2f",$kimuraMod);
+    my ( $ctrans, $ctransv, $ctransMod, $ckimura, $ckimuraMod, $ccpgSites, $cwcb ) =
+                                            $mAlign->kimuraDivergenceAlt( seqidx => $i, consensus => $cons );
+    $sum_ckimura += $ckimura;
+    $sum_ckimuraMod += $ckimuraMod;
+    $ckimura = sprintf("%0.2f",$ckimura);
+    $ckimuraMod = sprintf("%0.2f",$ckimuraMod);
+
+   print "$name\t$trans\t$transMod\t$transv\t$kimura\t$kimuraMod\t$cpgSites\t$wcb\t\t";
+   print "$ctrans\t$ctransv\t$ctransMod\t$ckimura\t$ckimuraMod\t$ccpgSites\t$cwcb\n";
+   $count++;
+  }
+  print "\n\n";
+  print "Total sequences: $count\n";
+  print "Relative to Reference Sequence (if available):\n";
+  print "\tKimura Divergence:\t" . sprintf("%0.2f", $sum_kimura / $count) . "\n";
+  print "\tKimura Divergence (CpG Mod):\t" . sprintf("%0.2f", $sum_kimuraMod / $count) . "\n\n";
+  print "Relative to Consensus Sequence:\n";
+  print "\tKimura Divergence:\t" . sprintf("%0.2f", $sum_ckimura / $count) . "\n";
+  print "\tKimura Divergence (CpG Mod):\t" . sprintf("%0.2f", $sum_ckimuraMod / $count) . "\n\n";
 }else
 {
   $mAlign->printAlignments(

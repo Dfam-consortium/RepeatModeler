@@ -721,8 +721,11 @@ sub openAsMultAln{
       $fileType = "stockholm";
       last;
     }
-    if ( /^\s*\d+\s+[\d\.]+\s+[\d\.]+\s+[\d\.]+\s+\S+\s+\d+\s+\d+\s+\(\d+\)/ )
+    if ( /^\s*\d+\s+[\d\.]+\s+[\d\.]+\s+[\d\.]+\s+\S+\s+\d+\s+\d+\s+\(\d+\)/ ||
+         /Score:\s+\d+\s+Residues:/ )
     {
+      # The second case is a check for a crossmatch file that has lots of binary
+      # log entries preceeding the first alignment.
       $fileType = "crossmatch";
       last;
     }
@@ -865,37 +868,54 @@ sub openAsMultAln{
     my %seqHash = ();
     my $blockLen = 0;
     my $alignCols = 0;
+    my $blockNumber = 0;
     while (<$IN>) {
       next if ( /^ref:/ );
       if ( /^consensus\s+\d+\s+(\S+)/ ){
+        $blockNumber++;
         $blockLen = length($1);
         $alignCols += $blockLen;
         next;
       }
       if ( /^(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s*$/ ) 
       {
+        # Traditional Linup reporting format file!
+        # For several reasons this format is not easily
+        # parsed.
+        croak "RepeatUtil::openAsMultAln(): This Linup report file is in a legacy format and\n" .
+              "cannot be opened as MultAln object.  The newer format has an additional column\n" .
+              "specifying a line identifier.  Please regenerate this file using a newer version\n" .
+              "of Linup.\n";
+      }
+      if ( /^(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s+\[(\d+)\]$/ ) 
+      {
         my $id = $1;
         my $start = $2;
         my $seq = $3;
         my $end = $4;
+        my $lineID = $5;
         warn "openAsMultAln(): Oops end is less than start ( $start - $end )\n" if ( $end < $start );
-        if ( exists $seqHash{$id} ) {
-          $seqHash{$id}->{'start'} = $start if ( $seqHash{$id}->{'start'} > $start );
-          $seqHash{$id}->{'end'} = $start if ( $seqHash{$id}->{'end'} < $end );
-          $seqHash{$id}->{'seq'} .= $seq;
+        if ( exists $seqHash{$lineID} ) {
+          $seqHash{$lineID}->{'start'} = $start if ( $seqHash{$lineID}->{'start'} > $start );
+          $seqHash{$lineID}->{'end'} = $start if ( $seqHash{$lineID}->{'end'} < $end );
+          my $gapPadding = "-"x($blockLen*($blockNumber-$seqHash{$lineID}->{'lastblock'}-1));
+          $seqHash{$lineID}->{'seq'} .= $gapPadding . $seq;
         }else {
-          $seqHash{$id} = {};
-          $seqHash{$id}->{'start'} = $start;
-          $seqHash{$id}->{'end'} = $start;
-          $seqHash{$id}->{'seq'} = ' 'x($alignCols-length($seq)) . $seq;
+          $seqHash{$lineID} = {};
+          $seqHash{$lineID}->{'id'} = $id;
+          $seqHash{$lineID}->{'start'} = $start;
+          $seqHash{$lineID}->{'end'} = $start;
+          $seqHash{$lineID}->{'seq'} = ' 'x($alignCols-length($seq)) . $seq;
+          $seqHash{$lineID}->{'lastblock'} = $blockNumber;
         }
       }
     }
     my @seqs;
-    foreach my $id ( keys %seqHash ) {
-      my $seq = $seqHash{$id}->{'seq'};
-      my $start = $seqHash{$id}->{'start'};
-      my $end = $seqHash{$id}->{'end'};
+    foreach my $lineID ( keys %seqHash ) {
+      my $id = $seqHash{$lineID}->{'id'};
+      my $seq = $seqHash{$lineID}->{'seq'};
+      my $start = $seqHash{$lineID}->{'start'};
+      my $end = $seqHash{$lineID}->{'end'};
       my $len = $end - $start + 1;
       $seq =~ s/[-\s]/\./g;
       #if ( $id =~ /(\S+)\:(\d+)-(\d+)/ ) {
