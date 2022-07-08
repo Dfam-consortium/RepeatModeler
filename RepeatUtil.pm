@@ -867,57 +867,184 @@ sub openAsMultAln{
     # Linup format
     my %seqHash = ();
     my $blockLen = 0;
+    my $prefixWhitespace = 0;
+    my $suffixWhitespace = 0;
     my $alignCols = 0;
     my $blockNumber = 0;
+    my $newBlockHash = {};
+    my $prevBlockHash;
+    my %prevBlock = ();
+    my %newBlock = ();
+    my $nextLineIdx = 0;
+    my $legacyFormat = 0;
+    my $refSeq = "";
+    my %uniqInStanza = ();
     while (<$IN>) {
-      next if ( /^ref:/ );
-      if ( /^consensus\s+\d+\s+(\S+)/ ){
+      if ( /^consensus\s+\d+(\s+)(\S+)(\s+)/ ){
         $blockNumber++;
-        $blockLen = length($1);
+        $prefixWhitespace = length($1);
+        $blockLen = length($2);
+        $suffixWhitespace = length($3);
         $alignCols += $blockLen;
+        $prevBlockHash = $newBlockHash;
+        $newBlockHash = {};
+        %uniqInStanza = ();
         next;
       }
-      if ( /^(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s*$/ ) 
-      {
-        # Traditional Linup reporting format file!
-        # For several reasons this format is not easily
-        # parsed.
-        croak "RepeatUtil::openAsMultAln(): This Linup report file is in a legacy format and\n" .
-              "cannot be opened as MultAln object.  The newer format has an additional column\n" .
-              "specifying a line identifier.  Please regenerate this file using a newer version\n" .
-              "of Linup.\n";
+      if ( /^ref:\S*\s+\d+\s{$prefixWhitespace}(.*)\s{$suffixWhitespace}\d+/ ) {
+        # NOTE: This is working around a problem in which inexplicably some linup files
+        # look like this:
+        #
+        #consensus                                           TACTGCTGACACGGAGAAAGTT 
+        #ref:Tigger1#DNA/TcMar-Tigger                        TATTGCTGATATGGAGAAAGTT
+        #fullTreeAnc111refChr24825_301065_302000_230_744_R   TACTGCTGACACGGAGAAAGTT
+        #
+        #consensus                                           NNNNNNNNNNNNNNNNNNNNNN 
+        #ref:Tigger1#DNA/TcMar-Tigger                                    TAAGGAAAGA
+        #fullTreeAnc111refChr21219_142236_144433_755_1394                TAAGGAAAGA
+        #
+        #consensus                                           TCCGTAACATAAAAGTGCANGG 
+        #ref:Tigger1#DNA/TcMar-Tigger                        TCCATAACATAAAAGTGCAAGG
+        #fullTreeAnc111refChr21219_142236_144433_755_1394    TCCGTAACATAAAAGTGCATGG
+        #
+        $refSeq .= $1;
+        next;
       }
-      if ( /^(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s+\[(\d+)\]$/ ) 
+      if ( /^(\S+)\s+(\d+)\s{$prefixWhitespace}(.*)\s{$suffixWhitespace}(\d+)\s*$/ ) 
+      {
+        $legacyFormat = 1;
+        # Legacy format
+        #   In some cases a sequence may appear more than once in a MSA. For instance
+        #   it could be due to a large deletion that caused an alignment break causing
+        #   the same sequence (different regions ) to appear as independent fragments
+        #   in the MSA.  In the traditional linup format this was difficult to parse
+        #   as the identifier was not unique.  
+        #
+        #   Example 1 -- There are many legacy examples that have inconsistent
+        #                indices.  In this example the alignment is in the forward
+        #                direction yet the last stanza contains descending indices.
+        #                Also of note...in the legacy output a stanza containing
+        #                only gaps has a 1bp range as seen below.  The convention
+        #                is that the start position refers the next nucleotide
+        #                in the sequence ( e.g. start=1 means that the next
+        #                nucleotide in the sequence will be at position 1). But
+        #                what if no nucleotides exist in the stanza, only gap
+        #                characters? I have chosen to have the start position point
+        #                to the last nucleotide seen as in:
+        #                "583 -- 583".  
+        #              
+        #   seq1    569 C---A--G--T--C--AC----C----AAA---T----A--C----A-    583
+        #   seq1    584 --                                                  583
+        #
+        my $id = $1;
+        my $start = $2;
+        my $end = $4;
+        my $orient = "+";
+        $orient = "-" if ( $start > $end );
+        my $seq = $3;
+        my $lineID = "";
+        # Attempt to join sequences between stanza's using ID + expected next start
+        # position.
+        if ( exists $prevBlockHash->{$id} ) {
+          foreach my $rec ( @{$prevBlockHash->{$id}} ){
+            # There are bugs in legacy Linup files
+            # where the orientation appears to change if
+            # the alignment ends on a block with only
+            # "-" characters.
+            #if ( $start == $rec->[0] && $orient eq $rec->[2] ){ 
+            if ( $start == $rec->[0] ){ 
+              $lineID = $rec->[1];
+            }
+            if ( $start == ($rec->[0] - 1) ){
+              die "RepeatUtil::openAsMultAln(): Legacy format with possible " . 
+                  "inconsistent stanza joining [ id=$id, start=$start ].  Cannot parse.\n";
+            }
+          }
+        }
+        if ( exists $uniqInStanza{$id."_".$start} ) {
+          die "RepeatUtil::openAsMultAln(): Legacy format with possible " . 
+              "inconsistent stanza joining [ id=$id, start=$start ].  Cannot parse.\n";
+        }
+        $uniqInStanza{$id."_".$start}++;
+        if ( ! exists $newBlockHash->{$id} ) {
+          $newBlockHash->{$id} = [];
+        }
+        my $lid = $nextLineIdx;
+        $lid = $lineID if ( $lineID ne "" );
+        if ( $orient eq "+" ) {
+          push @{$newBlockHash->{$id}}, [$end+1,$lid, $orient];
+        }else {
+          push @{$newBlockHash->{$id}}, [$end-1,$lid, $orient];
+        }
+ 
+        if ( $lineID eq "" ) {
+          $lineID = $nextLineIdx;
+          # Starting new sequence
+          $seqHash{$lineID} = {};
+          $seqHash{$lineID}->{'id'} = $id;
+          $seqHash{$lineID}->{'start'} = $start;
+          $seqHash{$lineID}->{'end'} = $end;
+          $seqHash{$lineID}->{'orient'} = $orient;
+          my $stanzaPadding = " "x($alignCols-$blockLen);
+          $seqHash{$lineID}->{'seq'} = $stanzaPadding . $seq;
+          $seqHash{$lineID}->{'lastblock'} = $blockNumber;
+          $nextLineIdx++;
+        }else {
+          # Add to previous sequence
+          $seqHash{$lineID}->{'end'} = $end; 
+          if ( $end != $start ) {
+            $seqHash{$lineID}->{'orient'} = $orient; 
+          }
+          $seqHash{$lineID}->{'seq'} .= $seq;
+        }
+      }
+
+      # New LINUP format
+      if ( /^(\S+)\s+(\d+)\s{$prefixWhitespace}(.*)\s{$suffixWhitespace}(\d+)\s+\[(\d+)\]$/ ) 
       {
         my $id = $1;
         my $start = $2;
         my $seq = $3;
         my $end = $4;
+        my $orient = "+";
+        $orient = "-" if ( $start > $end );
         my $lineID = $5;
-        warn "openAsMultAln(): Oops end is less than start ( $start - $end )\n" if ( $end < $start );
         if ( exists $seqHash{$lineID} ) {
-          $seqHash{$lineID}->{'start'} = $start if ( $seqHash{$lineID}->{'start'} > $start );
-          $seqHash{$lineID}->{'end'} = $start if ( $seqHash{$lineID}->{'end'} < $end );
-          my $gapPadding = "-"x($blockLen*($blockNumber-$seqHash{$lineID}->{'lastblock'}-1));
-          $seqHash{$lineID}->{'seq'} .= $gapPadding . $seq;
+          # Append
+          $seqHash{$lineID}->{'end'} = $end; 
+          $seqHash{$lineID}->{'orient'} = $orient if ( $end != $start);
+          $seqHash{$lineID}->{'seq'} .= $seq;
         }else {
+          # New
           $seqHash{$lineID} = {};
           $seqHash{$lineID}->{'id'} = $id;
           $seqHash{$lineID}->{'start'} = $start;
-          $seqHash{$lineID}->{'end'} = $start;
-          $seqHash{$lineID}->{'seq'} = ' 'x($alignCols-length($seq)) . $seq;
+          $seqHash{$lineID}->{'end'} = $end;
+          $seqHash{$lineID}->{'orient'} = $orient; 
+          my $stanzaPadding = " "x($alignCols-$blockLen);
+          $seqHash{$lineID}->{'seq'} = $stanzaPadding . $seq;
           $seqHash{$lineID}->{'lastblock'} = $blockNumber;
         }
       }
     }
+
+    if ( $legacyFormat ) {
+      warn "WARNING: File $inputFile uses a legacy Linup format and may not import in a consistent fashion.\n";
+    }
     my @seqs;
-    foreach my $lineID ( keys %seqHash ) {
+    foreach my $lineID ( sort {$a <=> $b} keys  %seqHash ) {
       my $id = $seqHash{$lineID}->{'id'};
       my $seq = $seqHash{$lineID}->{'seq'};
       my $start = $seqHash{$lineID}->{'start'};
       my $end = $seqHash{$lineID}->{'end'};
+      my $orient = $seqHash{$lineID}->{'orient'};
       my $len = $end - $start + 1;
-      $seq =~ s/[-\s]/\./g;
+      #$seq =~ s/[-\s]/\./g;
+      $seq =~ s/\-/\./g;
+      
+#if ( $id eq "fullTreeAnc238refChr9443:349-3091_R" ) { 
+#  print "$id: >$seq< $start $end $orient\n";
+#}
       #if ( $id =~ /(\S+)\:(\d+)-(\d+)/ ) {
       #  my $newStart;
       #  my $newEnd;
@@ -933,9 +1060,9 @@ sub openAsMultAln{
       #  $newID = $1 . ":" . $newStart . "-" . $newEnd;
       #  $id = $newID;
       #}
-      push @seqs, [ $id, $seq ];
+      push @seqs, [ $id, $seq, $start, $end ];
     }
-    $mAlign = MultAln->new( sequences => \@seqs );
+    $mAlign = MultAln->new( reference => $refSeq, sequences => \@seqs, keepEdgeGaps => 1 );
   }else {
     die "openAsMultAln(): Support for $fileType is not complete yet ";
   }

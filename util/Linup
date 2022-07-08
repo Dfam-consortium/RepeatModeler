@@ -393,7 +393,7 @@ if ( $options{'stockholm'} )
     }elsif ( $mAlign->getReferenceName() ne "" ) {
       print ">" . $mAlign->getReferenceName() . "\n$cons\n\n";
     }else {
-      print ">consensus\n";
+      print ">consensus\n$cons\n\n";
     }
   }
 }elsif ( $options{'msa'} ) {

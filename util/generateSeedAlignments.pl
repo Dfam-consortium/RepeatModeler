@@ -941,416 +941,246 @@ sub RMClassToDfam {
 #       stage but that is not guaranteed to last.  Second, we intend to use the
 #       new scheme in the classifier at some point making it unnecessary to do this
 #       mapping or maintain this table.
-  my %rmToDfamClass = (
-    'dna/crypton' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton',
-    'dna/crypton-a' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-A',
-    'dna/crypton-c' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-C',
-    'dna/crypton-f' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-F',
-    'dna/crypton-h' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-H',
-    'dna/crypton-i' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-I',
-    'dna/crypton-r' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-R',
-    'dna/crypton-s' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-S',
-    'dna/crypton-v' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-V',
-    'dna/crypton-x' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Circular_dsDNA_Intermediate;Crypton;Crypton-X',
-    'dna/maverick' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;DNA_Polymerase;Maverick',
-    'rc' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Rolling_Circle',
-    'rc/helitron' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Rolling_Circle;Helitron-1',
-    'rc/helitron-2' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Rolling_Circle;Helitron-2',
-    'dna' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat',
-    'dna/academ-1' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Academ_Group;Academ-1',
-    'dna/academ-2' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Academ_Group;Academ-2',
-    'dna/academ-h' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Academ_Group;Academ-H',
-    'dna/casposons' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;DNA_pol;Casposon',
-    'dna/cmc-chapaev' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;CACTA_element;CMC;Chapaev_group;Chapaev',
-    'dna/cmc-chapaev-3' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;CACTA_element;CMC;Chapaev_group;Chapaev-3',
-    'dna/cmc-enspm' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;CACTA_element;CMC;EnSpm',
-    'dna/cmc-mirage' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;CACTA_element;CMC;Mirage',
-    'dna/cmc-transib' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;CACTA_element;Transib',
-    'dna/dada' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Dada',
-    'dna/ginger' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Ginger',
-    'dna/hat' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element',
-    'dna/hat-ac' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Activator',
-    'dna/hat-blackjack' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Blackjack',
-    'dna/hat-charlie' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Charlie',
-    'dna/hat-pegasus' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Pegasus',
-    'dna/hat-restless' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Restless',
-    'dna/hat-tag1' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Tag1',
-    'dna/hat-tip100' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;Tip100',
-    'dna/hat-hat1' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hAT1',
-    'dna/hat-hat19' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hAT19',
-    'dna/hat-hat5' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hAT5',
-    'dna/hat-hat6' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hAT6',
-    'dna/hat-hatm' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hATm',
-    'dna/hat-hatw' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hATw',
-    'dna/hat-hatx' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hATx',
-    'dna/hat-hobo' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;hAT_Element;hobo',
-    'dna/is3eu' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;IS3EU',
-    'dna/kolobok' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Kolobok_Group;Kolobok',
-    'dna/kolobok-e' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Kolobok_Group;Kolobok-E',
-    'dna/kolobok-h' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Kolobok_Group;Kolobok-H',
-    'dna/kolobok-hydra' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Kolobok_Group;Hydra-specific_Branch',
-    'dna/kolobok-t2' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Kolobok_Group;T2',
-    'dna/mule' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Mutator-like_Element',
-    'dna/mule-f' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Mutator-like_Element;F',
-    'dna/mule-mudr' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Mutator-like_Element;MuDR',
-    'dna/mule-nof' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Mutator-like_Element;NOF',
-    'dna/merlin' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Merlin',
-    'dna/novosib' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Novosib',
-    'dna/p' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;P_Element',
-    'dna/p-fungi' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;P_Element;Fungi-specific_Branch',
-    'dna/pif-harbs' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PIF-like_Elements;HarbS',
-    'dna/pif-harbinger' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PIF-like_Elements;Harbinger',
-    'dna/pif-isl2eu' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PIF-like_Elements;ISL2EU',
-    'dna/pif-spy' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PIF-like_Elements;Spy',
-    'dna/piggybac' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PiggyBac-like_element;PiggyBac',
-    'dna/piggybac-a' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PiggyBac-like_element;PiggyBac-A',
-    'dna/piggybac-x' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;PiggyBac-like_element;PiggyBac-X',
-    'dna/sola-1' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Sola-group;Sola-1',
-    'dna/sola-2' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Sola-group;Sola-2',
-    'dna/sola-3' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Sola-group;Sola-3',
-    'dna/tcmar-ant1' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Ant1',
-    'dna/tcmar-cweed' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Cweed',
-    'dna/tcmar-gizmo' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Gizmo',
-    'dna/tcmar-isrm11' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;ISRm11',
-    'dna/tcmar-m44' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;m44',
-    'dna/tcmar-mariner' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Mariner',
-    'dna/tcmar-mogwai' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Mogwai',
-    'dna/tcmar-fot1' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Pogo-group;Fot1',
-    'dna/tcmar-pogo' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Pogo-group;Pogo',
-    'dna/tcmar-tigger' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Pogo-group;Tigger',
-    'dna/tcmar-sagan' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Sagan',
-    'dna/tcmar-stowaway' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Stowaway',
-    'dna/tcmar-tc1' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Tc1',
-    'dna/tcmar-tc2' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Tc2',
-    'dna/tcmar-tc4' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element;Tc4',
-    'dna/tcmar' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Tc1-Mariner-like_Element',
-    'dna/zator' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Zator',
-    'dna/zisupton' =>
-'Interspersed_Repeat;Transposable_Element;DNA_Transposon;Terminal_Inverted_Repeat;Zisupton',
-    'line' =>
-        'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE',
-    'line/cre-ambal' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-I;Ambal',
-    'line/cre' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-I;CRE
-',
-    'line/cre-1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-I;CRE;CRE-1',
-    'line/cre-2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-I;CRE;CRE-2',
-    'line/cre-odin' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-I;Odin',
-    'line/genie' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Genie',
-    'line/l1-dre' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;L1-like;DRE',
-    'line/l1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;L1-like;L1-group;L1',
-    'line/l1-tx1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;L1-like;L1-group;Tx1',
-    'line/l1-zorro' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;L1-like;Zorro',
-    'line/proto1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;Proto-1',
-    'line/r2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R2-like;R2',
-    'line/r2-hero' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R2-like;Hero',
-    'line/r2-nesl' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R2-like;NeSL',
-    'line/deceiver' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R4-like;Deceiver',
-    'line/dong-r4' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R4-like;Dong-R4',
-    'line/dualen' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-1;R4-like;Dualen',
-    'line/proto2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;Proto-2',
-    'line/cr1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;CR1-group;CR1',
-    'line/cr1-zenon' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;CR1-group;CR1;Zenon',
-    'line/l2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;CR1-group;L2-group;L2',
-    'line/rex-babar' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;CR1-group;Rex-Babar',
-    'line/i' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;R1-group;I-group;I',
-    'line/i-jockey' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;R1-group;I-group;Jockey',
-    'line/r1-loa' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;R1-group;R1-subgroup;LOA',
-    'line/r1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;R1-group;R1-subgroup;R1',
-    'line/tad1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;R1-like;Tad1',
-    'line/rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;RTE-like',
-    'line/rte-bovb' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;RTE-like;RTE-group;BovB',
-    'line/rte-orte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;RTE-like;ORTE',
-    'line/rte-rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;RTE-like;RTE-group;RTE',
-    'line/rte-x' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE;Group-II;Group-2;RTE-like;RTE-group;RTE-X',
-    'retroposon' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter',
-    'sine/i' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;I-derived',
-    'retroposon/sva' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L1-dependent;SVA',
-    'retroposon/l1-dep' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L1-dependent',
-    'retroposon/rte-derived' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;RTE-derived',
-    'sine/l1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L1-derived',
-    'sine/l2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L2-derived',
-    'sine/dong-r4' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;R4-derived',
-    'sine' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE',
-    'sine/5s-deu' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;Deu-core;Unknown_LINE-dependent',
-    'sine/5s-deu-l2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;Deu-core;L2-end',
-    'sine/5s-core-rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;MIR-core;RTE-end',
-    'sine/5s-sauria-rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;Sauria-core;RTE-end',
-    'sine/5s' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter',
-    'sine/5s-rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;No_or_Unknown_Core;RTE-end',
-    'sine/alu' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter;No-core;L1-dependent;Alu',
-    'sine/b2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter;No-core;L1-dependent;B2',
-    'sine/7sl' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter',
-    'sine/trna-5s' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_and_5S_RNA;No_or_Unknown_Core;Unknown_LINE-dependent',
-    'sine/b4' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_and_7SL_RNA;No-core;L1-dependent',
-    'sine/trna-7sl' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_and_7SL_RNA;No_or_Unknown_Core;Unknown_LINE-dependent',
-    'sine/trna-ceph' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Ceph-core;Unknown_LINE-dependent',
-    'sine/trna-ceph-rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Ceph-core;RTE-end',
-    'sine/trna-deu' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;Unknown_LINE-dependent',
-    'sine/trna-deu-cr1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;CR1-end',
-    'sine/trna-deu-i' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;I-end',
-    'sine/trna-deu-l2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;L2-end',
-    'sine/trna-deu-rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;RTE-end',
-    'sine/trna-meta' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Meta-core;Unknown_LINE-dependent',
-    'sine/mir' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;L2-end',
-    'sine/trna-core' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;Unknown_LINE-dependent',
-    'sine/trna-core-rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;RTE-end',
-    'sine/trna-mermaid' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;Mermaid',
-    'sine/id' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No-core;L1-dependent',
-    'sine/rte-bovb' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;BovB-end',
-    'sine/trna-cr1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;CR1-end',
-    'sine/trna-i' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;I-end',
-    'sine/trna-jockey' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Jockey-end',
-    'sine/trna-l1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;L1-dependent',
-    'sine/trna-l2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;L2-end',
-    'sine/r1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;R1-end',
-    'sine/trna-r2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;R2-end',
-    'sine/trna-rex' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Rex-end',
-    'sine/trna-rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;RTE-end',
-    'sine/trna-tad1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Tad1_End',
-    'sine/trna-sauria' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Sauria-core;Unknown_LINE-dependent',
-    'sine/trna-sauria-l2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Sauria-core;L2-end',
-    'sine/trna-sauria-rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Sauria-core;RTE-end',
-    'sine/trna-v-core-l2' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V_and_MIR-core;L2-end',
-    'sine/trna-v' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V-core;Unknown_LINE-dependent',
-    'sine/trna-v-cr1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V-core;CR1-end',
-    'sine/trna' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Unknown_LINE-dependent',
-    'sine/u' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;U-RNA_Promoter;No_or_Unknown_Core;Unknown_LINE-dependent',
-    'sine/ceph' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;Unknown_Promoter;Ceph-core;RTE-end',
-    'sine/core' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;Unknown_Promoter;MIR-core;Unknown_LINE-dependent',
-    'sine/core-rte' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;LINE-dependent_Retroposon;SINE;Unknown_Promoter;MIR-core;RTE-end',
-    'ltr/dirs' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Inverted_Long_Terminal_Repeat_Elements;Tyrosine_Recombinase_Elements;DIRS',
-    'ltr/ngaro' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Inverted_Long_Terminal_Repeat_Elements;Tyrosine_Recombinase_Elements;Ngaro',
-    'ltr/viper' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Inverted_Long_Terminal_Repeat_Elements;Tyrosine_Recombinase_Elements;Viper',
-    'ltr' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element',
-    'ltr/pao' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Bel-Pao',
-    'ltr/gypsy' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Gypsy',
-    'ltr/caulimovirus' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Pararetroviridae;Caulimoviridae',
-    'ltr/erv1' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV1',
-    'ltr/erv-lenti' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2;Lenti',
-    'ltr/ervk' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV2',
-    'ltr/ervl' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV3;ERVL
-',
-    'ltr/ervl-malr' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV3;MaLR
-',
-    'ltr/erv4' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV4',
-    'ltr/erv' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae',
-    'ltr/erv-foamy' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Spumaretrovirinae',
-    'ltr/cassandra' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae',
-    'ltr/trim' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;TRIM',
-    'ltr/copia' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Long_Terminal_Repeat_Element;Ty1-Copia',
-    'line/penelope' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;Penelope-like_Elements',
-    'unknown/tate' =>
-'Interspersed_Repeat;Transposable_Element;Retrotransposed_Element;Retrotransposon;TATE',
-    'rrna'                   => 'Interspersed_Repeat;Pseudogene;RNA;rRNA',
-    'scrna'                  => 'Interspersed_Repeat;Pseudogene;RNA;scRNA',
-    'snrna'                  => 'Interspersed_Repeat;Pseudogene;RNA;snRNA',
-    'trna'                   => 'Interspersed_Repeat;Pseudogene;RNA;tRNA',
-    'unknown'                => 'Interspersed_Repeat;Unknown',
-    'unknown/centromeric'    => 'Interspersed_Repeat;Unknown;Centromeric',
-    'satellite'              => 'Tandem_Repeat;Satellite',
-    'satellite/acromeric'    => 'Tandem_Repeat;Satellite;Acromeric',
-    'satellite/centromeric'  => 'Tandem_Repeat;Satellite;Centromeric',
-    'satellite/macro'        => 'Tandem_Repeat;Satellite;Macro',
-    'satellite/subtelomeric' => 'Tandem_Repeat;Satellite;Subtelomeric',
-    'satellite/w-chromosome' => 'Tandem_Repeat;Satellite;W-chromosomal',
-    'satellite/y-chromosome' => 'Tandem_Repeat;Satellite;Y-chromosomal',
-    'simple_repeat'          => 'Tandem_Repeat;Simple',
-    'other/dna_virus'        => 'Accidental;Normally_Non-integrating_Virus',
-    'artefact'               => 'Artifact ',
-    'low_complexity'         => 'Low_Complexity',
-    'other'                  => 'Other',
-    'segmental'              => 'Segmental_Duplication',
-  );
+#
+# RepeatMasker type/subtype to Dfam Classification Lineage
+# Autogenerated from Dfam/Server/exportClassification.py on 2022-03-28 12:41:14.896216
+my %rmToDfamClass = (
+"other" => "Other",
+"artefact" => "Artifact",
+"segmental" => "Segmental_Duplication",
+"low_complexity" => "Low_Complexity",
+"other/dna_virus" => "Accidental;Normally_Non-integrating_Virus",
+"unknown" => "Interspersed_Repeat;Unknown",
+"simple_repeat" => "Tandem_Repeat;Simple",
+"satellite" => "Tandem_Repeat;Satellite",
+"unknown/centromeric" => "Interspersed_Repeat;Unknown;Centromeric",
+"rna" => "Interspersed_Repeat;Pseudogene;RNA",
+"satellite/centromeric" => "Tandem_Repeat;Satellite;Centromeric",
+"satellite/macro" => "Tandem_Repeat;Satellite;Macro",
+"satellite/y-chromosome" => "Tandem_Repeat;Satellite;Y-chromosomal",
+"satellite/acromeric" => "Tandem_Repeat;Satellite;Acromeric",
+"satellite/w-chromosome" => "Tandem_Repeat;Satellite;W-chromosomal",
+"satellite/subtelomeric" => "Tandem_Repeat;Satellite;Subtelomeric",
+"dna" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase",
+"rc" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Helicase",
+"line" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE",
+"scrna" => "Interspersed_Repeat;Pseudogene;RNA;scRNA",
+"rrna" => "Interspersed_Repeat;Pseudogene;RNA;rRNA",
+"trna" => "Interspersed_Repeat;Pseudogene;RNA;tRNA",
+"snrna" => "Interspersed_Repeat;Pseudogene;RNA;snRNA",
+"dna/crypton" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Tyrosine_Recombinase;Crypton",
+"dna/p" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;P_Element",
+"dna/kolobok" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Kolobok",
+"dna/hat" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT",
+"dna/ginger" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Ginger",
+"dna/zisupton" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Zisupton",
+"dna/zator" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Zator",
+"dna/pif" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;PIF-Harbinger",
+"dna/merlin" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Merlin",
+"dna/mule" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Mutator-like",
+"dna/dada" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Dada",
+"dna/novosib" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Novosib",
+"dna/tcmar" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner",
+"dna/is3eu" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;IS3EU",
+"dna/maverick" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;DNA_Polymerase;Maverick",
+"rc/helitron-2" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Helicase;Helitron-2",
+"rc/helitron" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Helicase;Helitron-1",
+"retroposon" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter",
+"sine" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE",
+"line/penelope" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Penelope-like_Elements",
+"ltr" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element",
+"unknown/tate" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Tyrosine_Recombinase_Elements;Viper-group;TATE",
+"dna/crypton-s" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Tyrosine_Recombinase;Crypton;Crypton-S",
+"dna/crypton-r" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Tyrosine_Recombinase;Crypton;Crypton-R",
+"dna/crypton-v" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Tyrosine_Recombinase;Crypton;Crypton-V",
+"dna/crypton-f" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Tyrosine_Recombinase;Crypton;Crypton-F",
+"dna/crypton-c" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Tyrosine_Recombinase;Crypton;Crypton-C",
+"dna/crypton-i" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Tyrosine_Recombinase;Crypton;Crypton-I",
+"dna/crypton-x" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Tyrosine_Recombinase;Crypton;Crypton-X",
+"dna/crypton-a" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Tyrosine_Recombinase;Crypton;Crypton-A",
+"dna/crypton-h" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Tyrosine_Recombinase;Crypton;Crypton-H",
+"dna/p-fungi" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;P_Element;Fungi-specific_Branch",
+"dna/kolobok-hydra" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Kolobok;Hydra-specific_Branch",
+"dna/kolobok-h" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Kolobok;Kolobok-H",
+"dna/kolobok-e" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Kolobok;Kolobok-E",
+"dna/kolobok-t2" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Kolobok;T2",
+"dna/hat-restless" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;Restless",
+"dna/hat-blackjack" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;Blackjack",
+"dna/hat-hobo" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;hobo",
+"dna/hat-tag1" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;Tag1",
+"dna/hat-hatw" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;hATw",
+"dna/hat-tip100" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;Tip100",
+"dna/hat-hat6" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;hAT6",
+"dna/hat-hat19" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;hAT19",
+"dna/hat-hat1" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;hAT1",
+"dna/hat-hatx" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;hATx",
+"dna/hat-pegasus" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;Pegasus",
+"dna/hat-hatm" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;hATm",
+"dna/hat-hat5" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;hAT5",
+"dna/hat-ac" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;Activator",
+"dna/hat-charlie" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;hAT;Charlie",
+"dna/cmc-transib" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;CACTA;Transib",
+"dna/cmc" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;CACTA;CMC",
+"dna/sola-1" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Sola;Sola-1",
+"dna/sola-3" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Sola;Sola-3",
+"dna/sola-2" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Sola;Sola-2",
+"dna/pif-isl2eu" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;PIF-Harbinger;ISL2EU",
+"dna/pif-harbinger" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;PIF-Harbinger;Harbinger",
+"dna/pif-spy" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;PIF-Harbinger;Spy",
+"dna/pif-harbs" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;PIF-Harbinger;HarbS",
+"dna/academ-h" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Academ;Academ-H",
+"dna/academ-2" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Academ;Academ-2",
+"dna/academ-1" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Academ;Academ-1",
+"dna/piggybac-a" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;PiggyBac_Group;PiggyBac-A",
+"dna/piggybac" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;PiggyBac_Group;PiggyBac",
+"dna/piggybac-x" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;PiggyBac_Group;PiggyBac-X",
+"dna/mule-f" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Mutator-like;F",
+"dna/mule-mudr" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Mutator-like;MuDR",
+"dna/mule-nof" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Mutator-like;NOF",
+"dna/casposons" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;DNA_Polymerase;Casposon",
+"dna/tcmar-tc2" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Tc2-group;Tc2",
+"dna/tcmar-tc4" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Tc4",
+"dna/tcmar-mogwai" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Mogwai",
+"dna/tcmar-stowaway" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Stowaway",
+"dna/tcmar-mariner" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Mariner",
+"dna/tcmar-cweed" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Cweed",
+"dna/tcmar-sagan" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Sagan",
+"dna/tcmar-gizmo" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Gizmo",
+"dna/tcmar-ant1" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Ant1",
+"dna/tcmar-tc1" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Tc1",
+"dna/tcmar-isrm11" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;ISRm11",
+"dna/tcmar-m44" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;m44",
+"retroposon/r4-derived" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;R4-derived",
+"retroposon/l1-dep" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L1-dependent",
+"retroposon/l1-derived" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L1-derived",
+"retroposon/l2-derived" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L2-derived",
+"retroposon/rte-derived" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;RTE-derived",
+"retroposon/i-derived" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;I-derived",
+"sine/7sl" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter",
+"sine/5s" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter",
+"ltr/trim" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;TRIM",
+"ltr/pao" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Bel-Pao",
+"ltr/copia" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Ty1-Copia",
+"line/cre-odin" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-I;Odin",
+"line/cre" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-I;CRE",
+"line/cre-ambal" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-I;Ambal",
+"line/genie" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Genie",
+"dna/cmc-enspm" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;CACTA;CMC;EnSpm",
+"dna/cmc-mirage" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;CACTA;CMC;Mirage",
+"dna/tcmar-tigger" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Tc2-group;Tigger",
+"dna/tcmar-fot1" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Tc2-group;Fot1",
+"dna/tcmar-pogo" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;Tc2-group;Pogo",
+"retroposon/sva" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;Lacking_Small_RNA_pol_III_Promoter;L1-dependent;SVA",
+"ltr/cassandra" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae",
+"ltr/gypsy" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Gypsy",
+"ltr/dirs" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Tyrosine_Recombinase_Elements;DIRS",
+"ltr/viper" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Tyrosine_Recombinase_Elements;Viper-group;Viper",
+"ltr/ngaro" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Tyrosine_Recombinase_Elements;Ngaro",
+"line/cre-2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-I;CRE;CRE-2",
+"line/cre-1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-I;CRE;CRE-1",
+"line/proto1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;Proto-1",
+"line/proto2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;Proto-2",
+"line/rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;RTE-like",
+"dna/cmc-chapaev" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;CACTA;CMC;Chapaev_group;Chapaev",
+"dna/cmc-chapaev-3" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;CACTA;CMC;Chapaev_group;Chapaev-3",
+"sine/trna-5s" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_and_5S_RNA;No_or_Unknown_Core;Unknown_LINE-dependent",
+"sine/ceph" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;Unknown_Promoter;Ceph-core;RTE-end",
+"sine/core-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;Unknown_Promoter;MIR-core;RTE-end",
+"sine/core" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;Unknown_Promoter;MIR-core;Unknown_LINE-dependent",
+"sine/trna-v-cr1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V-core;CR1-end",
+"sine/trna-v" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V-core;Unknown_LINE-dependent",
+"sine/trna-sauria-l2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Sauria-core;L2-end",
+"sine/trna-sauria-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Sauria-core;RTE-end",
+"sine/trna-sauria" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Sauria-core;Unknown_LINE-dependent",
+"sine/trna-ceph-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Ceph-core;RTE-end",
+"sine/trna-ceph" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Ceph-core;Unknown_LINE-dependent",
+"sine/trna-l1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;L1-dependent",
+"sine/trna-i" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;I-end",
+"sine/trna-l2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;L2-end",
+"sine/trna-rex" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Rex-end",
+"sine/trna-cr1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;CR1-end",
+"sine/trna-jockey" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Jockey-end",
+"sine/r1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;R1-end",
+"sine/trna-tad1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Tad1_End",
+"sine/trna-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;RTE-end",
+"sine/trna-r2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;R2-end",
+"sine/trna" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;Unknown_LINE-dependent",
+"sine/rte-bovb" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No_or_Unknown_Core;BovB-end",
+"sine/trna-deu-i" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;I-end",
+"sine/trna-deu-l2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;L2-end",
+"sine/trna-deu-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;RTE-end",
+"sine/trna-deu-cr1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;CR1-end",
+"sine/trna-deu" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Deu-core;Unknown_LINE-dependent",
+"sine/id" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No-core;L1-dependent",
+"sine/trna-v-core-l2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V_and_MIR-core;L2-end",
+"sine/trna-meta" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;Meta-core;Unknown_LINE-dependent",
+"sine/mir" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;L2-end",
+"sine/trna-mermaid" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;Mermaid",
+"sine/trna-core-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;RTE-end",
+"sine/trna-core" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;MIR-core;Unknown_LINE-dependent",
+"sine/5s-sauria-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;Sauria-core;RTE-end",
+"sine/5s-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;No_or_Unknown_Core;RTE-end",
+"sine/5s-deu-l2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;Deu-core;L2-end",
+"sine/5s-deu" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;Deu-core;Unknown_LINE-dependent",
+"sine/5s-core-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;5S-RNA_Promoter;MIR-core;RTE-end",
+"sine/u" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;U-RNA_Promoter;No_or_Unknown_Core;Unknown_LINE-dependent",
+"sine/b4" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_and_7SL_RNA;No-core;L1-dependent",
+"sine/trna-7sl" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_and_7SL_RNA;No_or_Unknown_Core;Unknown_LINE-dependent",
+"ltr/erv-foamy" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Spumaretrovirinae",
+"ltr/erv" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae",
+"ltr/caulimovirus" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Pararetroviridae;Caulimoviridae",
+"line/r2-hero" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;R2-like;Hero",
+"line/r2-nesl" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;R2-like;NeSL",
+"line/r2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;R2-like;R2",
+"line/l1-dre" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;L1-like;DRE",
+"line/l1-zorro" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;L1-like;Zorro",
+"line/dualen" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;R4-like;Dualen",
+"line/dong-r4" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;R4-like;Dong-R4",
+"line/deceiver" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;R4-like;Deceiver",
+"line/rte-orte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;RTE-like;ORTE",
+"line/tad1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;R1-like;Tad1",
+"sine/alu" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;7SL-RNA_Promoter;No-core;L1-dependent;Alu",
+"sine/b2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;No-core;L1-dependent;B2",
+"ltr/erv1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV1",
+"line/l1-tx1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;L1-like;L1-group;Tx1",
+"line/l1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-1;L1-like;L1-group;L1",
+"line/rte-x" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;RTE-like;RTE-group;RTE-X",
+"line/rte-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;RTE-like;RTE-group;RTE",
+"line/rte-bovb" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;RTE-like;RTE-group;BovB",
+"line/rex-babar" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;R1-like;CR1-group;Rex-Babar",
+"line/cr1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;R1-like;CR1-group;CR1",
+"ltr/erv-lenti" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;Lenti",
+"ltr/erv4" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV4",
+"ltr/ervk" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV2",
+"ltr/ervl" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV3",
+"line/l2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;R1-like;CR1-group;L2-group;L2",
+"line/cr1-zenon" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;R1-like;CR1-group;CR1;Zenon",
+"line/r1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;R1-like;R1-group;R1-subgroup;R1",
+"line/r1-loa" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;R1-like;R1-group;R1-subgroup;LOA",
+"line/i" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;R1-like;R1-group;I-group;I",
+"line/i-jockey" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE;Group-II;Group-2;R1-like;R1-group;I-group;Jockey",
+"ltr/ervl-malr" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV2-group;ERV3;MaLR",
+"dna/mule-ricksha" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Mutator-like;Ricksha",
+"ltr/dirs-q" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Tyrosine_Recombinase_Elements;DIRS;Q",
+"dna/maverick-mavirus" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;DNA_Polymerase;Maverick;Maverick-Mavirus",
+"dna/tcmar-is885" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Tc1-Mariner;IS885",
+"sine/trna-v-l2" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V-core;L2-end",
+"sine/trna-v-rte" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;tRNA_Promoter;V-core;RTE-end",
+"dna/ginger-1" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Ginger;Ginger-1",
+"dna/ginger-2" => "Interspersed_Repeat;Transposable_Element;Class_II_DNA_Transposition;Transposase;Ginger;Ginger-2",
+"retroposon/sno" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;snoRNA",
+"sine/erv1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Retroviridae;Orthoretrovirinae;ERV1;SINE-like",
+"sine/u-l1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;SINE;U-RNA_Promoter;No_or_Unknown_Core;L1-dependent",
+"retroposon/sno-l1" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;LINE-dependent_Retroposon;snoRNA;L1-derived",
+"ple/chlamys" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Penelope-like_Elements;Chlamys",
+"ple/hydra" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Penelope-like_Elements;Hydra",
+"ple/naiad" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Penelope-like_Elements;Naiad",
+"ple/athena" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Penelope-like_Elements;Athena",
+"ple/poseidon" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Penelope-like_Elements;Poseidon",
+"ple/nematis" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Penelope-like_Elements;Nematis",
+"ple/neptune" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Penelope-like_Elements;Neptune",
+"ple/coprina" => "Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Penelope-like_Elements;Coprina",
+);
 
   if ( exists $rmToDfamClass{$rmClass} ){
     return $rmToDfamClass{$rmClass};
