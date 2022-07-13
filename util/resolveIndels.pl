@@ -728,9 +728,10 @@ sub evalMSABlock{
   if ( $bestcnt >= $copymin && (!$conscnt || $bestcnt/$conscnt >= $adjustedratio)
        && ($ncount < 2 || $newlength/$ncount > $nratiocut ) )
   {
-    #print "bestcnt = $bestcnt ($copymin) conscnt = $conscnt adjustedratio = $adjustedratio ncount = $ncount  newlength = $newlength\n";
+    #print "ACCEPT: $start-$end bestcnt = $bestcnt ($copymin) conscnt = $conscnt adjustedratio = $adjustedratio ncount = $ncount  newlength = $newlength\n";
     return ( $bestcnt, $conscnt, $newconsensus, $newlength, $ncount, $secondbestcnt, $secondbestlength);
   }else {
+    print "REJECT: $start-$end bestcnt = $bestcnt ($copymin) conscnt = $conscnt adjustedratio = $adjustedratio ncount = $ncount  newlength = $newlength consLen=$conslen $newconsensus\n";
     return ( 0, 0, "", 0, 0, 0, 0 );
   }
 }

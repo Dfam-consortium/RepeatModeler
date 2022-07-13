@@ -331,6 +331,8 @@ if ( @changes )
   print STDERR "There are no changes\n";
 }
 
+print "Dumper:" . Dumper(\@changes) . "\n";
+
 my $newconsensus = $consensus; 
 foreach my $change ( sort { $b->[0] <=> $a->[0] } @changes ) {
   substr($newconsensus, $change->[0] - 1, $change->[1] - $change->[0] + 1) = $change->[2]; 
