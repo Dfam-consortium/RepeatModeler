@@ -921,6 +921,7 @@ while ( 1 ) {
                 . "$roundTmpDir/makeblastdb.log 2>&1" );
       }
 
+      my $threads = $options{'pa'} ? $options{'pa'} : 4;
       ( $numModels ) = &buildRSConsensi(
                                  workDir          => $roundTmpDir,
                                  consensiFile     => $consensiFile,
@@ -928,6 +929,7 @@ while ( 1 ) {
                                  round            => $round,
                                  familyCutoff     => $familyCutoff,
                                  engine           => $engine,
+                                 threads          => $threads,
                                  numContigs => scalar( keys( %sampleContigs ) ),
                                  usedBlockIndex => $usedBlockIndex
       );
@@ -2231,6 +2233,7 @@ sub runRepeatScout {
   return;
 }
 
+
 ##-------------------------------------------------------------------------##
 #
 # Use: my = buildRSConsensi( .. );
@@ -2276,6 +2279,9 @@ sub buildRSConsensi {
       if ( !defined $parameters{'usedBlockIndex'} );
   my $usedBlockIndex = $parameters{'usedBlockIndex'};
 
+  my $threads = 4;
+  $threads = $parameters{'threads'} if ( defined $parameters{'threads'} );
+
   my %families            = ();
   my $numModels           = 0;
   my @indices             = ();
@@ -2303,6 +2309,7 @@ sub buildRSConsensi {
   $searchEngineN->setInsGapExt( -5 );
   $searchEngineN->setDelGapExt( -5 );
   $searchEngineN->setMinMatch( 7 );
+  $searchEngineN->setCores($threads);
   $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
   if ( $engine eq "abblast" ) {
     $searchEngineN->setOverrideParameters(
@@ -2394,18 +2401,40 @@ sub buildRSConsensi {
   print ": " . scalar(keys(%satelliteSeqIDs)) . " found in " . elapsedTime("satellite_filtering") . "\n";
 
   # Refine remaining consensi
-  print "   - Collecting repeat instances...\n";
-  $searchEngineN->setSubject( "$workDir/sampleDB-$round.fa" );
-  $searchEngineN->setQuery( "$workDir/consensi.fa" );
+  print "   - Collecting repeat instances...";
+  elapsedTime( "cinstances" );
 
+  # Regenerate database for consensi.fa
+  if ( $engine eq "abblast" ) {
+    # XDFORMAT the conseni.fa
+    system(   "$XDFORMAT_PRGM -n -I "
+                . "$workDir/consensi.fa >> "
+                . "$workDir/xdformat.log 2>&1" );
+  }
+  else {
+    # MAKEBLASTDB the consensi.fa
+    system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $workDir/consensi.fa "
+                . "-parse_seqids -dbtype nucl -in $workDir/consensi.fa >> "
+                . "$workDir/makeblastdb.log 2>&1" );
+  }
+
+  # New - masklevel + switched query/subj
+  $searchEngineN->setMaskLevel( 80 );
+  $searchEngineN->setQuery( "$workDir/sampleDB-$round.fa" );
+  $searchEngineN->setSubject( "$workDir/consensi.fa" );
+
+  #print "Running: " . $searchEngineN->getParameters() . "\n";
   my ( $status, $resultCollection ) = $searchEngineN->search();
   if ( $status ) {
     print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
   }
   else {
+    print ": " . elapsedTime("cinstances") . "\n";
     elapsedTime( "family_refinement" );
     open OUTC, ">$workDir/consensi-refined.fa";
     open INDX, ">$workDir/index.html";
+    #print "Saving results as $workDir/RSalign.out\n";
+    $resultCollection->write("$workDir/RSalign.out", SearchResult::NoAlign);
     print "Filtering Results...\n" if ( $DEBUG );
     for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
       my $resultRef = $resultCollection->get( $k );
@@ -2414,7 +2443,8 @@ sub buildRSConsensi {
       # Extract the true seq name and keep track of how
       # many sequences this element is found -- used for
       # segmental duplication filtering.
-      my $sampleID = $resultRef->getSubjName();
+      #my $sampleID = $resultRef->getSubjName();
+      my $sampleID = $resultRef->getQueryName();
       my $seqID = "gi|" . ( $k + 1 ) . " ";
       if ( defined $usedBlockIndex->{$sampleID} ) {
         my $thisID = $usedBlockIndex->{$sampleID}->{'seqID'};
@@ -2423,20 +2453,20 @@ sub buildRSConsensi {
         if ( $orient eq "C" || $orient eq "-" ) {
           $seqID .=
             $thisID . ":"
-            . ($resultRef->getSubjEnd() + $usedBlockIndex->{$sampleID}->{'start'} - 1)
+            . ($resultRef->getQueryEnd() + $usedBlockIndex->{$sampleID}->{'start'} - 1)
             . "-"
-            . ($resultRef->getSubjStart() + $usedBlockIndex->{$sampleID}->{'start'} - 1);
+            . ($resultRef->getQueryStart() + $usedBlockIndex->{$sampleID}->{'start'} - 1);
         }else {
           $seqID .=
             $thisID . ":"
-            . ($resultRef->getSubjStart() + $usedBlockIndex->{$sampleID}->{'start'} - 1)
+            . ($resultRef->getQueryStart() + $usedBlockIndex->{$sampleID}->{'start'} - 1)
             . "-"
-            . ($resultRef->getSubjEnd() + $usedBlockIndex->{$sampleID}->{'start'} - 1);
+            . ($resultRef->getQueryEnd() + $usedBlockIndex->{$sampleID}->{'start'} - 1);
         }
       }
-      my $sequence = $resultRef->getSubjString();
+      my $sequence = $resultRef->getQueryString();
       $sequence =~ s/-//g;
-      push @{ $families{ $resultRef->getQueryName() }->{'elements'} },
+      push @{ $families{ $resultRef->getSubjName() }->{'elements'} },
           {
             'seqID' => $seqID,
             'seq'   => $sequence,
@@ -2458,7 +2488,7 @@ sub buildRSConsensi {
       foreach my $key ( @sortedKeys ) {
 
         # Quit if remaining family sizes are below cutoff
-        last if ( $#{ $families{$key}->{'elements'} } < $familySizeCutoff );
+        last if ( ($#{ $families{$key}->{'elements'} }+1) < $familySizeCutoff );
  
         $families{$key}->{'roundfam'} = $familyID;
 

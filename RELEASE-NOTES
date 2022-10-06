@@ -1,3 +1,10 @@
+RepeatModeler NEXT
+==================
+  - Improved the gathering of RepeatScout examplars for building
+    seed alignments.
+  - Fixed a few visual artifacts in the viewMSA.pl html 
+    visualization.
+
 RepeatModeler 2.0.3
 ===================
   - The program now generates a logfile in the working directory named

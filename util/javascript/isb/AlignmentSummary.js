@@ -156,47 +156,31 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
     var alignViewWidth = popupWidth - (2 * margin);
     var alignSpacing = 20;
 
-    this.detail_context.clearRect(0, 0, 1200, 2000);
-    this.detail_context.fillStyle = "rgba(255, 255, 255, 1.0)";
-    this.detail_context.fillRect(x, y, width, height);
-    //
-    this.detail_context.beginPath();
-    this.detail_context.rect(x, y, width, height);
-    this.detail_context.lineWidth = 2;
-    this.detail_context.strokeStyle = 'black';
-    this.detail_context.stroke();
-    // Write detail header
-    this.detail_context.font = "15px Georgia";
-    this.detail_context.fillStyle = 'black';
-    this.detail_context.fillText(this.json.alignments[alignIdx][0] + "    [ " + alignIdx + " ]",
-    x + margin, y + margin + 5);
-    // Break out size of instance region
-    // TODO: incorporate this into the data structure (optional field 9)
-    var nameParseRE = /^.*_(\d+)_(\d+)(_R)?\s*$/;
-    var nameResults = this.json.alignments[alignIdx][0].match(nameParseRE);
-
-    // Determine the scale for the instance sequence
-    var instanceSeqLen;
-    if ( nameResults )
-    { 
-      instanceSeqLen = nameResults[2] - nameResults[1] + 1;
-    }else if ( this.json.alignments[alignIdx].length >= 9 ) {
-      instanceSeqLen = this.json.alignments[alignIdx][8];
-    }else {
-      instanceSeqLen = this.json.alignments[alignIdx][7];
-    }
-
-
+    // Sequence clicked on by the user (alignIdx) may also used in other
+    // alignments.  We are only interested in showing the alignments
+    // that are nearby (maxGroupingDist) or overlaping the sequence the
+    // user clicked on. 
     var name = this.json.alignments[alignIdx][0];
+    var refStart = this.json.alignments[alignIdx][6];
+    var refEnd = this.json.alignments[alignIdx][7];
+    var maxGroupingDist = 10;
+
+    // Identify the length of the genomic sequence that covers
+    // all alignments we will be displaying.
     var idxs = [];
     var alignLevels = [];
-    var minAlignPos = 9999999;
-    var maxAlignPos = 0;
+    var minAlignPos = -1;
+    var maxAlignPos = -1;
     for (var j = 0; j < this.json.alignments.length; j += 1) {
-        if (this.json.alignments[j][0] === name) {
+        var instStart = this.json.alignments[j][6];
+        var instEnd = this.json.alignments[j][7];
+        if (this.json.alignments[j][0] === name &&
+            ((instStart > (refStart-maxGroupingDist) && instStart < (refEnd+maxGroupingDist))  || 
+             (instEnd > (refStart-maxGroupingDist) && instEnd < (refEnd+maxGroupingDist)))) 
+        {
             idxs[idxs.length] = this.json.alignments[j];
-            if (parseInt(this.json.alignments[j][6]) < minAlignPos) minAlignPos = this.json.alignments[j][6];
-            if (parseInt(this.json.alignments[j][7]) > maxAlignPos) maxAlignPos = this.json.alignments[j][7];
+            if (minAlignPos == -1 || instStart < minAlignPos) minAlignPos = instStart;
+            if (maxAlignPos == -1 || instEnd > maxAlignPos) maxAlignPos = instEnd;
         }
     }
     idxs.sort(function (a, b) {
@@ -206,16 +190,36 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
             return (a[6] - b[6]);
         }
     });
+
     var referenceXOffset;
     var alignedLen = maxAlignPos - minAlignPos + 1;
     var xsc;
-    if (instanceSeqLen > this.json.length) {
-        xsc = alignViewWidth / instanceSeqLen;
-        referenceXOffset = parseInt(x + margin + (((instanceSeqLen - this.json.length) / 2) * xsc));
+    if (alignedLen > this.json.length) {
+        xsc = alignViewWidth / alignedLen;
+        referenceXOffset = parseInt(x + margin + (((alignedLen - this.json.length) / 2) * xsc));
     } else {
         referenceXOffset = parseInt(x + margin);
         xsc = alignViewWidth / this.json.length;
     }
+    
+    // Draw the popup frame
+    var calcHeight = (2*margin) + titleHeight + ((idxs.length + 2) * alignSpacing);
+    if ( calcHeight > height ){
+      height = calcHeight;
+    }
+    this.detail_context.clearRect(0, 0, 1200, 2000);
+    this.detail_context.fillStyle = "rgba(255, 255, 255, 1.0)";
+    this.detail_context.fillRect(x, y, width, height);
+    this.detail_context.beginPath();
+    this.detail_context.rect(x, y, width, height);
+    this.detail_context.lineWidth = 2;
+    this.detail_context.strokeStyle = 'black';
+    this.detail_context.stroke();
+
+    // Write detail header
+    this.detail_context.font = "15px Georgia";
+    this.detail_context.fillStyle = 'black';
+    this.detail_context.fillText(alignIdx + " : " + this.json.alignments[alignIdx][0], x + margin, y + margin + 5);
 
     // Draw forward strand reference line
     this.detail_context.beginPath();
@@ -224,7 +228,6 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
     this.detail_context.moveTo(referenceXOffset, y + margin + titleHeight);
     this.detail_context.lineTo(referenceXOffset + parseInt(this.json.length * xsc), y + margin + titleHeight);
     this.detail_context.stroke();
-
 
     var levels = [];
     for (var j = 0; j < idxs.length; j += 1) {
@@ -245,34 +248,25 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
         }
     }
 
-    //var offset = parseInt(x + margin + ((alignViewWidth - (alignedLen * xsc)) / 2));
-    var offset = parseInt(x + margin + ((alignViewWidth - (instanceSeqLen * xsc)) / 2));
-    var alignYOffset = y + popupHeight - margin - (levels.length * (alignSpacing + 2));
 
-    // Draw main instance sequence line
+    // Draw main instance sequence line [gray]
     this.detail_context.strokeStyle = 'gray';
     this.detail_context.lineWidth = 2;
+    var offset = parseInt(x + margin + ((alignViewWidth/2) - ((alignedLen * xsc)/2)));
+    var alignYOffset = y + height - margin - (levels.length * (alignSpacing + 2));
 
     this.detail_context.beginPath();
     this.detail_context.moveTo(offset, alignYOffset + (levels.length * alignSpacing));
-    // For whole length
-    //this.detail_context.lineTo(offset+(instanceSeqLen*xsc), alignYOffset + (levels.length * alignSpacing));
-    this.detail_context.lineTo(offset+(minAlignPos*xsc), alignYOffset + (levels.length * alignSpacing));
+    this.detail_context.lineTo(offset+(alignedLen*xsc), alignYOffset + (levels.length * alignSpacing));
     this.detail_context.stroke();
-
-    this.detail_context.beginPath();
-    this.detail_context.moveTo(offset + (maxAlignPos*xsc), alignYOffset + (levels.length * alignSpacing));
-    this.detail_context.lineTo(offset+(instanceSeqLen*xsc), alignYOffset + (levels.length * alignSpacing));
-    this.detail_context.stroke();
-
 
     for (var j = 0; j < levels.length; j += 1) {
         for (var k = 0; k < levels[j].length; k += 1) {
             this.detail_context.beginPath();
             this.detail_context.strokeStyle = 'black';
-            //var start = offset + ((levels[j][k][6] - minAlignPos) * xsc);
-            var start = offset + ((levels[j][k][6]) * xsc);
-            var end = start + ((levels[j][k][7] - levels[j][k][6] + 1) * xsc);
+            var start = offset + ((parseInt(levels[j][k][6]) - minAlignPos) * xsc);
+            //var start = offset + ((levels[j][k][6]) * xsc);
+            var end = start + ((parseInt(levels[j][k][7]) - parseInt(levels[j][k][6]) + 1) * xsc);
 
             // Draw alignment line
             this.detail_context.moveTo(start, alignYOffset + (j * alignSpacing));
@@ -334,7 +328,7 @@ AlignmentSummary.prototype.drawAlignDetail = function (x, y, width, height, alig
     var name = this.json.alignments[alignIdx][0];
     var idxs = [];
     var alignLevels = [];
-    var minAlignPos = 9999999;
+    var minAlignPos = 99999999999999999999999999;
     var maxAlignPos = 0;
     for (var j = 0; j < this.json.alignments.length; j += 1) {
         if (this.json.alignments[j][0] === name) {

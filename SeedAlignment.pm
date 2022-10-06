@@ -1339,24 +1339,40 @@ sub read_stockholm
       my $orient       = "+";
 
       # Validate name
-      if ( $origName =~ /^(\S+)\:(\S+)\:(\d+)-(\d+)$/ )
+      if ( $origName =~ /^(\S+)\:(\S+)\:(\d+)-(\d+)(_[\+\-])?$/ )
       {
         $assemblyName = $1;
         $sequenceName = $2;
         $start        = $3;
         $end          = $4;
-        if ( $end < $start )
+        my $optOrient = $5;
+        if ( $optOrient ne "" ) {
+          if ( $optOrient =~ /_([\+\-])/ ) {
+            $orient = $1;
+          }else {
+            croak "\n$subroutine:\n"
+                . "  Line [$origName ...] contains an unparable identifier!\n";
+          }
+        }elsif ( $end < $start )
         {
           $end    = $3;
           $start  = $4;
           $orient = "-";
         }
-      } elsif ( $origName =~ /^(\S+)\:(\d+)-(\d+)$/ )
+      } elsif ( $origName =~ /^(\S+)\:(\d+)-(\d+)(_[\+\-])?$/ )
       {
         $sequenceName = $1;
         $start        = $2;
         $end          = $3;
-        if ( $end < $start )
+        my $optOrient = $4;
+        if ( $optOrient ne "" ) {
+          if ( $optOrient =~ /_([\+\-])/ ) {
+            $orient = $1;
+          }else {
+            croak "\n$subroutine:\n"
+                . "  Line [$origName ...] contains an unparable identifier!\n";
+          }
+        }elsif ( $end < $start )
         {
           $end    = $2;
           $start  = $3;
@@ -1364,16 +1380,17 @@ sub read_stockholm
         }
       } else
       {
-
         # This message needs to be extremely helpful so we encourage users
         # to user standard naming conventions.
         croak "\n$subroutine:\n"
             . "  Line [$origName ...] contains a sequence\n"
             . "  name that does not conform to the Dfam standard.  Please name the\n"
-            . "  sequences using either the \"assemblyID:sequenceID:start-end\" or\n"
+            . "  sequences using either the \"assemblyID:sequenceID:start-end\", \n"
+            . "  \"assemblyID:sequenceID:start-end_orient\", or \n"
             . "  \"sequenceID:start-end\" format ( 1-based coordinates ).  Also\n"
             . "  note that sequences on the reverse strand are denoted by\n"
-            . "  reversing the start and end coordinates (ie. \"hg38:chr1:1103-500\").\n"
+            . "  either including the \"_-\" suffix or by reversing the start and\n"
+            . "  end coordinates (ie. \"hg38:chr1:1103-500\").\n"
             . "  Please use public identifiers for assembly/sequence wherever\n"
             . "  possible.\n\n";
       }
