@@ -306,15 +306,15 @@ if ( !defined $options{'database'} || $options{'help'} ) {
 
 if ( $options{'pa'} ) {
   die "\nERROR: The -pa parameter has been deprecated.  Please use the newer\n" .
-      "\"-threads #\" parameter which precisely controls the maximum number\n" .
-      "of simultaneous threads this program will use.\n\n";
+        "      \"-threads #\" parameter which precisely controls the maximum\n" .
+        "       number of simultaneous threads this program will use.\n\n";
 }
 
 if ( ! exists $options{'threads'} || $options{'threads'} < 2 ) {
   print "WARNING: RepeatModeler is a computationally intensive program.\n" .
-         "        It is recommended that for anything other than debugging\n" .
-         "        purposes the program should run with greater than eight\n" .
-         "        threads (-threads #).\n\n";
+        "         It is recommended that for anything other than debugging\n" .
+        "         purposes the program should run with greater than eight\n" .
+        "         threads (-threads #).\n\n";
 }
 
 # Seed the random number generator if requested
