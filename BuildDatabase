@@ -69,11 +69,6 @@ Detailed help
 
 The name of the database to create.
 
-=item -engine <engine name>
-
-The name of the search engine we are using.  I.e abblast/wublast or
-rmblast.
-
 =item -dir <directory>
 
 The name of a directory containing fasta files to be processed.  The
@@ -198,6 +193,10 @@ my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
 my $NCBIDBCMD_PRGM   = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
 
 my $engine = "rmblast";
+if ( $options{'engine'} && $options{'engine'} =~ /wublast|abblast/i ) {
+  die "ERROR: \"-engine $options{'engine'}\" is deprecated, this verison of RepeatModeler uses rmblast only.\n";
+}
+
 if ( $options{'engine'} ) {
   if ( $options{'engine'} =~ /wublast|abblast/i ) {
     die "RepeatModeler doesn't appear to be configured to use the "

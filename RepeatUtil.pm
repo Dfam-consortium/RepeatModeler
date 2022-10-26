@@ -77,11 +77,13 @@ use RepModelConfig;
 use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use WUBlastSearchEngine;
 use CrossmatchSearchEngine;
+use NCBIBlastSearchEngine;
 use MultAln;
 use SeedAlignment;
 use SeqDBI;
 use SearchResultCollection;
 use SimpleBatcher;
+use ThreadedTaskSimple;
 
 use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION);
 
@@ -102,69 +104,107 @@ my $config        = $RepModelConfig::configuration;
 my $XDFORMAT_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
 my $WUBLASTN_PRGM = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
 
+
 ##---------------------------------------------------------------------##
 
-=head2 ncbiMaskDatabase()
+=head2 ncbiMaskDatabaseMT()
 
-  Use: ncbiMaskDatabase( makeDBPath => "/usr/local/rmblast/makeblastdb",
-                      dbCMDPath => "/usr/local/rmblast/blastdbcmd",
+  Use: ncbiMaskDatabaseMT( 
+                     makeDBPath => "/usr/local/rmblast/makeblastdb",
+                     dbCMDPath => "/usr/local/rmblast/blastdbcmd",
+                     rmblastnPath => "/usr/local/rmblast/rmblastn",
+                     aliasPath => "/usr/local/rmblast/aliastool",
                      fastaFile => "/jo/bob/seq.fa",
                      consensi => "/jo/bob/lib/reps.fa",
-                     searchEngine => $searchEngine,
+                     workingDir => "/jo/bob/round-3",
+                     threads => 4,
                      [instSeqFile => "/jo/bob/instances.out"] );
 
+  A newer version of the ncbiMaskDatabase function that works
+  for older versions of rmblastn (pre 2.13) but is still multi
+  threaded using the ThreadedTaskSimple object.
+
+  This new routine also instantiates its own searchEngine in 
+  order to manage it's settings more effectively.
 =cut
 
 ##---------------------------------------------------------------------##
-sub ncbiMaskDatabase {
+sub ncbiMaskDatabaseMT {
   my %parameters = @_;
 
   # Parameter checking
   die $CLASS
-      . "::ncbiMaskDatabase(): Missing or invalid makeDBPath "
+      . "::ncbiMaskDatabaseMT(): Missing or invalid makeDBPath "
       . "parameter!\n"
       if (    !defined $parameters{'makeDBPath'}
            || !-x $parameters{'makeDBPath'} );
   my $makeDBPath = $parameters{'makeDBPath'};
 
   die $CLASS
-      . "::ncbiMaskDatabase(): Missing or invalid dbCMDPath "
+      . "::ncbiMaskDatabaseMT(): Missing or invalid dbCMDPath "
       . "parameter!\n"
       if (    !defined $parameters{'dbCMDPath'}
            || !-x $parameters{'dbCMDPath'} );
   my $dbCMDPath = $parameters{'dbCMDPath'};
 
   die $CLASS
-      . "::ncbiMaskDatabase(): Missing or invalid aliasPath "
+      . "::ncbiMaskDatabaseMT(): Missing or invalid rmblastnPath "
+      . "parameter!\n"
+      if (    !defined $parameters{'rmblastnPath'}
+           || !-x $parameters{'rmblastnPath'} );
+  my $rmblastnPath = $parameters{'rmblastnPath'};
+
+  die $CLASS
+      . "::ncbiMaskDatabaseMT(): Missing or invalid aliasPath "
       . "parameter!\n"
       if (    !defined $parameters{'aliasPath'}
            || !-x $parameters{'aliasPath'} );
   my $aliasPath = $parameters{'aliasPath'};
 
-  die $CLASS . "::ncbiMaskDatabase(): Missing workingDir parameter!\n"
+  die $CLASS . "::ncbiMaskDatabaseMT(): Missing workingDir parameter!\n"
       if (    !defined $parameters{'workingDir'}
            || !-d $parameters{'workingDir'} );
   my $workingDir = $parameters{'workingDir'};
 
-  die $CLASS . "::ncbiMaskDatabase(): Missing fastaFile parameter!\n"
+  die $CLASS . "::ncbiMaskDatabaseMT(): Missing fastaFile parameter!\n"
       if (    !defined $parameters{'fastaFile'}
            || !-s $parameters{'fastaFile'} );
   my $fastaFile = $parameters{'fastaFile'};
 
-  #my $tempDir   = dirname( $fastaFile );
-
-  die $CLASS . "::ncbiMaskDatabase(): Missing consensi parameter!\n"
+  die $CLASS . "::ncbiMaskDatabaseMT(): Missing consensi parameter!\n"
       if (    !defined $parameters{'consensi'}
            || !-s $parameters{'consensi'} );
   my $consensi = $parameters{'consensi'};
 
-  die $CLASS . "::ncbiMaskDatabase(): Missing searchEngine parameter!\n"
-      if ( !defined $parameters{'searchEngine'} );
-  my $searchEngine = $parameters{'searchEngine'};
+  die $CLASS . "::ncbiMaskDatabaseMT(): Missing threads parameter!\n"
+      if ( !defined $parameters{'threads'} );
+  my $threads = $parameters{'threads'};
 
   my $instSeqFile;
   $instSeqFile = $parameters{'instSeqFile'}
       if ( defined $parameters{'instSeqFile'} );
+
+  my $searchEngine =
+        NCBIBlastSearchEngine->new( pathToEngine => $rmblastnPath );
+
+  $searchEngine->setMinScore( 250 );
+  # TODO one for each
+  $searchEngine->setMinScore($parameters{'minScore'}) 
+     if ( exists $parameters{'minScore'} );
+  
+  $searchEngine->setGenerateAlignments( 0 );
+  $searchEngine->setGapInit( -25 );
+  $searchEngine->setBandwidth( 10 );    # Changes gapW=31
+  $searchEngine->setInsGapExt( -5 );
+  $searchEngine->setDelGapExt( -5 );
+  $searchEngine->setMinMatch( 7 );
+  $searchEngine->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
+  $searchEngine->setMaskLevel( undef );
+  $searchEngine->setCores(1);
+  $searchEngine->setThreadByQuery(1);
+  $searchEngine->setTempDir($workingDir);
+  $searchEngine->setMatrix(
+                     "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
 
   # Setup the temporary database
   my $index  = 1;
@@ -192,8 +232,7 @@ sub ncbiMaskDatabase {
       last;
     }
   }
-  my $maxBatchSize = 100;
-  my $batchSize    = 5;
+  my $batchSize    = 30;
   print $CLASS
       . "::ncbiMaskDatabase(): tmpDBName = $dbName size = $dbNumSeqs"
       . " longest sequence size = $dbMaxSeqLen batchSize = $batchSize\n"
@@ -206,63 +245,65 @@ sub ncbiMaskDatabase {
   # Setup the Query/Subject
   $searchEngine->setQuery( $consensi );
   $searchEngine->setSubject( "$workingDir/$dbName" );
-  $searchEngine->setTempDir( $workingDir );
 
   my $INST;
   if ( defined $parameters{'instSeqFile'} ) {
     open $INST, ">$parameters{'instSeqFile'}";
   }
 
-
-  # Check to make sure additional parameters haven't already
-  # been set
-  my $additionalParams = "";
-  $additionalParams = $searchEngine->getAdditionalParameters();
-  $additionalParams = "" if ( !defined $additionalParams );
-
   my $repeatsMasked = 0;
   my %idsSeen       = ();
+
+  my $tsk = ThreadedTaskSimple->new();
+  $tsk->setWorkingDir($workingDir);
+  $tsk->setName("masking_job");
+  $tsk->setNumThreads($threads);
+  $tsk->setMaxRetries(2);
+
+  my $jobIdx = 0;
+  my @outFiles = ();
   for ( my $i = 1 ; $i <= $dbNumSeqs ; $i += $batchSize ) {
     my $dbEnd = $i + $batchSize - 1;
     $dbEnd = $dbNumSeqs if ( $dbEnd > $dbNumSeqs );
-    print "     - Masking $i - $dbEnd of $dbNumSeqs\n";
 
-    # Create a gilist
-    my @giList = ( $i .. $dbEnd );
-    open GI, ">$workingDir/$dbName-gilist.txt"
-        or die "$CLASS"
-        . "::ncbiMaskDatabase(): Could not open up file $dbName-gilist.txt for writing!\n";
-    print GI join( "\n", @giList ) . "\n";
-    close GI;
-    system(
-"$aliasPath -gi_file_in $workingDir/$dbName-gilist.txt -gi_file_out $workingDir/$dbName-gilist > /dev/null 2>&1"
-    );
+    #print "     - Adding masking job for: $i - $dbEnd of $dbNumSeqs\n";
+    $tsk->addJob( name => "rmblast-job-$jobIdx",
+                function => \&maskOneBatch,
+                parameters => [$i, $dbEnd, $searchEngine, $workingDir, $aliasPath] );
+    push @outFiles,"$workingDir/maskingBatch$i-$dbEnd.out";
+    $jobIdx++;
+  }
+  $tsk->execute();
 
-    $searchEngine->setAdditionalParameters(
-                     " $additionalParams -gilist $workingDir/$dbName-gilist " );
+  my $totalMasked = 0;
+  foreach my $outFile ( @outFiles ) {
 
-    my ( $status, $resultCollection ) = $searchEngine->search();
-    if ( $status ) {
-      print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
-    }
-    elsif ( $resultCollection->size() > 0 ) {
+    my $resultCollection =
+      CrossmatchSearchEngine::parseOutput( searchOutput => "$outFile" );
 
-      if ( $resultCollection->size() < 500000 ) {
-        $batchSize += 10;
-        $batchSize = $maxBatchSize if ( $batchSize > $maxBatchSize );
-
-        #print "Raising batch size to $batchSize, resultColl size = " .
-        #      $resultCollection->size() . "\n";
-      }
-
+   if ( $resultCollection->size() > 0 ) {
+     $resultCollection->sort(
+            sub ($$) {
+               ($_[ 0 ]->getSubjName() cmp $_[ 1 ]->getSubjName()) ||
+               ($_[ 0 ]->getSubjStart() <=> $_[ 1 ]->getSubjStart()) ||
+               ($_[ 1 ]->getSubjEnd() <=> $_[ 0 ]->getSubjEnd());
+                     });
+ 
       print "    -- Collecting " . $resultCollection->size() . " ranges...\n"
           if ( $DEBUG );
       my %maskRanges = ();
       my $seqID;
-
+      my $prevStart = -1;
+      my $prevEnd = -1;
+      my $prevID = "";
       for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
-
         $seqID = $resultCollection->get( $k )->getSubjName();
+        # Reset previous stats if we cross a sequence boundary
+        if ( $seqID ne $prevID ) {
+          $prevID = "";
+          $prevStart = -1;
+          $prevEnd = -1;
+        }
         my $startIncr   = 0;
         my $endIncr     = 0;
         my $globalSeqID = $seqID;
@@ -281,6 +322,25 @@ sub ncbiMaskDatabase {
         my $rangeStart = $start - 1;
         my $rangeLen   = ( $end - $start + 1 );
         push @{ $maskRanges{$seqID} }, [ $rangeStart, $rangeLen ];
+        
+        # Cacluate actual sequence masked (accounting for overlaps)
+        #print "$seqID $start $end len=$rangeLen ";
+        my $actual_masked = $rangeLen;
+        if ( $prevStart > 0 ) {
+          if ( $prevEnd > $start ) {
+            if ( $prevEnd > $end ) {
+              $actual_masked = 0;
+            }else {
+              $actual_masked -= $prevEnd - $start + 1;
+            }
+          }
+        }
+        #print " act_len=$actual_masked\n";
+        $totalMasked += $actual_masked;
+        $repeatsMasked++ if ( $actual_masked > 0 );
+        $prevStart = $start;
+        $prevEnd = $end if ( $end > $prevEnd);
+        $prevID = $seqID;
 
         # Adjust to global coords
         $start += $startIncr;
@@ -302,8 +362,7 @@ sub ncbiMaskDatabase {
               . $result->getQueryEnd() . " "
               . $seqID . "\n";
         }
-
-        $repeatsMasked++;
+ 
       }
 
       foreach my $idKey ( keys( %maskRanges ) ) {
@@ -323,8 +382,8 @@ sub ncbiMaskDatabase {
       %maskRanges = ();
       undef $resultCollection;
     }    # else
-  }    # for
-
+    unlink($outFile);
+  }  # for
   # Write out any records which didn't have any masking
   foreach my $idKey ( $maskDB->getIDs() ) {
     next if ( exists $idsSeen{$idKey} );
@@ -343,12 +402,256 @@ sub ncbiMaskDatabase {
         if ( defined $parameters{'instSeqFile'}
              && -z $parameters{'instSeqFile'} );
   }
-  unlink( "$dbName.xns" );
-  unlink( "$dbName.xnt" );
-  unlink( "$dbName.xni" );
-  unlink( "$dbName.xnd" );
+  unlink( "$workingDir/$dbName.xns" );
+  unlink( "$workingDir/$dbName.xnt" );
+  unlink( "$workingDir/$dbName.xni" );
+  unlink( "$workingDir/$dbName.xnd" );
 
-  return $repeatsMasked;
+  #print "    * Masked $repeatsMasked repeats totaling $totalMasked bp(s).\n";
+
+  return ($repeatsMasked, $totalMasked);
+
+}
+
+
+sub maskOneBatch {
+  my $startSeqIdx = shift;
+  my $endSeqIdx = shift;
+  my $searchEngine = shift;
+  my $workingDir = shift;
+  my $aliasPath = shift;
+
+  # Create a gilist
+  my @giList = ( $startSeqIdx .. $endSeqIdx );
+  my $giListFile = "$workingDir/maskingBatch$startSeqIdx-$endSeqIdx-gilist";
+  my $giListFileSrc = $giListFile . ".txt";
+  open GI, ">$giListFileSrc"
+      or die "$CLASS"
+      . "::ncbiMaskDatabase(): Could not open up file $giListFileSrc for writing!\n";
+  print GI join( "\n", @giList ) . "\n";
+  close GI;
+  system("$aliasPath -gi_file_in $giListFileSrc  -gi_file_out $giListFile > /dev/null 2>&1");
+  unlink($giListFileSrc);
+  $searchEngine->setAdditionalParameters(
+                   " -gilist $giListFile " );
+  my ( $status, $resultCollection ) = $searchEngine->search();
+  $resultCollection->write("$workingDir/maskingBatch$startSeqIdx-$endSeqIdx.out", SearchResult::NoAlign);
+  unlink($giListFile) if ( -e $giListFile);
+  return ( $status );
+}
+
+##---------------------------------------------------------------------##
+
+=head2 ncbiMaskDatabaseNativeMT()
+
+  Use: ncbiMaskDatabaseNativeMT( 
+                     makeDBPath => "/usr/local/rmblast/makeblastdb",
+                     rmblastnPath => "/usr/local/rmblast/rmblastn",
+                     fastaFile => "/jo/bob/seq.fa",
+                     consensi => "/jo/bob/lib/reps.fa",
+                     workingDir => "/jo/bob/round-3",
+                     threads => 4,
+                     [instSeqFile => "/jo/bob/instances.out"],
+                      );
+
+  This is a newer version of the masking function that uses native
+  rmblastn query threading (mt_mode = 1) to mask the fastaFile 
+  (as the query) using the TE consensi (as the database).  This 
+  capability was added in RMBlast 2.13.
+
+  This new routine also instantiates its own searchEngine in 
+  order to manage it's settings more effectively.
+
+=cut
+
+##---------------------------------------------------------------------##
+sub ncbiMaskDatabaseNativeMT {
+  my %parameters = @_;
+
+  my $fName = "ncbiMaskDatabaseNativeMT";
+
+  # Parameter checking
+  die $CLASS
+      . "::$fName(): Missing or invalid makeDBPath "
+      . "parameter!\n"
+      if (    !defined $parameters{'makeDBPath'}
+           || !-x $parameters{'makeDBPath'} );
+  my $makeDBPath = $parameters{'makeDBPath'};
+
+  die $CLASS
+      . "::$fName(): Missing or invalid rmblastnPath "
+      . "parameter!\n"
+      if (    !defined $parameters{'rmblastnPath'}
+           || !-x $parameters{'rmblastnPath'} );
+  my $rmblastnPath = $parameters{'rmblastnPath'};
+
+  die $CLASS . "::$fName(): Missing workingDir parameter!\n"
+      if (    !defined $parameters{'workingDir'}
+           || !-d $parameters{'workingDir'} );
+  my $workingDir = $parameters{'workingDir'};
+
+  die $CLASS . "::$fName(): Missing fastaFile parameter!\n"
+      if (    !defined $parameters{'fastaFile'}
+           || !-s $parameters{'fastaFile'} );
+  my $fastaFile = $parameters{'fastaFile'};
+
+  die $CLASS . "::$fName(): Missing consensi parameter!\n"
+      if (    !defined $parameters{'consensi'}
+           || !-s $parameters{'consensi'} );
+  my $consensi = $parameters{'consensi'};
+
+  die $CLASS . "::$fName(): Missing threads parameter!\n"
+      if (    !defined $parameters{'threads'} );
+  my $threads = $parameters{'threads'};
+
+  my $searchEngine =
+        NCBIBlastSearchEngine->new( pathToEngine => $rmblastnPath );
+
+  if ( $searchEngine->getVersion() =~ /.*(\d+)\.(\d+)\.\d+/ ){
+    unless ( $1 > 2 || ($1 == 2 && $2 >= 13) )
+    {
+      die $CLASS . "::$fName(): rmblast version is incompatible with this function!\n";
+    }
+  }else {
+    die $CLASS . "::$fName(): could not obtain rmblast version!\n";
+  }
+
+  $searchEngine->setMinScore( 250 );
+  # TODO one for each
+  $searchEngine->setMinScore($parameters{'minScore'}) 
+     if ( exists $parameters{'minScore'} );
+  
+  $searchEngine->setGenerateAlignments( 0 );
+  $searchEngine->setGapInit( -25 );
+  $searchEngine->setBandwidth( 10 );    # Changes gapW=31
+  $searchEngine->setInsGapExt( -5 );
+  $searchEngine->setDelGapExt( -5 );
+  $searchEngine->setMinMatch( 7 );
+  $searchEngine->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
+  $searchEngine->setMaskLevel( 90 );
+  $searchEngine->setCores($threads);
+  $searchEngine->setThreadByQuery(1);
+  $searchEngine->setTempDir($workingDir);
+  $searchEngine->setMatrix(
+                     "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
+
+  # Setup the temporary database
+  my $index  = 1;
+  my $dbName = "tmpConsDB-$index";
+  while ( -s "$workingDir/$dbName.nhr" ) {
+    $index++;
+    $dbName = "tmpConsDB-$index";
+  }
+  system("$makeDBPath -blastdb_version 4 -out $workingDir/$dbName " .
+         "-parse_seqids -dbtype nucl -in $consensi > /dev/null 2>&1");
+
+  my $maskDB = FastaDB->new( fileName => $fastaFile,
+                             openMode => SeqDBI::ReadOnly );
+  my %maskSeqs = ();
+  foreach my $seqID ( $maskDB->getIDs() ) {
+    my $seq  = $maskDB->getSequence( $seqID );
+    $maskSeqs{$seqID} = $seq; 
+  }
+  undef $maskDB;
+ 
+  # Setup the Query/Subject
+  $searchEngine->setQuery($fastaFile);
+  $searchEngine->setSubject("$workingDir/$dbName");
+
+  my $INST;
+  if ( defined $parameters{'instSeqFile'} ) {
+    open $INST, ">$parameters{'instSeqFile'}";
+  }
+
+  my $repeatsMasked = 0;
+  my $totalMasked = 0;
+
+  my ( $status, $resultCollection ) = $searchEngine->search();
+  if ( $status ) {
+    print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
+  }
+  elsif ( $resultCollection->size() > 0 ) {
+    print "    -- Collecting " . $resultCollection->size() . " ranges...\n";
+    $resultCollection->sort(
+            sub ($$) {
+               ($_[ 0 ]->getQueryName() cmp $_[ 1 ]->getQueryName()) ||
+               ($_[ 0 ]->getQueryStart() <=> $_[ 1 ]->getQueryStart()) ||
+               ($_[ 1 ]->getQueryEnd() <=> $_[ 0 ]->getQueryEnd());
+                     });
+    my $prevStart = -1;
+    my $prevEnd = -1;
+    my $prevID = "";
+    for ( my $k = 0 ; $k < $resultCollection->size(); $k++ ) {
+      my $res = $resultCollection->get( $k ); 
+      my $seqID = $res->getQueryName();
+      my $start = $res->getQueryStart();
+      my $end = $res->getQueryEnd();
+      my $len = $end - $start + 1;
+
+      # Reset previous stats if we cross a sequence boundary
+      if ( $seqID ne $prevID ) {
+        $prevID = "";
+        $prevStart = -1;
+        $prevEnd = -1;
+      }
+
+      # Cacluate actual sequence masked (accounting for overlaps)
+      my $actual_masked = $len;
+      if ( $prevStart > 0 ) {
+        if ( $prevEnd > $start ) {
+          if ( $prevEnd > $end ) {
+            $actual_masked = 0;
+          }else {
+            $actual_masked -= $prevEnd - $start + 1;
+          }
+        }
+      }
+      $totalMasked += $actual_masked;
+      $repeatsMasked++ if ( $actual_masked > 0 );
+
+      my $origSeq = $maskSeqs{$seqID};
+      substr($origSeq, $start-1, $len) = "N" x $len;
+      $maskSeqs{$seqID} = $origSeq;
+      
+      if ( defined $INST ) {
+        print $INST ""
+            . $res->getScore . " "
+            . $res->getQueryName() . " "
+            . $res->getQueryStart() . " "
+            . $res->getQueryEnd() . " "
+      }
+
+      $prevStart = $start;
+      $prevEnd = $end if ( $end > $prevEnd);
+      $prevID = $seqID;
+    } # for
+  } # if results > 0 
+  undef $resultCollection;
+  close $INST if ( defined $INST );
+
+  open OUT, ">$fastaFile.masked";
+  foreach my $seqID ( keys(%maskSeqs) ) {
+      my $seq  = $maskSeqs{$seqID};
+      print OUT ">$seqID\n";
+      $seq =~ s/(.{50})/$1\n/g;
+      print OUT "$seq\n";
+  }
+  close OUT;
+
+  if ( $repeatsMasked == 0 ) {
+    unlink( "$fastaFile.masked" );
+    unlink( "$parameters{'instSeqFile'}" )
+        if ( defined $parameters{'instSeqFile'}
+             && -z $parameters{'instSeqFile'} );
+  }
+  unlink( "$workingDir/$dbName.xns" );
+  unlink( "$workingDir/$dbName.xnt" );
+  unlink( "$workingDir/$dbName.xni" );
+  unlink( "$workingDir/$dbName.xnd" );
+
+  #print "    * Masked $repeatsMasked repeats totaling $totalMasked bp(s).\n";
+
+  return ($repeatsMasked, $totalMasked);
 
 }
 

@@ -134,14 +134,14 @@ BEGIN {
                          },
           'REPEATMASKER_DIR' => {
                                   'command_line_override' => 'repeatmasker_dir',
-                                  'description' => 'The path to the installation of RepeatMasker.',
+                                  'description' => 'The path to the installation of RepeatMasker (RM 4.1.4+)',
                                   'environment_override' => 'REPEATMASKER_DIR',
                                   'expected_binaries' => [
                                                            'RepeatMasker'
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/usr/local/RepeatMasker'
+                                  'value' => '/home/rhubley/projects/RepeatMasker'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
@@ -157,7 +157,7 @@ BEGIN {
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast-2.10.0/bin'
+                             'value' => '/home/rhubley/projects/RMBlast_project/RMBlast/ncbi-blast-2.13.0+-src/c++/ReleaseMT/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
@@ -358,7 +358,6 @@ BEGIN {
 
     my $value = $configuration->{$param}->{'value'};
     $value = $new_setting if ( defined $new_setting );
-
 
     # Always assume the "good" in parameters...
     my $validParam = 1;

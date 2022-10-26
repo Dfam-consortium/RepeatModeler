@@ -124,7 +124,7 @@ if ( $ARGV[ 0 ] && $ARGV[ 0 ] eq '-v' ) {
 #
 my @opts = (
              '-help',     '-noTmp',    '-debug', '-quiet',
-             '-engine=s', '-giToID=s', '-name=s'
+             '-engine=s', '-giToID=s', '-name=s', '-pa=s'
 );
 
 # Add configuration parameters as additional command-line options
@@ -302,7 +302,7 @@ foreach my $file ( @ARGV ) {
       next;
     }
     s/[\n\r\s]+//g;
-    $firstSeq .= $_;
+    $firstSeq .= uc($_);
   }
   close IN;
 
@@ -402,6 +402,8 @@ sub buildConsensus {
   $srchEngAllVsAll->setInsGapExt( -5 );
   $srchEngAllVsAll->setDelGapExt( -5 );
   $srchEngAllVsAll->setMinMatch( 7 );
+#TODO TESTING:
+  $srchEngAllVsAll->setCores( 12 );
   #$srchEngAllVsAll->setBandwidth( -50 );
   $srchEngAllVsAll->setTempDir( dirname( $pathToFastaFile ) );
   $srchEngAllVsAll->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
@@ -412,6 +414,8 @@ sub buildConsensus {
   $srchEngOneVsAll->setInsGapExt( -5 );
   $srchEngOneVsAll->setDelGapExt( -5 );
   $srchEngOneVsAll->setMinMatch( 7 );
+#TODO TESTING:
+  $srchEngOneVsAll->setCores( 12 );
   $srchEngOneVsAll->setTempDir( dirname( $pathToFastaFile ) );
   $srchEngOneVsAll->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
   $srchEngOneVsAll->setMaskLevel( 80 );

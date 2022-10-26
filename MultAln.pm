@@ -5084,7 +5084,7 @@ sub buildConsensusFromArray {
   my @profile   = ();
   foreach my $seq ( @{$sequences} ) {
     my $i = 0;
-    grep $profile[ $i++ ]{$_}++, split( '', $seq );
+    grep $profile[ $i++ ]{uc($_)}++, split( '', $seq );
   }
 
   #
@@ -5120,22 +5120,13 @@ sub buildConsensusFromArray {
       $n = "N";
     }
     $consensus .= $n;
-
-    #my $foo = $consensus;
-    #$foo =~ s/-//g;
-    #print "col $i conspos " .length($foo).": max_base = $n max_score = $maxScore\n";
     push @cScore, $maxScore;
   }
-  #print "precons=$consensus\n";
-  #my $foo = $consensus;
-  #$foo =~ s/-//g;
-  #print "Leng = " . length($foo) . "\n";
 
   #
   #   go through the consensus and consider changing each dinucleotide
   #   to a 'CG'
   #
-  #print "Consensus = $consensus\n";
 FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
     next if ( substr( $consensus, $i, 1 ) eq '-' );
     my $CGscore = 0;
@@ -5151,8 +5142,8 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
       last FLOOP if ( $k >= length( $consensus ) );
     }
     my $consDNRight = substr( $consensus, $k, 1 );
-    #print "cons: $consDNLeft$consDNRight\n";
     foreach ( @{$sequences} ) {
+      $_ = uc($_);
       my $j = $i;
       next if ( $j >= length( $_ ) );
       my $hitDNLeft = substr( $_, $j, 1 );
@@ -5225,7 +5216,6 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
         $CGscore += $matrix_r->{ "C" . $hitDNLeft };
         $CGscore += $matrix_r->{ "G" . $hitDNRight };
       }
-      #print " i=$i -- hitDN=$hitDN CGScore = $CGscore dnScore =  $dnScore\n";
     }
     if ( $CGscore > $dnScore ) {
       substr( $consensus, $i, 1 ) = 'C';

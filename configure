@@ -226,6 +226,16 @@ if ( !$options{'repeatmasker_dir'} ) {
   } while ( $goodParam != 1 );
 }
 my $repMaskLocation = $config->{'REPEATMASKER_DIR'}->{'value'};
+my $tmpStr = `$repMaskLocation/RepeatMasker -v 2>&1`;
+if ( $tmpStr =~ /version\s+(\d+)\.(\d+)\.(\d+)(p\d+)?/ ) {
+  my $major = $1;
+  my $minor = $2;
+  my $rev = $3;
+  unless ( $major > 4 || ($major == 4 && $minor > 1) ||
+          ( $major == 4 && $minor == 1 && $rev >= 4) ) {
+    die "RepeatMasker version is not compatible with RepeatModeler, please use 4.1.4 or higher.\n";
+  }
+}
 
 if ( !$options{'recon_dir'} ) {
   RepModelConfig::promptForParam( 'RECON_DIR' );
@@ -335,14 +345,14 @@ sub searchEngineMenu {
   my @searchEngines = (
                   {
                     name => "RMBLAST_DIR",
-                    desc => "RMBlast - NCBI Blast with RepeatMasker extensions",
+                    desc => "RMBlast - NCBI Blast with RepeatMasker extensions (recommended 2.13+)",
                     status => 0,
                   },
-                  {
-                    name   => "ABBLAST_DIR",
-                    desc   => "WUBlast/ABBlast",
-                    status => 0,
-                  }
+                  #{
+                  #  name   => "ABBLAST_DIR",
+                  #  desc   => "WUBlast/ABBlast",
+                  #  status => 0,
+                  #}
   );
 
   my $done          = 0;

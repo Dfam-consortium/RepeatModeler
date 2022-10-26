@@ -74,7 +74,19 @@ combine results with the RepeatScout/RECON pipeline. [optional]
 =item -genomeSampleSizeMax #
 
 Optionally change the maximum bp of the genome to sample in all rounds
-of RECON (default=243000000).  
+of RECON (default=810MB, or 243MB for -quick).  
+
+=item -numAdditionalRounds #
+
+Optionally increase the number of rounds (default=6).  The sample size for 
+additional rounds will change by size multiplier (currently 3).
+
+=item -quick
+
+In RepeatModeler 2.0.4 due to improvements in masking and parallelization the
+sample sizes have increased improving sensitivity.  Using the quick option 
+reverts back to the original sample sizes (pre 2.0.4) allowing for similar 
+sensitivity as before, at a faster rate.
 
 =back
 
@@ -90,7 +102,7 @@ RepeatMasker, RMBlast
 
 =head1 COPYRIGHT
 
- Copyright 2005-2021 Institute for Systems Biology
+ Copyright 2005-2022 Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -167,10 +179,12 @@ my @getopt_args = (
                     '-help',
                     '-dir=s',
                     '-debug',
+                    '-quick',
                     '-database=s',
                     '-engine=s',
                     '-recoverDir=s',
                     '-pa=i',
+                    '-threads=i',
                     '-srand=i',
                     '-rsSampleSize=s',
                     '-numAddlRounds=s',
@@ -179,6 +193,7 @@ my @getopt_args = (
                     '-LTRMaxSeqLen=i',
                     '-onlyRS',
                     '-skipRS',
+                    '-disableRMBlastStat',
                     '-onlyIns',                     # For internal use only
                     '-recon_batch_size=i',          # For debugging only 
                     '-recon_sample_size_start=i',   # For debugging only
@@ -289,34 +304,52 @@ if ( !defined $options{'database'} || $options{'help'} ) {
   usage();
 }
 
+if ( $options{'pa'} ) {
+  die "\nERROR: The -pa parameter has been deprecated.  Please use the newer\n" .
+      "\"-threads #\" parameter which precisely controls the maximum number\n" .
+      "of simultaneous threads this program will use.\n\n";
+}
+
+if ( ! exists $options{'threads'} || $options{'threads'} < 2 ) {
+  print "WARNING: RepeatModeler is a computationally intensive program.\n" .
+         "        It is recommended that for anything other than debugging\n" .
+         "        purposes the program should run with greater than eight\n" .
+         "        threads (-threads #).\n\n";
+}
+
 # Seed the random number generator if requested
 my $seed = time;
 $seed = $options{'srand'} if ( defined $options{'srand'} );
 srand( $seed );
+
+if ( exists $options{'disableRMBlastStat'} ) {
+  $ENV{'BLAST_USAGE_REPORT'} = "false";
+}
 
 #
 # Setup the search engines
 #
 my $searchEngineN;
 my $engine = "rmblast";
+my $engineVersion = "";
+my $isRMBlastQueryThreadable = 0; # A flag that is set if RMBlastn supports query threading (2.13 and above)
 
 # DEPRECATED: Using only rmblast now
-#$engine = $options{'engine'} if ( $options{'engine'} );
 if ( $options{'engine'} && $options{'engine'} =~ /wublast|abblast/i ) {
-  print
-"WARNING: \"-engine $options{'engine'}\" is deprecated, this verison of RepeatModeler uses rmblast only.\n";
+  die "ERROR: \"-engine $options{'engine'}\" is deprecated, this verison of RepeatModeler uses rmblast only.\n";
 }
 if ( $engine ) {
-  if ( $engine =~ /wublast|abblast/i ) {
-    $engine = "abblast";
-    $searchEngineN = WUBlastSearchEngine->new( pathToEngine => $WUBLASTN_PRGM );
-    if ( not defined $searchEngineN ) {
-      die "Cannot execute $WUBLASTN_PRGM please make "
-          . "sure you have setup RepeatModeler to use AB/WUBlast "
-          . "by running the configure script.\n";
-    }
-  }
-  elsif ( $engine =~ /rmblast|ncbi/i ) {
+  #if ( $engine =~ /wublast|abblast/i ) {
+  #  $engine = "abblast";
+  #  $searchEngineN = WUBlastSearchEngine->new( pathToEngine => $WUBLASTN_PRGM );
+  #  if ( not defined $searchEngineN ) {
+  #    die "Cannot execute $WUBLASTN_PRGM please make "
+  #        . "sure you have setup RepeatModeler to use AB/WUBlast "
+  #        . "by running the configure script.\n";
+  #  }
+  #}
+  #elsif ( $engine =~ /rmblast|ncbi/i ) {
+  if ( $engine =~ /rmblast|ncbi/i ) {
     $engine        = "rmblast";
     $searchEngineN =
         NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
@@ -324,6 +357,14 @@ if ( $engine ) {
       die "Cannot execute $RMBLASTN_PRGM please make "
           . "sure you have setup RepeatModeler to use NCBI (RMBlast) by "
           . "running the configure script.\n";
+    }
+    $engineVersion = $searchEngineN->getVersion();
+    if ( $engineVersion =~ /.*(\d+)\.(\d+)\.\d+.*/ ) {
+      my $major = $1;
+      my $minor = $2;
+      if ( $major > 2 || ( $major == 2 && $minor >= 13 ) ) {
+        $isRMBlastQueryThreadable = 1;
+      }
     }
   }
   else {
@@ -336,42 +377,69 @@ if ( $engine ) {
 ##
 ## Sampling/Iteration Parameters
 ##
-my $rsSampleSize               = 40000000;     # The size of the sequence given
-                                               #   to RepeatScout. ( round #1 )
-my $fragmentSize               = 40000;        # The size of the batches for
-                                               #   all-vs-other search.
-my $reconSampleSizeStart       = 3000000;      # The initial sample size for
-                                               #   RECON analysis
-my $genomeSampleSizeMax        = 243000000;    # The max sample size for
-                                               #   RECON analysis
-my $genomeSampleSizeMultiplier = 3;            # The multiplier for sample size
-                                               #   between rounds
-my $numAdditionalRounds = 0;                   # Number of additional rounds at
-                                               #   genomeSampleSizeMax to run.
+my $rsSampleSize;                  # The size of the sequence given
+                                   #   to RepeatScout. ( round #1 )
+my $fragmentSize;                  # The size of the batches for
+                                   #   all-vs-other search.
+my $reconSampleSizeStart;          # The initial sample size for
+                                   #   RECON analysis.
+my $genomeSampleSizeMax;           # The max sample size for
+                                   #   RECON analysis
+my $genomeSampleSizeMultiplier;    # The multiplier for sample size
+                                   #   between rounds
+my $numAdditionalRounds;           # Number of additional rounds at
+                                   #   genomeSampleSizeMax to run.
+my $recommendedFamilySize;         # RECON/RS family size minimum
+                                   #   needed to build a family.
+
+if ( $options{'quick'} ) {
+  # Pre-RepeatModeler 2.0.4 Sampling Strategy  
+  #   RepeatScout Round 1: 40MB
+  #   RECON Rounds 2-6   : 3,9,27,81,243MB
+  $rsSampleSize               = 40000000; 
+  $fragmentSize               = 40000;       
+  $reconSampleSizeStart       = 3000000;   
+  $genomeSampleSizeMax        = 243000000;   
+  $genomeSampleSizeMultiplier = 3; 
+  $numAdditionalRounds = 0;                  
+  $recommendedFamilySize = 15;
+}else {
+  # RepeatModeler 2.0.4+ Sampling Strategy  
+  #   RepeatScout Round 1: 40MB
+  #   RECON Rounds 2-6   : 10,30,90,270,810MB
+  $rsSampleSize               = 40000000; 
+  $fragmentSize               = 40000;       
+  $reconSampleSizeStart       = 10000000;   
+  $genomeSampleSizeMax        = 810000000;   
+  $genomeSampleSizeMultiplier = 3; 
+  $numAdditionalRounds = 0;                  
+  $recommendedFamilySize = 15;
+}
+
+##
+## Special Case: Input consists of only TE insertions
+##               relative to it's direct ancestral
+##               reconstructed genome.  This is an 
+##               experimental feature used by the
+##               Zoonomia project.
+##
+my $insertMinFamilySize;
+if ( $options{'onlyIns'} ) {
+  $genomeSampleSizeMax        = 300000000;
+  $reconSampleSizeStart       = 200000;
+  $genomeSampleSizeMultiplier = 4;
+  $recommendedFamilySize      = 50;
+  $insertMinFamilySize        = 15;
+  $numAdditionalRounds = 0;
+}
                                                
+# Sampling parameter overrides
 $numAdditionalRounds = $options{'numAddlRounds'} if ( $options{'numAddlRounds'} );
-
-#
-# Override the RepeatScout sample size
-#
 $rsSampleSize = $options{'rsSampleSize'} if ( $options{'rsSampleSize'} );
-
-#
-# Override the genomeSampleSizeMax
-#
 $genomeSampleSizeMax = $options{'genomeSampleSizeMax'}
     if ( $options{'genomeSampleSizeMax'} );
-
-#
-# Override RECON parameters
-#   - internal use only
-#
 $fragmentSize = $options{'recon_batch_size'} if ( exists $options{'recon_batch_size'} );
 $reconSampleSizeStart = $options{'recon_sample_size_start'} if ( exists $options{'recon_sample_size_start'} );
-
-# The normal RECON/RS family size minimum for which
-#   we are interested in building models for.
-my $recommendedFamilySize = 15;
 
 # Feature On Hold : We need a system that takes into
 #   account genome size, false positive rate of each
@@ -380,20 +448,6 @@ my $recommendedFamilySize = 15;
 #   we will build a model.  Only invoked if there
 #   are only small families returned by RECON/RS.
 #my $minFamilySize = 4;
-my $insertMinFamilySize = 15;
-
-##
-## Special Case: Input consists of only TE insertions
-##               relative to it's direct ancestral
-##               reconstructed genome.
-##
-if ( $options{'onlyIns'} ) {
-  $genomeSampleSizeMax        = 300000000;
-  $reconSampleSizeStart       = 200000;
-  $genomeSampleSizeMultiplier = 4;
-  $recommendedFamilySize      = 50;
-  $numAdditionalRounds = 0;
-}
 
 #
 # Gather details from the database
@@ -452,7 +506,8 @@ my $title = "RepeatModeler Version $version";
 log_print "$title\n";
 log_print "=" x length( $title ) . "\n";
 log_print "Using output directory = $tmpDir\n";
-log_print "Search Engine = $engine " . $searchEngineN->getVersion() . "\n";
+log_print "Search Engine = $engine $engineVersion\n";
+log_print "Threads = " . $options{'threads'} . "\n" if ( $options{'threads'} );
 log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_DIR") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . "\n";
 if ( $options{'LTRStruct'} ) {
   log_print "LTR Structural Analysis: Enabled ( " . 
@@ -903,6 +958,7 @@ while ( 1 ) {
     );
     log_print "   - RepeatScout: " . elapsedTime( "repeatscout" ) . "\n";
 
+    my $roundModels = 0;
     if ( -s "$sampleFastaFile.rscons.filtered" ) {
       system( "cp $sampleFastaFile.rscons.filtered $roundConsensiFile" );
 
@@ -921,8 +977,9 @@ while ( 1 ) {
                 . "$roundTmpDir/makeblastdb.log 2>&1" );
       }
 
-      my $threads = $options{'pa'} ? $options{'pa'} : 4;
-      ( $numModels ) = &buildRSConsensi(
+      my $threads = $options{'threads'} ? $options{'threads'} : 1;
+      
+      ( $roundModels ) = &buildRSConsensi(
                                  workDir          => $roundTmpDir,
                                  consensiFile     => $consensiFile,
                                  combFamiliesFile => $combFamiliesFile,
@@ -933,6 +990,7 @@ while ( 1 ) {
                                  numContigs => scalar( keys( %sampleContigs ) ),
                                  usedBlockIndex => $usedBlockIndex
       );
+      $numModels = $roundModels;
       # We don't need to keep the large families datastructure around
       # at this point
       undef $families;
@@ -948,6 +1006,7 @@ while ( 1 ) {
     # reset the sampleSize for the first round of RECON.
     $sampleSize = $reconSampleSizeStart;
 
+    log_print "Round Time: " . elapsedTime( 1 ) . " : $roundModels families discovered.\n";
     next;
   }
   #print "families size = " . total_size($families) . "\n";
@@ -969,11 +1028,14 @@ while ( 1 ) {
   log_print "   - TRFMask time " . elapsedTime( 3 ) . "\n";
 
   # Mask repeats from previous round*s* - if there are any
+  # TODO: This represents a significant burden in later rounds.  This
+  #       step should be parallelized!
   if ( -s $consensiFile ) {
     log_print " -- Masking repeats from the previous rounds...\n";
 
     $searchEngineN->setMinScore( 250 );
-    $searchEngineN->setGenerateAlignments( 1 );
+    # Changed 10/15/2022 -- shouldn't need alignments for masking
+    $searchEngineN->setGenerateAlignments( 0 );
     $searchEngineN->setGapInit( -25 );
     $searchEngineN->setBandwidth( 10 );    # Changes gapW=31
     $searchEngineN->setInsGapExt( -5 );
@@ -994,18 +1056,36 @@ while ( 1 ) {
       );
     }
     else {
-      $searchEngineN->setMatrix(
-                       "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
-      RepeatUtil::ncbiMaskDatabase(
+      my $annots;
+      my $bp_masked;
+      my $threads = $options{'threads'} ? $options{'threads'} : 1;
+      if ( $searchEngineN->getVersion() =~ /.*(\d+)\.(\d+)\.\d+.*/ &&
+           ( $1 > 2 || ($1 == 2 && $2 >= 13) ) ) {
+        ($annots, $bp_masked) = RepeatUtil::ncbiMaskDatabaseNativeMT(
                                     makeDBPath   => $NCBIBLASTDB_PRGM,
-                                    dbCMDPath    => $NCBIDBCMD_PRGM,
-                                    aliasPath    => $NCBIDBALIAS_PRGM,
+                                    rmblastnPath => $RMBLASTN_PRGM,
                                     workingDir   => $roundTmpDir,
                                     fastaFile    => "$roundTmpDir/tmpSample.fa",
                                     consensi     => $consensiFile,
-                                    searchEngine => $searchEngineN
-      );
+                                    threads      => $threads );
+      }else {
+        #$searchEngineN->setMatrix(
+        #               "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
+        ($annots, $bp_masked) = RepeatUtil::ncbiMaskDatabaseMT(
+                                    makeDBPath   => $NCBIBLASTDB_PRGM,
+                                    dbCMDPath    => $NCBIDBCMD_PRGM,
+                                    aliasPath    => $NCBIDBALIAS_PRGM,
+                                    rmblastnPath => $RMBLASTN_PRGM,
+                                    workingDir   => $roundTmpDir,
+                                    fastaFile    => "$roundTmpDir/tmpSample.fa",
+                                    consensi     => $consensiFile,
+                                    threads      => $threads );
+
+      }
+      log_print "     * Masked $annots repeats totaling $bp_masked bp(s).\n";
     }
+    # clear special parameters 10/15/22
+    $searchEngineN->setAdditionalParameters( undef );
 
     if ( -s "$roundTmpDir/tmpSample.fa.masked" ) {
       system( "mv $roundTmpDir/tmpSample.fa.masked $roundTmpDir/tmpSample.fa" );
@@ -1191,7 +1271,7 @@ while ( 1 ) {
     my $batchSize = 0;    # The size of the batch in bp
     my $batchNum  = 1;    # Batch number we are working on
 
-    my $numberChildren = $options{'pa'} ? $options{'pa'} : 1;
+    my $numberChildren = $options{'threads'} ? $options{'threads'} : 1;
     $numberChildren = $#sampleSeqIDArray
         if ( $#sampleSeqIDArray < $numberChildren );
     my $badForkCount = 0;     # A failsafe for in case the fork goes badly
@@ -1323,7 +1403,7 @@ while ( 1 ) {
                   if ( $DEBUG );
               $batchStatus{$batchNum}->{'retry'}++;
               $batchStatus{$batchNum}->{'childPID'} = -1;
-              log_print "WARNING: Retrying batch ( $batchNum ) [ $retVal ]...\n";
+              log_print "WARNING: Retrying batch ( $batchNum ) $batchFile $childPID [ $retVal ]...\n";
             }
             else {
               ## Too many retries.
@@ -1420,10 +1500,19 @@ while ( 1 ) {
           if ( $engine eq "rmblast" ) {
 
             # Create a gilist
+            # The batches are sometimes made up of smaller sequences
+            # grouped together to form the equivalent of a standard
+            # sized fragment ( $fragmentSize ).  Note that this breaks
+            # the standard all-vs-other approach of only comparing to
+            # sequences with a GID greater than the sequence itself.
+            # Instead for those multi-sequence batches some amount of
+            # A/B,B/A,A/A,B/B additional matches will show up and
+            # get filtered out later.  That is why the giList starts
+            # after the starting GID regardless of being a 1 sequence
+            # batch or a multi-sequence batch.
             my @giList = ( ( $startGID + 1 ) .. $sampleDBSize );
             open GI, ">$roundTmpDir/batch-$batchNum-gilist.txt"
-                or die
-"Could not open up file $roundTmpDir/batch-$batchNum-gilist.txt "
+                or die "Could not open up file $roundTmpDir/batch-$batchNum-gilist.txt "
                 . "for writing!\n";
             print GI join( "\n", @giList ) . "\n";
             close GI;
@@ -1435,6 +1524,8 @@ while ( 1 ) {
                               " -gilist $roundTmpDir/batch-$batchNum-gilist " );
           }
           else {
+            # Start after startGID and ignore the value of endGID
+            # (see above).
             $searchEngineN->setAdditionalParameters( "dbslice="
                                     . ( $startGID + 1 )
                                     . "-$sampleDBSize/$sampleDBSize -gapW=32" );
@@ -1460,6 +1551,8 @@ while ( 1 ) {
               $qryId = $1 if ( $qryId =~ /^gi\|(\d+).*/ );
               my $sbjId = $resultRef->getSubjName();
               $sbjId = $1 if ( $sbjId =~ /^gi\|(\d+).*/ );
+              # This is necessary to screen out A/B,B/A,A/A,B/B matches
+              # generated by multi-sequence batches (see above).
               next if ( $sbjId <= $qryId );
               my $mspLine = "";
               $mspLine = sprintf( "%06d %04.1f ",
@@ -1523,6 +1616,7 @@ while ( 1 ) {
   }
 
   ## Bugfix reported by Nathaniel Street.
+  my $roundModels = 0;
   if ( $numHSPs > $recommendedFamilySize ) {
 
     # Create the seqnames file
@@ -1545,25 +1639,7 @@ while ( 1 ) {
     #  Build consensi
     #
     if ( -f "$roundTmpDir/summary/eles" ) {
-
-#if ( $inLastRound )
-#{
-#  open IN,"$roundTmpDir/summary/eles" or die "Could not open $roundTmpDir/summary/eles for reading!\n";
-#  my $numFams = 0;
-#  while ( <IN> ) {
-#    if ( /^\s+(\d+)\s+/ )
-#    {
-#      $numFams = $1 if ( $1 > $numFams );
-#    }
-#  }
-#  close IN;
-#  if ( $numFams < 10 ) {
-#    print "   - Last round with low discovery count ( $numFams families ), lowering family cutoff to $minFamilySize elements.\n";
-#    $familyCutoff = $minFamilySize;
-#  }
-#}
-      my $tmpNumModels = 0;
-      ( $tmpNumModels ) = &buildReconConsensi(
+      ( $roundModels ) = &buildReconConsensi(
                                           workDir          => $roundTmpDir,
                                           consensiFile     => $consensiFile,
                                           combFamiliesFile => $combFamiliesFile,
@@ -1573,7 +1649,7 @@ while ( 1 ) {
       # We don't need to keep the large families datastructure around
       # at this point
       undef $families;
-      $numModels += $tmpNumModels;
+      $numModels += $roundModels;
     }
     else {
       log_print "\n  - Recon did not produce any element definitions.\n\n";
@@ -1600,7 +1676,7 @@ while ( 1 ) {
     closedir( DIR );
   }
 
-  log_print "Round Time: " . elapsedTime( 1 ) . "\n";
+  log_print "Round Time: " . elapsedTime( 1 ) . " : $roundModels families discovered.\n";
 
 # How do we proceed from here
 #
@@ -1701,7 +1777,7 @@ if ( $options{'LTRStruct'} ) {
     my $optionalArgs = " -giToID $genomeDB.translation";
     $optionalArgs .= " -LTRMaxSeqLen $options{'LTRMaxSeqLen'}"
         if ( exists $options{'LTRMaxSeqLen'} );
-    $optionalArgs .= " -pa $options{'pa'}" if ( exists $options{'pa'} );
+    $optionalArgs .= " -pa $options{'threads'}" if ( exists $options{'threads'} );
     $optionalArgs .= " -debug"             if ( $DEBUG );
     ## Run the LTR Pipeline
     print "Calling LTRPipeline as: $FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq\n" if ( $DEBUG );
@@ -1740,7 +1816,7 @@ if ( $options{'LTRStruct'} ) {
       );
 
       # 2. Cluster results
-      my $threads = $options{'pa'} ? $options{'pa'} : 1;
+      my $threads = $options{'threads'} ? $options{'threads'} : 1;
       my $cmd =
             "$CDHIT_DIR/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 "
           . "-i $tmpDir/combined.fa -o $tmpDir/cd-hit-out -T $threads "
@@ -1946,7 +2022,7 @@ if ( $numModels > 0 ) {
   my $origDir = getcwd();
   chdir( $tmpDir );
   my $addlOpts = "";
-  $addlOpts = "-pa $options{'pa'} " if ( $options{'pa'} );
+  $addlOpts = "-pa $options{'threads'} " if ( $options{'threads'} );
   system(   "$FindBin::RealBin/RepeatClassifier "
           . "-consensi consensi.fa -stockholm families.stk" );
   chdir( $origDir );
@@ -2785,7 +2861,7 @@ sub buildReconConsensi {
     $#{ $families{$b}->{'elements'} } <=> $#{ $families{$a}->{'elements'} }
   } keys( %families );
 
-  print "Number of families returned by RECON: "
+  log_print "Number of families returned by RECON: "
       . scalar( keys( %families ) ) . "\n";
   print "Processing families with greater than $familySizeCutoff elements\n";
   elapsedTime( "family_refinement" );
