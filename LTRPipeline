@@ -751,6 +751,12 @@ sub getOrientation {
   my $lib = shift;
   my $seqFile = shift;
 
+  if ((-s $seqFile) > 4e+9) {
+    system("$UCSCTOOLS_DIR/faToTwoBit -long $seqFile $seqFile.2bit");
+  } else {
+    system("$UCSCTOOLS_DIR/faToTwoBit $seqFile $seqFile.2bit");
+  }
+
   system("$UCSCTOOLS_DIR/faToTwoBit $seqFile $seqFile.2bit");
   if ( ! -s "$seqFile.2bit" ) {
     die "getOrientation: Something went wrong calling $UCSCTOOLS_DIR/faToTwoBit on $seqFile!\n";
