@@ -293,7 +293,7 @@ print "Building database $options{'name'}:\n";
 # Sanitizing the names of all input databases and placing
 # in one big tempfile
 #   $fh = tempfile();
-my ( $SEQ, $seqFilename ) = tempfile( DIR => "." );
+my ( $SEQ, $seqFilename ) = tempfile( DIR => ".", UNLINK => 1 );
 my $file;
 for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
   $file = $fileList[ $i ];

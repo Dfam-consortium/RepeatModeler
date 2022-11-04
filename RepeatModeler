@@ -45,12 +45,14 @@ The name of the sequence database to run an analysis on.
 This is the name that was provided to the BuildDatabase script
 using the "-name" option.
 
-=item -pa #
+=item -threads #
 
-Specify the number of parallel search jobs to run.  RMBlast jobs will
-use 4 cores each and ABBlast jobs will use a single core each.
-i.e. on a machine with 12 cores and running with RMBlast you would use 
--pa 3 to fully utilize the machine.
+Specify the maximum number of threads which can be used by the
+program at any one time. Note that the '-pa' parameter in previous
+releases controlled the number of sequence batches compared 
+in parallel using rmblastn (each running 4 threads).  Therefore,
+if '-pa 4' was used previously the new thread parameter should be
+set to '-threads 16'.
 
 =item -recoverDir <Previous Output Directory>
 
@@ -73,12 +75,13 @@ combine results with the RepeatScout/RECON pipeline. [optional]
 
 =item -genomeSampleSizeMax #
 
-Optionally change the maximum bp of the genome to sample in all rounds
-of RECON (default=810MB, or 243MB for -quick).  
+Optionally change the maximum sample size (bp).  The sample sizes for RECON
+are increased until this number is reached (default: 270MB in 5 rounds, or
+243MB in 6 rounds for '-quick' option).
 
 =item -numAdditionalRounds #
 
-Optionally increase the number of rounds (default=6).  The sample size for 
+Optionally increase the number of rounds.  The sample size for 
 additional rounds will change by size multiplier (currently 3).
 
 =item -quick
@@ -138,6 +141,7 @@ use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use RepeatUtil;
 use SeedAlignment;
 use SeedAlignmentCollection;
+use ThreadedTaskSimple;
 
 # RepeatMasker Libraries
 use SearchResult;
@@ -307,7 +311,11 @@ if ( !defined $options{'database'} || $options{'help'} ) {
 if ( $options{'pa'} ) {
   die "\nERROR: The -pa parameter has been deprecated.  Please use the newer\n" .
         "      \"-threads #\" parameter which precisely controls the maximum\n" .
-        "       number of simultaneous threads this program will use.\n\n";
+        "       number of simultaneous threads this program will use. Note that\n" .
+        "       the -pa parameter previously controlled the number of simultaneous\n" .
+        "       batches each run with rmblast using 4 threads, therefore -pa 4 could\n" .
+        "       potentially have used up to 16 threads.  Keep this in mind when\n" .
+        "       comparing runtime differences between versions.\n\n";
 }
 
 if ( ! exists $options{'threads'} || $options{'threads'} < 2 ) {
@@ -316,6 +324,8 @@ if ( ! exists $options{'threads'} || $options{'threads'} < 2 ) {
         "         purposes the program should run with greater than eight\n" .
         "         threads (-threads #).\n\n";
 }
+# Make it easier to pass to functions
+my $threads = $options{'threads'} ? $options{'threads'} : 1;
 
 # Seed the random number generator if requested
 my $seed = time;
@@ -399,6 +409,7 @@ if ( $options{'quick'} ) {
   $rsSampleSize               = 40000000; 
   $fragmentSize               = 40000;       
   $reconSampleSizeStart       = 3000000;   
+  $reconSampleSizeStart       = 1000000;   
   $genomeSampleSizeMax        = 243000000;   
   $genomeSampleSizeMultiplier = 3; 
   $numAdditionalRounds = 0;                  
@@ -406,11 +417,11 @@ if ( $options{'quick'} ) {
 }else {
   # RepeatModeler 2.0.4+ Sampling Strategy  
   #   RepeatScout Round 1: 40MB
-  #   RECON Rounds 2-6   : 10,30,90,270,810MB
+  #   RECON Rounds 2-5   : 10,30,90,270MB
   $rsSampleSize               = 40000000; 
   $fragmentSize               = 40000;       
   $reconSampleSizeStart       = 10000000;   
-  $genomeSampleSizeMax        = 810000000;   
+  $genomeSampleSizeMax        = 270000000;   
   $genomeSampleSizeMultiplier = 3; 
   $numAdditionalRounds = 0;                  
   $recommendedFamilySize = 15;
@@ -453,22 +464,14 @@ $reconSampleSizeStart = $options{'recon_sample_size_start'} if ( exists $options
 # Gather details from the database
 #
 my $genomeDB = $options{'database'};
+if ( -s $genomeDB ) {
+  $genomeDB = File::Spec->rel2abs($genomeDB);
+}elsif ( -s "$genomeDB.nsq" ){
+  $genomeDB = File::Spec->rel2abs("$genomeDB.nsq");
+}
+$genomeDB =~ s/(.+)\.n[nihs][rndiq]$/$1/;
 my $dbIndex;
-if ( $engine eq "abblast" ) {
-  $genomeDB =~ s/(.+)\.xn[idst]/$1/;
-  if (    !-s "$genomeDB.xni"
-       && !-s "$genomeDB.xnd"
-       && !-s "$genomeDB.xns"
-       && !-s "$genomeDB.xnt" )
-  {
-    die "Missing $genomeDB.xn[idst] files!\n";
-  }
-  $dbIndex = `$XDFORMAT_PRGM -m2 -n -r $genomeDB`;
-}
-else {
-  $genomeDB =~ s/(.+)\.n[nihs][rndiq]/$1/;
-  $dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
-}
+$dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
 
 # Initialize working directory and logging
 my $tmpDir;
@@ -977,19 +980,28 @@ while ( 1 ) {
                 . "$roundTmpDir/makeblastdb.log 2>&1" );
       }
 
-      my $threads = $options{'threads'} ? $options{'threads'} : 1;
-      
-      ( $roundModels ) = &buildRSConsensi(
+      #( $roundModels ) = &buildRSConsensi(
+      #                           workDir          => $roundTmpDir,
+      #                           consensiFile     => $consensiFile,
+      #                           combFamiliesFile => $combFamiliesFile,
+      #                           round            => $round,
+      #                           familyCutoff     => $familyCutoff,
+      #                           engine           => $engine,
+      #                           threads          => $threads,
+      #                           numContigs => scalar( keys( %sampleContigs ) ),
+      #                           usedBlockIndex => $usedBlockIndex
+      #);
+      ( $roundModels ) = &buildRSConsensiMT(
                                  workDir          => $roundTmpDir,
                                  consensiFile     => $consensiFile,
                                  combFamiliesFile => $combFamiliesFile,
                                  round            => $round,
                                  familyCutoff     => $familyCutoff,
-                                 engine           => $engine,
                                  threads          => $threads,
                                  numContigs => scalar( keys( %sampleContigs ) ),
                                  usedBlockIndex => $usedBlockIndex
       );
+
       $numModels = $roundModels;
       # We don't need to keep the large families datastructure around
       # at this point
@@ -1058,7 +1070,6 @@ while ( 1 ) {
     else {
       my $annots;
       my $bp_masked;
-      my $threads = $options{'threads'} ? $options{'threads'} : 1;
       if ( $searchEngineN->getVersion() =~ /.*(\d+)\.(\d+)\.\d+.*/ &&
            ( $1 > 2 || ($1 == 2 && $2 >= 13) ) ) {
         ($annots, $bp_masked) = RepeatUtil::ncbiMaskDatabaseNativeMT(
@@ -1258,32 +1269,25 @@ while ( 1 ) {
   $searchEngineN->setDelGapExt( -5 );
   $searchEngineN->setMinMatch( 7 );
   $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
+  $searchEngineN->setCores( $threads );
 
   my $numHSPs = 0;    # Number of High Scoring Pairs produced
+  # First check to see if this was already run
   unless ( -f "$roundTmpDir/msps.out" ) {
+    # Nope....starting
     log_print "Running all-by-other comparisons...\n";
     my $totalComparisons =
         ( ( $sampleDBSize * $sampleDBSize ) - $sampleDBSize ) / 2;
     my $completedComparisons = 0;
+print "Total Comparisons = $totalComparisons\n";
 
     my $startGID  = 1;    # The gi ID of the start of the batch range
     my $endGID    = 0;    # The gi ID of the end of the batch range
     my $batchSize = 0;    # The size of the batch in bp
     my $batchNum  = 1;    # Batch number we are working on
-
-    my $numberChildren = $options{'threads'} ? $options{'threads'} : 1;
-    $numberChildren = $#sampleSeqIDArray
-        if ( $#sampleSeqIDArray < $numberChildren );
-    my $badForkCount = 0;     # A failsafe for in case the fork goes badly
-    my $badForkMax   = 20;    # The number of bad forks before exit
     my $retryLimit   = 2;     # Attempt to run batch # times before failing it
-    my %children     = ();    # A hash of children PIDs with their batch nums
-    my $child_id     = 0;     # The PID of returned by fork
-    my %batchStatus  = ();    # A hash which holds the retry count for
-                              #  each batch number.
 
-    # Initialize the batchStatus hash
-    my $batchID = 0;
+    my $compStartTime = time;
     while ( $startGID < $sampleDBSize ) {
       if (
          $sampleSeqs{ $sampleSeqIDArray[ $startGID ] } < ( $fragmentSize / 4 ) )
@@ -1297,118 +1301,25 @@ while ( 1 ) {
       else {
         $endGID = $startGID;
       }
-      $batchStatus{$batchID} = {
-                                 'startGID' => $startGID,
-                                 'endGID'   => $endGID,
-                                 'retry'    => 0,
-                                 'childPID' => -1
-      };
-      $batchID++;
-      $startGID  = $endGID + 1;
-      $batchSize = 0;
-    }
 
-    my $compStartTime = time;
+      my $status = undef;
+      my $retry = 0;
+      my $batchFile = "$roundTmpDir/batch-$batchNum";
+      do {
+        log_print "WARNING: Retrying batch ( $batchNum ) [ $status ]...\n"
+          if ( $retry > 0 );
+#print "Running $batchNum: $startGID to $endGID of $sampleDBSize\n";
+        $status = runAllvsOtherMatrixRow( $searchEngineN, $batchNum, $startGID,
+                                          $endGID, $roundTmpDir, 
+                                          $sampleFastaFile, $NCBIDBALIAS_PRGM,
+                                          $sampleDBSize );
+      }while ( ($status != 0 || ! -e "$batchFile.msps") && 
+               $retry++ < $retryLimit );
 
-    while ( keys( %batchStatus ) ) {
-
-      #
-      # First check the status of currently running
-      # proceses.
-      #
-      if ( keys( %children ) ) {
-
-        # Wait for at least one to exit;
-        print "Waiting for a child to finish or die\n" if ( $DEBUG );
-        my $childPID = wait();
-        my $retVal   = ( $? >> 8 );
-
-        # Check if we returned with a valid PID
-        if ( $childPID > 0 ) {
-
-          ## Child process is gone
-          # Find out what batch it was working on
-          my $batchNum = $children{$childPID};
-
-          # Delete it from the children list
-          delete $children{$childPID};
-
-          my $batchFile = "$roundTmpDir/batch-$batchNum";
-
-          # Check it's status
-          if ( $retVal == 0
-               && -e "$batchFile.msps" )
-          {
-            print "Child completed: PID=$childPID, batch=$batchNum\n"
-                . " RetVal=$retVal\n"
-                if ( $DEBUG );
-            ## Child completed ok.
-            ## Append msps
-            open MSP, "<$batchFile.msps"
-                or die "Could not open $batchFile.msps for reading!\n";
-            while ( <MSP> ) {
-              $numHSPs++;
-            }
-            close MSP;
-            system( "cat $batchFile.msps >> $roundTmpDir/msps.out" );
-            unlink( "$batchFile.msps" ) unless ( $DEBUG );
-
-            print "Child for batch=$batchNum completed ok....\n" if ( $DEBUG );
-
-            my $startGID       = $batchStatus{$batchNum}->{'startGID'};
-            my $endGID         = $batchStatus{$batchNum}->{'endGID'};
-            my $numComparisons = 0;
-            for ( my $l = $startGID ; $l <= $endGID ; $l++ ) {
-              $numComparisons += $sampleDBSize - $l;
-            }
-            $completedComparisons += $numComparisons;
-            my $comparisonsLeft   = $totalComparisons - $completedComparisons;
-            my $estimatedTimeLeft = "--";
-            if ( ( time - $compStartTime ) > 0 && $completedComparisons > 0 ) {
-              $estimatedTimeLeft =
-                  int( $comparisonsLeft /
-                       ( $completedComparisons / ( time - $compStartTime ) ) );
-              my $Min = sprintf( "%02s", int( $estimatedTimeLeft / 60 ) );
-              $estimatedTimeLeft -= $Min * 60;
-              my $Hours = sprintf( "%02s", int( $Min / 60 ) );
-              $Min -= $Hours * 60;
-              my $Sec = sprintf( "%02s", $estimatedTimeLeft );
-              $estimatedTimeLeft = "$Hours:$Min:$Sec";
-            }
-
-            print "      "
-                . sprintf(
-                           "%3s",
-                           int(
-                             ( $completedComparisons / $totalComparisons ) * 100
-                           )
-                )
-                . "% completed, "
-                . " $estimatedTimeLeft (hh:mm:ss) est. time remaining.\n";
-
-            # Delete the batchStatus entry
-            delete $batchStatus{$batchNum};
-          }
-          else {
-            ## Process failed.
-            print "Child die'd.  Organize the funeral for PID=$childPID, "
-                . " batch=$batchNum, RetVal=$retVal\n"
-                if ( $DEBUG );
-
-            # Check how many times we have run it
-            if ( $batchStatus{$batchNum}->{'retry'} < $retryLimit ) {
-              ## Under the retry limit...rerun it!
-              print "Child for batch=$batchNum failed ($retVal) " . "retry#"
-                  . $batchStatus{$batchNum}->{'retry'} . "\n"
-                  if ( $DEBUG );
-              $batchStatus{$batchNum}->{'retry'}++;
-              $batchStatus{$batchNum}->{'childPID'} = -1;
-              log_print "WARNING: Retrying batch ( $batchNum ) $batchFile $childPID [ $retVal ]...\n";
-            }
-            else {
-              ## Too many retries.
-              ## We are out of here!
-              log_print "\n\nFATAL ERROR: RepeatModeler giving up. One or more\n"
+      if ( $retry >= $retryLimit ) {
+        ## Too many retries.
+        ## We are out of here!
+        log_print "\n\nFATAL ERROR: RepeatModeler giving up. One or more\n"
                   . "batches failed!  Unfortunately this type of error\n"
                   . "cannot be recovered from. Please submit the following\n"
                   . "details to the feedback page at the repeatmasker\n"
@@ -1421,195 +1332,178 @@ while ( 1 ) {
                   . "Batch Number: $batchNum\n"
                   . "Disk Space:\n"
                   . `df $tmpDir` . "\n";
-              if ( -e "/proc/meminfo" ) {
-                log_print "System Memory:\n";
-                open IN, "</proc/meminfo";
-                while ( <IN> ) {
-                  log_print if ( /Mem|Cache|Swap/ );
-                }
-                close IN;
-              }
-              log_print "Further details about this problem may be found in\n"
-                  . "the directory: $tmpDir\n";
-              log_print "\n\n";
-              exit( -1 );
-            }
+        if ( -e "/proc/meminfo" ) {
+          log_print "System Memory:\n";
+          open IN, "</proc/meminfo";
+          while ( <IN> ) {
+            log_print if ( /Mem|Cache|Swap/ );
           }
+          close IN;
         }
-        else {
-
-          # Child is still running
+        log_print "Further details about this problem may be found in\n"
+                . "the directory: $tmpDir\n";
+        log_print "\n\n";
+        exit( -1 );
+      }
+ 
+      if ( $status == 0
+           && -e "$batchFile.msps" )
+      {
+        # Run successful
+        print "Batch completed: batch=$batchNum\n"
+                if ( $DEBUG );
+        ## Append msps
+        open MSP, "<$batchFile.msps"
+          or die "Could not open $batchFile.msps for reading!\n";
+        while ( <MSP> ) {
+          $numHSPs++;
         }
-      }    # End if ( keys( %children ...
+        close MSP;
+        system( "cat $batchFile.msps >> $roundTmpDir/msps.out" );
+        unlink( "$batchFile.msps" ) unless ( $DEBUG );
+      }
 
-      # Gather a list of batches to work on
-      my @batchNums = grep { ( $batchStatus{$_}->{'childPID'} < 0 ) }
-          sort( { $a <=> $b } keys( %batchStatus ) );
+      my $numComparisons = 0;
+      for ( my $l = $startGID ; $l <= $endGID ; $l++ ) {
+        $numComparisons += $sampleDBSize - $l;
+      }
+      $completedComparisons += $numComparisons;
+      my $comparisonsLeft   = $totalComparisons - $completedComparisons;
+      my $estimatedTimeLeft = "--";
+      if ( ( time - $compStartTime ) > 0 && $completedComparisons > 0 ) {
+        $estimatedTimeLeft =
+              int( $comparisonsLeft /
+                   ( $completedComparisons / ( time - $compStartTime ) ) );
+        my $Min = sprintf( "%02s", int( $estimatedTimeLeft / 60 ) );
+        $estimatedTimeLeft -= $Min * 60;
+        my $Hours = sprintf( "%02s", int( $Min / 60 ) );
+        $Min -= $Hours * 60;
+        my $Sec = sprintf( "%02s", $estimatedTimeLeft );
+        $estimatedTimeLeft = "$Hours:$Min:$Sec";
+      }
 
-      # Decide how many jobs to start
-      my $numberToStart = 0;
-      if ( @batchNums > ( $numberChildren - keys( %children ) ) ) {
+      print "      "
+            . sprintf("%3s",
+                      int(( $completedComparisons / $totalComparisons ) * 100)
+                      )
+            . "% completed, "
+            . " $estimatedTimeLeft (hh:mm:ss) est. time remaining.\n";
 
-        # Simply the number requested - the number running
-        $numberToStart = ( $numberChildren - keys( %children ) );
+      $startGID  = $endGID + 1;
+      $batchSize = 0;
+      $batchNum++;
+    }
+
+sub runAllvsOtherMatrixRow {
+  my $searchEngineN = shift;
+  my $batchNum = shift;
+  my $startGID = shift;
+  my $endGID   = shift;
+  my $roundTmpDir = shift;
+  my $sampleFastaFile = shift;
+  my $NCBIDBALIAS_PRGM  = shift;
+  my $sampleDBSize = shift;
+
+  # Generate query batch file
+  my $sampleID = $startGID;
+  while ( $sampleID <= $endGID ) {
+    system(   "$NCBIDBCMD_PRGM -db $sampleFastaFile.masked "
+            . "-entry \"gi|$sampleID\" "
+            . ">> $roundTmpDir/batch-$batchNum.fa "
+            . "2>>$roundTmpDir/blastdbcmd.log" );
+    $sampleID++;
+  }
+
+  $searchEngineN->setQuery( "$roundTmpDir/batch-$batchNum.fa" );
+  $searchEngineN->setSubject( "$sampleFastaFile.masked" );
+
+  # Create a gilist
+  # The batches are sometimes made up of smaller sequences
+  # grouped together to form the equivalent of a standard
+  # sized fragment ( $fragmentSize ).  Note that this breaks
+  # the standard all-vs-other approach of only comparing to
+  # sequences with a GID greater than the sequence itself.
+  # Instead for those multi-sequence batches some amount of
+  # identity and reciprocal matches:
+  #   e.g: s2/s2, s3/s3, s2/s3, s3/s2  among others
+  #
+  #         b1..........b2..........b3....
+  #         s1 s2 s3 s4 s5 s6 s7 s8 s9 s10
+  # b1  s1     |----------search1--------|
+  # .   s2           
+  # .   s3          
+  # .   s4                     
+  # b2  s5                 |---search2---|  
+  # ......................................
+  # 
+  # These will get filtered out later.  That is why the giList starts
+  # after the starting GID regardless of being a 1 sequence
+  # batch or a multi-sequence batch.
+  #
+  my @giList = ( ( $startGID + 1 ) .. $sampleDBSize );
+  open GI, ">$roundTmpDir/batch-$batchNum-gilist.txt"
+    or die "Could not open up file $roundTmpDir/batch-$batchNum-gilist.txt "
+           . "for writing!\n";
+  print GI join( "\n", @giList ) . "\n";
+  close GI;
+  system(   "$NCBIDBALIAS_PRGM -gi_file_in "
+            . "$roundTmpDir/batch-$batchNum-gilist.txt "
+            . "-gi_file_out $roundTmpDir/batch-$batchNum-gilist "
+            . "> /dev/null 2>&1" );
+  $searchEngineN->setAdditionalParameters(
+        " -gilist $roundTmpDir/batch-$batchNum-gilist " );
+
+  # Run search
+  my ( $status, $resultCollection ) = $searchEngineN->search();
+  open OUT, ">$roundTmpDir/batch-$batchNum.msps"
+     or die "Could not open $roundTmpDir/batch-$batchNum.msps for writing!\n";
+
+  print "Search Parameters: " . $searchEngineN->getParameters() . "\n"
+     if ( $DEBUG );
+  if ( $status ) {
+    print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
+  }
+  else {
+    print "Filtering ( " . $resultCollection->size() . " ) Results...\n"
+      if ( $DEBUG );
+
+    for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
+      my $resultRef = $resultCollection->get( $k );
+      my $qryId     = $resultRef->getQueryName();
+      $qryId = $1 if ( $qryId =~ /^gi\|(\d+).*/ );
+      my $sbjId = $resultRef->getSubjName();
+      $sbjId = $1 if ( $sbjId =~ /^gi\|(\d+).*/ );
+      # This is necessary to screen out A/B,B/A,A/A,B/B matches
+      # generated by multi-sequence batches (see above).
+      next if ( $sbjId <= $qryId );
+      my $mspLine = "";
+      $mspLine = sprintf( "%06d %04.1f ",
+                          $resultRef->getScore(),
+                          ( 100 - $resultRef->getPctDiverge() ) );
+
+      if ( $resultRef->getOrientation ne "C" ) {
+        $mspLine .= sprintf( "%06d %06d ",
+                             $resultRef->getQueryStart(),
+                             $resultRef->getQueryEnd() );
       }
       else {
-
-        # Simply the remaining batches
-        $numberToStart = @batchNums;
+        $mspLine .= sprintf( "%06d %06d ",
+                             $resultRef->getQueryEnd(),
+                             $resultRef->getQueryStart() );
       }
+      $mspLine .= sprintf( "%s %06d %06d %s \n",
+                   "gi|$qryId",
+                           $resultRef->getSubjStart(),
+                           $resultRef->getSubjEnd(), "gi|$sbjId" );
+      print OUT $mspLine;
+    }
+  }
+  close OUT;
 
-      #
-      # Loop through and fork to our hearts
-      # content.
-      #
-      for ( my $k = 0 ; $k < $numberToStart ; $k++ ) {
+  return ($status);
+}
 
-    FORK:
-        if ( $child_id = fork ) {
 
-          # Our children are our future
-          print "Parent produced child $child_id\n" if ( $DEBUG );
-          $children{$child_id} = $batchNums[ $k ];
-          $batchStatus{ $batchNums[ $k ] }->{'childPID'} = $child_id;
-        }
-        elsif ( $child_id == 0 ) {
-          my $batchNum = $batchNums[ $k ];
-          my $startGID = $batchStatus{$batchNum}->{'startGID'};
-          my $endGID   = $batchStatus{$batchNum}->{'endGID'};
-          my $sampleID = $startGID;
-          while ( $sampleID <= $endGID ) {
-            if ( $engine eq "abblast" ) {
-              system(   "$XDGET_PRGM -n $sampleFastaFile.masked "
-                      . "\"gi|$sampleID\""
-                      . " >> $roundTmpDir/batch-$batchNum.fa "
-                      . "2>>$roundTmpDir/xdget.log" );
-            }
-            else {
-              system(   "$NCBIDBCMD_PRGM -db $sampleFastaFile.masked "
-                      . "-entry \"gi|$sampleID\" "
-                      . ">> $roundTmpDir/batch-$batchNum.fa "
-                      . "2>>$roundTmpDir/blastdbcmd.log" );
-            }
-            $sampleID++;
-          }
-
-          $searchEngineN->setQuery( "$roundTmpDir/batch-$batchNum.fa" );
-          $searchEngineN->setSubject( "$sampleFastaFile.masked" );
-
-          if ( $engine eq "rmblast" ) {
-
-            # Create a gilist
-            # The batches are sometimes made up of smaller sequences
-            # grouped together to form the equivalent of a standard
-            # sized fragment ( $fragmentSize ).  Note that this breaks
-            # the standard all-vs-other approach of only comparing to
-            # sequences with a GID greater than the sequence itself.
-            # Instead for those multi-sequence batches some amount of
-            # A/B,B/A,A/A,B/B additional matches will show up and
-            # get filtered out later.  That is why the giList starts
-            # after the starting GID regardless of being a 1 sequence
-            # batch or a multi-sequence batch.
-            my @giList = ( ( $startGID + 1 ) .. $sampleDBSize );
-            open GI, ">$roundTmpDir/batch-$batchNum-gilist.txt"
-                or die "Could not open up file $roundTmpDir/batch-$batchNum-gilist.txt "
-                . "for writing!\n";
-            print GI join( "\n", @giList ) . "\n";
-            close GI;
-            system(   "$NCBIDBALIAS_PRGM -gi_file_in "
-                    . "$roundTmpDir/batch-$batchNum-gilist.txt "
-                    . "-gi_file_out $roundTmpDir/batch-$batchNum-gilist "
-                    . "> /dev/null 2>&1" );
-            $searchEngineN->setAdditionalParameters(
-                              " -gilist $roundTmpDir/batch-$batchNum-gilist " );
-          }
-          else {
-            # Start after startGID and ignore the value of endGID
-            # (see above).
-            $searchEngineN->setAdditionalParameters( "dbslice="
-                                    . ( $startGID + 1 )
-                                    . "-$sampleDBSize/$sampleDBSize -gapW=32" );
-          }
-
-          my ( $status, $resultCollection ) = $searchEngineN->search();
-          open OUT, ">$roundTmpDir/batch-$batchNum.msps"
-              or die
-              "Could not open $roundTmpDir/batch-$batchNum.msps for writing!\n";
-
-          print "Search Parameters: " . $searchEngineN->getParameters() . "\n"
-              if ( $DEBUG );
-          if ( $status ) {
-            print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
-          }
-          else {
-            print "Filtering ( " . $resultCollection->size() . " ) Results...\n"
-                if ( $DEBUG );
-
-            for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
-              my $resultRef = $resultCollection->get( $k );
-              my $qryId     = $resultRef->getQueryName();
-              $qryId = $1 if ( $qryId =~ /^gi\|(\d+).*/ );
-              my $sbjId = $resultRef->getSubjName();
-              $sbjId = $1 if ( $sbjId =~ /^gi\|(\d+).*/ );
-              # This is necessary to screen out A/B,B/A,A/A,B/B matches
-              # generated by multi-sequence batches (see above).
-              next if ( $sbjId <= $qryId );
-              my $mspLine = "";
-              $mspLine = sprintf( "%06d %04.1f ",
-                                  $resultRef->getScore(),
-                                  ( 100 - $resultRef->getPctDiverge() ) );
-
-              if ( $resultRef->getOrientation ne "C" ) {
-                $mspLine .= sprintf( "%06d %06d ",
-                                     $resultRef->getQueryStart(),
-                                     $resultRef->getQueryEnd() );
-              }
-              else {
-                $mspLine .= sprintf( "%06d %06d ",
-                                     $resultRef->getQueryEnd(),
-                                     $resultRef->getQueryStart() );
-              }
-              $mspLine .= sprintf( "%s %06d %06d %s \n",
-                                   "gi|$qryId",
-                                   $resultRef->getSubjStart(),
-                                   $resultRef->getSubjEnd(), "gi|$sbjId" );
-              print OUT $mspLine;
-            }
-          }
-          close OUT;
-
-          # Exit child process with clean status
-          exit( 0 );
-
-        }    # elsif ( $child_id == 0 )...
-        elsif ( $! =~ /No more process/ ) {
-
-          # Supposedly recoverable fork error
-          $badForkCount++;
-          sleep 5;
-          redo FORK;
-        }
-        else {
-
-          # Weird fork error
-          print "\nWARNING: Cannot fork...for unknown reasons!\n";
-          $badForkCount++;
-          last;
-        }
-      }    # for ( $k...
-
-      # Give up if it looks bad for us
-      last if ( $badForkCount == $badForkMax );
-
-      #
-      # Just so we don't loop endlessly.  Lets
-      # hang around here until at least one
-      # process quits. NOTE: This may be dangerous
-      # consider this more....
-      #
-      print "Parent waiting for child to finish...\n" if ( $DEBUG );
-
-    }    # MAIN BATCH LOOP
     log_print "Comparison Time: "
         . elapsedTime( 2 )
         . ", $numHSPs HSPs Collected\n";
@@ -1639,13 +1533,24 @@ while ( 1 ) {
     #  Build consensi
     #
     if ( -f "$roundTmpDir/summary/eles" ) {
-      ( $roundModels ) = &buildReconConsensi(
+      #( $roundModels ) = &buildReconConsensi(
+      #                                    workDir          => $roundTmpDir,
+      #                                    consensiFile     => $consensiFile,
+      #                                    combFamiliesFile => $combFamiliesFile,
+      #                                    round            => $round,
+      #                                    familyCutoff     => $familyCutoff
+      #);
+      # Testing
+      ( $roundModels ) = &buildReconConsensiMT(
                                           workDir          => $roundTmpDir,
                                           consensiFile     => $consensiFile,
                                           combFamiliesFile => $combFamiliesFile,
                                           round            => $round,
-                                          familyCutoff     => $familyCutoff
+                                          genomeDB         => $genomeDB,
+                                          familyCutoff     => $familyCutoff,
+                                          threads          => $threads
       );
+ 
       # We don't need to keep the large families datastructure around
       # at this point
       undef $families;
@@ -1777,7 +1682,7 @@ if ( $options{'LTRStruct'} ) {
     my $optionalArgs = " -giToID $genomeDB.translation";
     $optionalArgs .= " -LTRMaxSeqLen $options{'LTRMaxSeqLen'}"
         if ( exists $options{'LTRMaxSeqLen'} );
-    $optionalArgs .= " -pa $options{'threads'}" if ( exists $options{'threads'} );
+    $optionalArgs .= " -threads $options{'threads'}" if ( exists $options{'threads'} );
     $optionalArgs .= " -debug"             if ( $DEBUG );
     ## Run the LTR Pipeline
     print "Calling LTRPipeline as: $FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq\n" if ( $DEBUG );
@@ -1816,7 +1721,6 @@ if ( $options{'LTRStruct'} ) {
       );
 
       # 2. Cluster results
-      my $threads = $options{'threads'} ? $options{'threads'} : 1;
       my $cmd =
             "$CDHIT_DIR/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 "
           . "-i $tmpDir/combined.fa -o $tmpDir/cd-hit-out -T $threads "
@@ -2022,7 +1926,7 @@ if ( $numModels > 0 ) {
   my $origDir = getcwd();
   chdir( $tmpDir );
   my $addlOpts = "";
-  $addlOpts = "-pa $options{'threads'} " if ( $options{'threads'} );
+  $addlOpts = "-threads $options{'threads'} " if ( $options{'threads'} );
   system(   "$FindBin::RealBin/RepeatClassifier "
           . "-consensi consensi.fa -stockholm families.stk" );
   chdir( $origDir );
@@ -2355,8 +2259,7 @@ sub buildRSConsensi {
       if ( !defined $parameters{'usedBlockIndex'} );
   my $usedBlockIndex = $parameters{'usedBlockIndex'};
 
-  my $threads = 4;
-  $threads = $parameters{'threads'} if ( defined $parameters{'threads'} );
+  my $threads = ($parameters{'threads'} ? $parameters{'threads'} : 1);
 
   my %families            = ();
   my $numModels           = 0;
@@ -2378,6 +2281,7 @@ sub buildRSConsensi {
                        "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
   }
 
+  # Use seg masking in rmblast?
   $searchEngineN->setTempDir( "$workDir" );
   $searchEngineN->setMinScore( 250 );
   $searchEngineN->setGenerateAlignments( 1 );
@@ -2592,8 +2496,11 @@ sub buildRSConsensi {
             . ( $#{ $families{$key}->{'elements'} } + 1 )
             . ", Using $numElements )\n";
 
+        my $threadParam = "";
+        $threadParam = " -threads $options{'threads'} " if ( $options{'threads'} );
+
         my $cmd =
-              "$FindBin::RealBin/Refiner -engine $engine "
+              "$FindBin::RealBin/Refiner $threadParam "
             . "-noTmp -giToID $genomeDB.translation $workDir/family-$familyID.fa";
         $cmd .= " -quiet" unless ( $DEBUG );
         system( $cmd );
@@ -2779,6 +2686,464 @@ sub buildRSConsensi {
 
 ##-------------------------------------------------------------------------##
 #
+# Use: my = buildRSConsensiMT( .. );
+#
+#   RepeatScout produces consensus sequences but does not indicate which
+#   regions from the genome contributed to the overall multiple alignment.
+#   To compensate for this we search the genome with the consensus and
+#   obtain the complete set of matching regions.
+#
+##-------------------------------------------------------------------------##
+sub buildRSConsensiMT {
+  my %parameters = @_;
+
+  die "buildRSConsensiMT(): Missing workDir parameter!\n"
+      if ( !defined $parameters{'workDir'} );
+  my $workDir = $parameters{'workDir'};
+
+  die "buildRSConsensiMT(): Missing round parameter!\n"
+      if ( !defined $parameters{'round'} );
+  my $round = $parameters{'round'};
+
+  die "buildRSConsensiMT(): Missing consensiFile parameter!\n"
+      if ( !defined $parameters{'consensiFile'} );
+  my $consensiFile = $parameters{'consensiFile'};
+
+  die "buildRSConsensiMT(): Missing combFamiliesFile parameter!\n"
+      if ( !defined $parameters{'combFamiliesFile'} );
+  my $combFamiliesFile = $parameters{'combFamiliesFile'};
+
+  die "buildRSConsensiMT(): Missing familyCutoff parameter!\n"
+      if ( !defined $parameters{'familyCutoff'} );
+  my $familySizeCutoff = $parameters{'familyCutoff'};
+
+  die "buildRSConsensiMT(): Missing numContigs parameter!\n"
+      if ( !defined $parameters{'numContigs'} );
+  my $dbNumContigs = $parameters{'numContigs'};
+
+  die "buildRSConsensiMT(): Missing usedBlockIndex parameter!\n"
+      if ( !defined $parameters{'usedBlockIndex'} );
+  my $usedBlockIndex = $parameters{'usedBlockIndex'};
+
+  die "buildRSConsensiMT(): Missing threads parameter!\n"
+      if ( !defined $parameters{'threads'} );
+  my $threads = $parameters{'threads'};
+
+  my %families            = ();
+  my $numModels           = 0;
+  my @indices             = ();
+  my %localizedToSeqNames = ();
+
+  ## Get Sequences
+  my $searchEngineN = NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
+  $searchEngineN->setMatrix(
+                       "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
+
+  # Use seg masking in rmblast?
+  $searchEngineN->setTempDir( "$workDir" );
+  $searchEngineN->setMinScore( 250 );
+  $searchEngineN->setGenerateAlignments( 1 );
+  $searchEngineN->setGapInit( -25 );
+  $searchEngineN->setInsGapExt( -5 );
+  $searchEngineN->setDelGapExt( -5 );
+  $searchEngineN->setMinMatch( 7 );
+  $searchEngineN->setCores($threads);
+  $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
+
+  # TODO: Large Satellite Detection
+  #    1. Build a database from consensi.fa
+  elapsedTime( "satellite_filtering" );
+  if ( $engine eq "abblast" ) {
+    # XDFORMAT the conseni.fa
+    system(   "$XDFORMAT_PRGM -n -I "
+                . "$workDir/consensi.fa >> "
+                . "$workDir/xdformat.log 2>&1" );
+  }
+  else {
+    # MAKEBLASTDB the consensi.fa
+    system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $workDir/consensi.fa "
+                . "-parse_seqids -dbtype nucl -in $workDir/consensi.fa >> "
+                . "$workDir/makeblastdb.log 2>&1" );
+  }
+  #    2. Search consensi.fa against itself
+  $searchEngineN->setSubject( "$workDir/consensi.fa" );
+  $searchEngineN->setQuery( "$workDir/consensi.fa" );
+  #    3. For each family which has a off diagonal match to itself
+  #       calculate the coverage of the off diagonal hits
+  #       Filter out families which are larger than 3kb, 
+  #       are covered by >90% by off diagonal hits.
+  my %satelliteSeqIDs = ();
+  my ( $status, $resultCollection ) = $searchEngineN->search();
+  if ( $status ) {
+    print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
+  }
+  else {
+    print "   - Large Satellite Filtering.. ";
+    my %coverage = ();
+    for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
+      my $resultRef = $resultCollection->get( $k );
+      # Only consider families against themselves and off diagonal hits
+      next if ( $resultRef->getQueryName() ne $resultRef->getSubjName() ||
+                ( $resultRef->getQueryStart() == 1 && $resultRef->getQueryRemaining() == 0 &&
+                  $resultRef->getSubjStart() == 1 && $resultRef->getSubjRemaining() == 0 ) );
+      my $ID = $resultRef->getQueryName();
+      my $familyLen = $resultRef->getQueryEnd() + $resultRef->getQueryRemaining();
+      # Do not want to screen out computationally easy satellites
+      next if ( $familyLen < 3000 );
+      $coverage{$ID} += $resultRef->getQueryEnd() - $resultRef->getQueryStart() + 1;
+      if ( $coverage{$ID} > 0.9 * $familyLen ) {
+        $satelliteSeqIDs{$ID} = 1;
+      }
+    }
+    if ( keys %satelliteSeqIDs ) {
+      if ( $DEBUG ) {
+        system("cp $workDir/consensi.fa $workDir/consensi.rsorig.fa");
+      }
+      my $consDB = FastaDB->new( fileName => "$workDir/consensi.fa",
+                                 openMode => SeqDBI::ReadOnly );
+      open OUTC, ">$workDir/consensi-filtered.fa" or 
+         die "Could not open $workDir/consensi-filtered.fa for writing!\n";
+
+      foreach my $seqID ( $consDB->getIDs() ) {
+        unless ( exists $satelliteSeqIDs{ $seqID } ) {
+          my $seq  = $consDB->getSequence( $seqID );
+          my $desc = $consDB->getDescription( $seqID );
+          print OUTC ">$seqID\n";
+          $seq =~ s/(.{50})/$1\n/g;
+          print OUTC "$seq\n";
+        }elsif ( $DEBUG ) {
+          print "INFO: Filtering out putative satellite $seqID ( coverage = $coverage{$seqID} bp ).\n";
+        }
+      }
+      close OUTC;
+      undef $consDB;
+
+      system("mv $workDir/consensi-filtered.fa $workDir/consensi.fa");
+    }
+  }
+  # Cleanup uncessary DB files
+  unless ( $DEBUG ) {
+    foreach my $suffix ( "nhr", "nin", "nnd", "nni", "nog", "nsq" ) {
+      unlink("$workDir/consensi.fa.$suffix") if ( -e "$workDir/consensi.fa.$suffix" );
+    }
+  }
+  print ": " . scalar(keys(%satelliteSeqIDs)) . " found in " . elapsedTime("satellite_filtering") . "\n";
+
+  # Refine remaining consensi
+  print "   - Collecting repeat instances...";
+  elapsedTime( "cinstances" );
+
+  # Regenerate database for consensi.fa
+  system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $workDir/consensi.fa "
+                . "-parse_seqids -dbtype nucl -in $workDir/consensi.fa >> "
+                . "$workDir/makeblastdb.log 2>&1" );
+
+  # New - masklevel + switched query/subj
+  $searchEngineN->setMaskLevel( 80 );
+  $searchEngineN->setQuery( "$workDir/sampleDB-$round.fa" );
+  $searchEngineN->setSubject( "$workDir/consensi.fa" );
+
+  #print "Running: " . $searchEngineN->getParameters() . "\n";
+  my ( $status, $resultCollection ) = $searchEngineN->search();
+  if ( $status ) {
+    print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
+  }
+  else {
+    print ": " . elapsedTime("cinstances") . "\n";
+    elapsedTime( "family_refinement" );
+    open OUTC, ">$workDir/consensi-refined.fa";
+    open INDX, ">$workDir/index.html";
+    #print "Saving results as $workDir/RSalign.out\n";
+    $resultCollection->write("$workDir/RSalign.out", SearchResult::NoAlign);
+
+    print "Filtering Results...\n" if ( $DEBUG );
+    for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
+      my $resultRef = $resultCollection->get( $k );
+      my $orient = $resultRef->getOrientation();
+
+      # Extract the true seq name and keep track of how
+      # many sequences this element is found -- used for
+      # segmental duplication filtering.
+      my $sampleID = $resultRef->getQueryName();
+      my $seqID = "gi|" . ( $k + 1 ) . " ";
+      if ( defined $usedBlockIndex->{$sampleID} ) {
+        my $thisID = $usedBlockIndex->{$sampleID}->{'seqID'};
+        $localizedToSeqNames{$thisID}++;
+        # 1/31/2022 : RMH - Preserve orientation in family sequence file
+        if ( $orient eq "C" || $orient eq "-" ) {
+          $seqID .=
+            $thisID . ":"
+            . ($resultRef->getQueryEnd() + $usedBlockIndex->{$sampleID}->{'start'} - 1)
+            . "-"
+            . ($resultRef->getQueryStart() + $usedBlockIndex->{$sampleID}->{'start'} - 1);
+        }else {
+          $seqID .=
+            $thisID . ":"
+            . ($resultRef->getQueryStart() + $usedBlockIndex->{$sampleID}->{'start'} - 1)
+            . "-"
+            . ($resultRef->getQueryEnd() + $usedBlockIndex->{$sampleID}->{'start'} - 1);
+        }
+      }
+      my $sequence = $resultRef->getQueryString();
+      $sequence =~ s/-//g;
+      push @{ $families{ $resultRef->getSubjName() }->{'elements'} },
+          {
+            'seqID' => $seqID,
+            'seq'   => $sequence,
+            'score' => $resultRef->getScore()
+          };
+    }
+    undef $resultCollection;
+
+    # Sort keys by most abundant family first
+    my @sortedKeys = sort {
+      $#{ $families{$b}->{'elements'} } <=> $#{ $families{$a}->{'elements'} }
+    } keys( %families );
+
+    my $doRefinement = 1;
+    if ( $doRefinement ) {
+
+      # Create files of instances for refinement
+      my $familyID = 0;
+      my %refinableFamilies = ();
+      foreach my $key ( @sortedKeys ) {
+        # Quit if remaining family sizes are below cutoff
+        last if ( ($#{ $families{$key}->{'elements'} }+1) < $familySizeCutoff );
+ 
+        $families{$key}->{'roundfam'} = $familyID;
+
+        open FAM, ">$workDir/family-$familyID.fa"
+            or die "RepeatModler: Can't open "
+            . "output file family-$familyID.fa\n";
+
+        # Sort elements in each family by highest scoring first
+        my $numElements = 0;
+        foreach my $ele ( sort { $b->{'score'} <=> $a->{'score'} }
+                          @{ $families{$key}->{'elements'} } )
+        {
+          # Number of elements to keep
+          last if ( $numElements == 100 );
+          print FAM ">" . $ele->{'seqID'} . "\n";
+          print FAM "" . $ele->{'seq'} . "\n";
+          $numElements++;
+        }
+        close FAM;
+        $families{$key}->{'numOfEles'} = $numElements;
+        $refinableFamilies{$key}++;
+        $familyID++;
+      }
+
+      my $tsk = ThreadedTaskSimple->new();
+      $tsk->setWorkingDir($workDir);
+      $tsk->setName("refining_job");
+      $tsk->setNumThreads($threads);
+      $tsk->setMaxRetries(1);
+
+      my $jobIdx = 0;
+      foreach my $key ( keys %refinableFamilies ) {
+        my $familyID = $families{$key}->{'roundfam'};
+        #print " -- Refining Family $key / $familyID ( RS Elements: "
+        #    . ( $#{ $families{$key}->{'elements'} } + 1 )
+        #    . ", Using $numElements )\n";
+        $tsk->addJob( name => "refiner-job-$jobIdx",
+                      function => \&refineOneFamily,
+                      parameters => ["$workDir/family-$familyID.fa", $genomeDB, $workDir, 1, $DEBUG] );
+        $jobIdx++;
+      }
+print "About to run $jobIdx refinement jobs\n";
+      elapsedTime(2);
+      $tsk->execute();
+      print "Refinement: " . elapsedTime( 2 ) . "\n" if ( 1 || $DEBUG );
+
+      for my $key ( keys %refinableFamilies ) {
+        my $cons;
+        my $maSize = 1;
+        my $familyID = $families{$key}->{'roundfam'};
+        my $numElements = $families{$key}->{'numOfEles'};
+
+        if ( -s "$workDir/family-$familyID.fa.refiner_cons" ) {
+          open INREF, "<$workDir/family-$familyID.fa.refiner_cons"
+              or die $CLASS
+              . ": Could not open refined model $workDir/family-$familyID."
+              . "fa.refiner_cons!\n";
+          while ( <INREF> ) {
+            if ( /Final Multiple Alignment Size = (\d+)/ ) {
+              $maSize = $1;
+            }
+            else {
+              $cons .= $_;
+            }
+          }
+          close INREF;
+        }else {
+          print "  WARNING: Refiner did not return a consensus for $workDir/family-$familyID.fa.\n";
+        }
+
+        if ( $cons ne "" ) {
+          
+          # Clean up consensi starting/ending with Ns
+          #   - These are sections of the multiple alignment
+          #     where there is no support for a consensus.
+          $cons =~ s/^[Nn]*([^Nn].*[^Nn])[Nn]*$/$1/;
+
+          # Save the consensus
+          $families{$key}->{'consensus'}         = $cons;
+          $families{$key}->{'finalElementCount'} = $maSize;
+
+          # Concatenate individual seed alignments into one file per-round
+          if ( -s "$workDir/family-$familyID.fa.refiner.stk" ) {
+            my $stockholmFile = SeedAlignmentCollection->new();
+            my $IN;
+            open $IN, "<$workDir/family-$familyID.fa.refiner.stk"
+                or die
+                "Could not open family-$familyID.fa.refiner.stk for reading!\n";
+            open OUT, ">> $workDir/families.stk"
+                or die "Could not open $workDir/families.stk for appending!\n";
+            $stockholmFile->read_stockholm( $IN );
+            close $IN;
+
+            # File only contains one family
+            my $seedAlign = $stockholmFile->get( 0 );
+
+            # Add details to DE line
+            $seedAlign->setDescription( "RepeatModeler Generated - rnd-$round"
+              . "_family-$familyID, RepeatScout: [ Index = $key, RS Size = "
+              . ( $#{ $families{$key}->{'elements'} } + 1 )
+              . ", Refiner Input Size = $numElements, Final Multiple Alignment Size = $maSize ]"
+            );
+            print OUT "" . $seedAlign->toString();
+            close OUT;
+          }
+
+          # Save the consensus to the consensi file.
+          print OUTC ">family-$familyID ( RepeatScout Family =  $key, "
+              . " Size = "
+              . ( $#{ $families{$key}->{'elements'} } + 1 )
+              . ", Refiner Input Size = $numElements, Final Multiple Alignment"
+              . " Size = "
+              . $maSize . " )\n";
+          print OUTC "$cons\n";
+
+          my $indexStr =
+                "<a href=\"family-$familyID-cons.html\">family-$familyID"
+              . " ( RepeatScout Family $key, Size = "
+              . ( $#{ $families{$key}->{'elements'} } + 1 )
+              . ", Refiner Input Size = $numElements, "
+              . " Final Multiple Alignment Size = "
+              . $maSize
+              . " )</a><br>\n";
+
+          print INDX $indexStr;
+          push @indices, [ $maSize, $indexStr ];
+
+        }
+      }
+      close INDX;
+
+      # sorted indices
+      open INDX, ">$workDir/index.html"
+          or die "Could not open $workDir/index.html for writing\n";
+
+      foreach my $index ( sort { $b->[ 0 ] <=> $a->[ 0 ] } @indices ) {
+        print INDX $index->[ 1 ];
+      }
+      close INDX;
+      close OUTC;
+    }
+    else    # if ( $doRefinement )
+    {
+      my $familyID = 0;
+      my $consDB = FastaDB->new( fileName => "$workDir/consensi.fa",
+                                 openMode => SeqDBI::ReadOnly );
+      foreach my $key ( @sortedKeys ) {
+        $families{$key}->{'roundfam'}          = $familyID;
+        $families{$key}->{'consensus'}         = $consDB->getSequence( $key );
+        $families{$key}->{'finalElementCount'} =
+            $#{ $families{$key}->{'elements'} } + 1;
+        $familyID++;
+      }
+      undef $consDB;
+    }
+
+    #
+    # Read in seed alignment data so that we can sort it by membership
+    # as we do consensi.
+    #
+    my %seedAlnById = ();
+    if ( -s "$workDir/families.stk" ) {
+      my $stockholmFile = SeedAlignmentCollection->new();
+      my $IN;
+      open $IN, "<$workDir/families.stk"
+          or die "Could not open $workDir/families.stk for reading!\n";
+      $stockholmFile->read_stockholm( $IN );
+      close $IN;
+
+      for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ ) {
+        my $seedAlign = $stockholmFile->get( $i );
+        my $id        = $seedAlign->getId();
+        if ( $id =~ /family-(\d+)/ ) {
+          $seedAlign->setId( "rnd-$round" . "_family-$1" );
+          $seedAlnById{$1} = $seedAlign;
+        }
+        else {
+          print
+"Warning: could not decode ID from $workDir/families.stk file: id = $id\n";
+        }
+      }
+    }
+
+    #
+    # Write out final trimmed consensi.fa file
+    #
+    open OUTC, ">>$consensiFile"
+        or die "Could not open $consensiFile for appending!\n";
+    open OUTS, ">>$combFamiliesFile"
+        or die "Could not open $combFamiliesFile for appending!\n";
+
+    foreach my $familyKey (
+      sort {
+        $families{$b}{'finalElementCount'} <=> $families{$a}
+            {'finalElementCount'}
+      }
+      keys( %families )
+        )
+    {
+      last
+          if (
+             $families{$familyKey}->{'finalElementCount'} < $familySizeCutoff );
+      print OUTS ""
+          . $seedAlnById{ $families{$familyKey}->{'roundfam'} }->toString();
+      print OUTC ">rnd-$round"
+          . "_family-"
+          . $families{$familyKey}->{'roundfam'}
+          . " ( RepeatScout Family Size = "
+          . ( $#{ $families{$familyKey}->{'elements'} } + 1 ) . ", "
+          . "Final Multiple Alignment Size = "
+          . $families{$familyKey}->{'finalElementCount'} . ", "
+          . "Localized to "
+          . scalar( keys( %localizedToSeqNames ) ) . " out " . "of "
+          . $dbNumContigs
+          . " contigs )\n";
+      print OUTC "$families{ $familyKey }->{'consensus'}\n";
+      $numModels++;
+
+    }
+    close OUTC;
+    close OUTS;
+
+    print "Family Refinement: " . elapsedTime( "family_refinement" ) . "\n";
+
+  }
+  undef $searchEngineN;
+  #return \%families, $numModels;
+  undef %families;
+  return $numModels;
+
+}
+
+
+##-------------------------------------------------------------------------##
+#
 # Use: my = buildReconConsensi( workDir => "", round => #,
 #                               consensiFile => "", combFamiliesFile => "",
 #                               familyCutoff => # );
@@ -2802,7 +3167,7 @@ sub buildReconConsensi {
       if ( !defined $parameters{'consensiFile'} );
   my $consensiFile = $parameters{'consensiFile'};
 
-  die "buildRSConsensi(): Missing combFamiliesFile parameter!\n"
+  die "buildReconConsensi(): Missing combFamiliesFile parameter!\n"
       if ( !defined $parameters{'combFamiliesFile'} );
   my $combFamiliesFile = $parameters{'combFamiliesFile'};
 
@@ -2979,8 +3344,10 @@ sub buildReconConsensi {
     if ( @{$elementsRef} >= $familySizeCutoff ) {
       print "  - Refining family-$familyID model...\n";
 
+      my $threadParam = "";
+      $threadParam = " -threads $options{'threads'} " if ( $options{'threads'} );
       my $cmd =
-            "$FindBin::RealBin/Refiner -engine $engine "
+            "$FindBin::RealBin/Refiner $threadParam "
           . "-noTmp -giToID $genomeDB.translation $workDir/family-$familyID.fa";
       $cmd .= " -quiet" unless ( $DEBUG );
       system( $cmd );
@@ -3145,6 +3512,402 @@ sub buildReconConsensi {
   return $numModels;
 }
 
+##-------------------------------------------------------------------------##
+#
+# Use: my = buildReconConsensiMT( workDir => "", round => #,
+#                               consensiFile => "", combFamiliesFile => "",
+#                               familyCutoff => # );
+#
+# Process output of RECON and generate consensi for each putative
+# family.
+#
+##-------------------------------------------------------------------------##
+sub buildReconConsensiMT {
+  my %parameters = @_;
+
+  die "buildReconConsensiMT(): Missing workDir parameter!\n"
+      if ( !defined $parameters{'workDir'} );
+  my $workDir = $parameters{'workDir'};
+
+  die "buildReconConsensiMT(): Missing round parameter!\n"
+      if ( !defined $parameters{'round'} );
+  my $round = $parameters{'round'};
+
+  die "buildReconConsensiMT(): Missing consensiFile parameter!\n"
+      if ( !defined $parameters{'consensiFile'} );
+  my $consensiFile = $parameters{'consensiFile'};
+
+  die "buildReconConsensiMT(): Missing combFamiliesFile parameter!\n"
+      if ( !defined $parameters{'combFamiliesFile'} );
+  my $combFamiliesFile = $parameters{'combFamiliesFile'};
+
+  die "buildReconConsensiMT(): Missing familyCutoff parameter!\n"
+      if ( !defined $parameters{'familyCutoff'} );
+  my $familySizeCutoff = $parameters{'familyCutoff'};
+
+  die "buildReconConsensiMT(): Missing threads parameter!\n"
+      if ( !defined $parameters{'threads'} );
+  my $threads = $parameters{'threads'};
+
+  die "buildReconConsnesiMT(): Missing genomeDB path parameter!\n"
+      if ( !defined $parameters{'genomeDB'} );
+  my $genomeDB = $parameters{'genomeDB'};
+
+  ## Read in element definitions
+  my %families = ();
+  if ( -f "$workDir/summary/eles" ) {
+    open IN, "<$workDir/summary/eles";
+    while ( <IN> ) {
+      next if ( /^#/ );
+      if ( /^\s+\d+\s+/ ) {
+        my @fields = split;
+
+        #  fam    ele   dir  sequence    start     end
+        #   1      2     1    gi|1009       51      114
+        if ( $fields[ 4 ] < 0 || $fields[ 5 ] < 0 ) {
+          warn "WARNING: RECON returned a negative offset:\n    $_\n"
+              . "In file: $workDir/summary/eles.  Ignoring line and"
+              . " moving on.\n";
+          next;
+        }
+        push @{ $families{ $fields[ 0 ] }->{'elements'} },
+            {
+              seqName   => $fields[ 3 ],
+              elementID => $fields[ 1 ],
+              orient    => $fields[ 2 ],
+              start     => $fields[ 4 ],
+              end       => $fields[ 5 ]
+            };
+      }
+    }
+    close IN;
+  }
+  else {
+    die "Error: Recon failed to produce the summary/eles file!\n";
+  }
+
+  ## Get Sequences
+  print "  - Obtaining element sequences\n";
+  open OUTC, ">$workDir/consensi.fa";
+  open INDX, ">$workDir/index.html";
+
+  ### Locate the batch containing this elements sequence.
+  my $batchName = "sampleDB-$round.fa";
+
+  ## Open the sequence batch file.
+  my $batchDB = FastaDB->new( fileName => "$workDir/$batchName",
+                              openMode => SeqDBI::ReadOnly );
+
+  my @indices = ();
+
+  my @sortedKeys = sort {
+    $#{ $families{$b}->{'elements'} } <=> $#{ $families{$a}->{'elements'} }
+  } keys( %families );
+
+  log_print "Number of families returned by RECON: "
+      . scalar( keys( %families ) ) . "\n";
+  print "Processing families with greater than $familySizeCutoff elements\n";
+  elapsedTime( "family_refinement" );
+
+  # Loop through all families starting with the ones
+  # containing the most elements.
+  print "  - Saving instances...\n" if ( $DEBUG );
+  elapsedTime( 2 );
+  my %refinableFamilies = ();
+  foreach my $familyID ( @sortedKeys ) {
+    last if ( $#{ $families{$familyID}->{'elements'} } < $familySizeCutoff );
+    #print "\nProcessing RECON family: $familyID\n";
+
+    ## Using the eles file and the sequence batch file
+    ## create a new family-#.fa file containing the
+    ## sequences for each elemement.
+    my $elementsRef = $families{$familyID}->{'elements'};
+    open FAM, ">$workDir/family-$familyID.fa"
+        or die "RepeatModler: Can't open "
+        . "output file family-$familyID.fa\n";
+
+    my $numElements = 0;
+
+    ## Loop through the elements for a given family starting
+    ## first with the longest ones.
+    #TODO: Consider saving all instances to a an aux file
+    my $giID = 1;
+    foreach my $elementRef (
+      sort {
+        ( $b->{'end'} - $b->{'start'} ) <=> ( $a->{'end'} - $a->{'start'} )
+      } @{$elementsRef}
+        )
+    {
+      $numElements++;
+      #
+      # Parse genomic start/end out of batch seqname:
+      #
+      #   The RM convention is that a batch file is a fragment
+      #   of a genomic (input sequence) sample.  The range of
+      #   the fragment is placed in the sequence name.  The
+      #   general form is SeqID:startPos-endPos.  So in order
+      #   to place this sequence in it's genomic context we
+      #   need to parse out these numbers.
+      #
+      my $seqName = $elementRef->{'seqName'};
+      my $seqDesc = $batchDB->getDescription( $seqName );
+      my $genomicStartPos;
+      my $genomicEndPos;
+      my $genomicSeqID;
+      if ( $seqDesc =~ /(\S+):(\d+)-(\d+)/ ) {
+        $genomicSeqID    = $1;
+        $genomicStartPos = $2;
+        $genomicEndPos   = $3;
+      }
+      else {
+        print
+"ERROR: Sequence reference >$seqName< is not in the correct form!\n";
+      }
+
+      ## Get the sequence.
+      my $startOffset  = $elementRef->{'start'};
+      my $endOffset    = $elementRef->{'end'};
+      my $length       = $endOffset - $startOffset;
+      my $actualSeqLen = $batchDB->getSeqLength( $seqName );
+      if ( $endOffset > $actualSeqLen ) {
+        print
+"WARNING: Attempt to extract substring outside the range of the sequence\n"
+            . "         seqID=$seqName range=$startOffset-$endOffset!  Please report this\n"
+            . "         warning to the developers at help\@dfam.org.\n";
+        next;
+      }
+      my $sequence = $batchDB->getSubstr( $seqName, $startOffset, $length );
+
+      ## Determine if we need to reorient the sequence based
+      ## on Recon's call of the orientation.
+      if ( $elementRef->{'orient'} ne "1" ) {
+        $sequence = reverse( $sequence );
+        $sequence =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
+        my $tmpOffset = $startOffset;
+        # 2/1/22 : RMH - Bug these should be 1-based, fully closed coordinates
+        #$startOffset = $endOffset;
+        #$endOffset   = $tmpOffset;
+        $startOffset = $endOffset-1;
+        $endOffset   = $tmpOffset-1;
+      }
+
+      ## Save the sequence
+      $elementRef->{'sequence'} = $sequence;
+      # 2/1/22 : RMH - Bug these should be 1-based, fully closed coordinates
+      #print FAM ">gi|$giID $genomicSeqID" . ":"
+      #    . ( $startOffset + $genomicStartPos - 1 ) . "-"
+      #    . ( $endOffset + $genomicStartPos - 1 )
+      #    . " element-"
+      #    . $elementRef->{'elementID'} . "\n";
+      print FAM ">gi|$giID $genomicSeqID" . ":"
+          . ( $startOffset + $genomicStartPos ) . "-"
+          . ( $endOffset + $genomicStartPos )
+          . " element-"
+          . $elementRef->{'elementID'} . "\n";
+ 
+      print FAM "" . $elementRef->{'sequence'} . "\n";
+      $giID++;
+    }
+    close FAM;
+    $refinableFamilies{$familyID}++;
+    #print "  - Saving " . ( $#{$elementsRef} + 1 ) . " elements\n";
+  }
+  print "Instance Gathering: " . elapsedTime( 2 ) . "\n" if ( 1 || $DEBUG );
+
+
+  my $tsk = ThreadedTaskSimple->new();
+  $tsk->setWorkingDir($workDir);
+  $tsk->setName("refining_job");
+  $tsk->setNumThreads($threads);
+  $tsk->setMaxRetries(1);
+
+  my $jobIdx = 0;
+  for my $familyID ( keys %refinableFamilies ) {
+    $tsk->addJob( name => "refiner-job-$jobIdx",
+                function => \&refineOneFamily,
+                parameters => ["$workDir/family-$familyID.fa", $genomeDB, $workDir, 1, $DEBUG] );
+    $jobIdx++;
+  }  
+print "About to run $jobIdx refinement jobs\n";
+
+  elapsedTime(2);
+  $tsk->execute();
+  print "Refinement: " . elapsedTime( 2 ) . "\n" if ( 1 || $DEBUG );
+
+  for my $familyID ( keys %refinableFamilies ) {
+    #print "  - Refining family-$familyID model...\n";
+    my $cons;
+    my $maSize = 1;
+    if ( -s "$workDir/family-$familyID.fa.refiner_cons" ) {
+      open INREF, "<$workDir/family-$familyID.fa.refiner_cons"
+          or die $CLASS
+          . ": Could not open refined model $workDir/family-$familyID."
+          . "fa.refiner_cons!\n";
+      while ( <INREF> ) {
+        if ( /Final Multiple Alignment Size = (\d+)/ ) {
+          $maSize = $1;
+        }
+        else {
+          $cons .= $_;
+        }
+      }
+      close INREF;
+    }
+    else {
+      print "  WARNING: Refiner did not return a consensus.\n";
+    }
+
+    if ( $cons ne "" ) {
+
+      # Clean up consensi starting/ending with Ns
+      #   - These are sections of the multiple alignment
+      #     where there is no support for a consensus.
+      $cons =~ s/^[Nn]*([^Nn].*[^Nn])[Nn]*$/$1/;
+
+      # Save the consensus
+      $families{$familyID}->{'consensus'}         = $cons;
+      $families{$familyID}->{'finalElementCount'} = $maSize;
+
+      # Concatenate individual seed alignments into one file per-round
+      if ( -s "$workDir/family-$familyID.fa.refiner.stk" ) {
+        my $stockholmFile = SeedAlignmentCollection->new();
+        my $IN;
+        open $IN, "<$workDir/family-$familyID.fa.refiner.stk"
+            or die
+            "Could not open family-$familyID.fa.refiner.stk for reading!\n";
+        open OUT, ">> $workDir/families.stk"
+            or die "Could not open $workDir/families.stk for appending!\n";
+        $stockholmFile->read_stockholm( $IN );
+        close $IN;
+
+        # File only contains one family
+        my $seedAlign = $stockholmFile->get( 0 );
+
+        # Add details to DE line
+        $seedAlign->setDescription( "RepeatModeler Generated - rnd-$round"
+                              . "_family-$familyID, RECON: [ RECON Size = "
+                              . ( $#{ $families{$familyID}->{'elements'} } + 1 )
+                              . ", Final Multiple Alignment Size = $maSize ]" );
+        print OUT "" . $seedAlign->toString();
+        close OUT;
+      }
+
+      # Save the consensus to the consensi file.
+      print OUTC ">family-$familyID ( Recon Family Size = "
+          . ( $#{ $families{$familyID}->{'elements'} } + 1 ) . ", "
+          . "Final Multiple Alignment Size = "
+          . $maSize . " )\n";
+      print OUTC "$cons\n";
+
+      my $indexStr =
+            "<a href=\"family-$familyID-cons.html\">family-$familyID"
+          . " ( Recon Family Size = "
+          . ( $#{ $families{$familyID}->{'elements'} } + 1 ) . ", "
+          . "Final Multiple Alignment Size = "
+          . $maSize
+          . " )</a><br>\n";
+
+      print INDX $indexStr;
+      push @indices, [ $maSize, $indexStr ];
+
+    }
+
+  }    # Foreach family
+  undef $batchDB;
+  close INDX;
+
+  #
+  # Read in seed alignment data so that we can sort it by membership
+  # as we do consensi.
+  #
+  my %seedAlnById = ();
+  if ( -s "$workDir/families.stk" ) {
+    my $stockholmFile = SeedAlignmentCollection->new();
+    my $IN;
+    open $IN, "<$workDir/families.stk"
+        or die "Could not open $workDir/families.stk for reading!\n";
+    $stockholmFile->read_stockholm( $IN );
+    close $IN;
+
+    for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ ) {
+      my $seedAlign = $stockholmFile->get( $i );
+      my $id        = $seedAlign->getId();
+      if ( $id =~ /family-(\d+)/ ) {
+        $seedAlign->setId( "rnd-$round" . "_family-$1" );
+        $seedAlnById{$1} = $seedAlign;
+      }
+      else {
+        print
+"Warning: could not decode ID from $workDir/families.stk file: id = $id\n";
+      }
+    }
+  }
+
+  # sorted indices
+  open INDX, ">$workDir/index.html";
+  foreach my $index ( sort { $b->[ 0 ] <=> $a->[ 0 ] } @indices ) {
+    print INDX $index->[ 1 ];
+  }
+  close INDX;
+  close OUTC;
+
+  #
+  # Append trimmed consensi.fa file to final results
+  # Append trimmed stockholm file to final results
+  #
+  my $numModels = 0;
+  open OUTC, ">>$consensiFile"
+      or die "Could not open $consensiFile for appending!\n";
+  open OUTS, ">>$combFamiliesFile"
+      or die "Could not open $combFamiliesFile for appending!\n";
+
+  foreach my $familyKey (
+    sort {
+      $families{$b}{'finalElementCount'} <=> $families{$a}{'finalElementCount'}
+    }
+    keys( %families )
+      )
+  {
+
+    last
+        if ( $families{$familyKey}->{'finalElementCount'} < $familySizeCutoff );
+    print OUTS "" . $seedAlnById{$familyKey}->toString();
+    print OUTC ">rnd-$round"
+        . "_family-$familyKey ( Recon Family Size = "
+        . ( $#{ $families{$familyKey}->{'elements'} } + 1 ) . ", "
+        . "Final Multiple Alignment Size = "
+        . $families{$familyKey}->{'finalElementCount'} . " )\n";
+    print OUTC "$families{ $familyKey }->{'consensus'}\n";
+    $numModels++;
+
+  }
+  close OUTC;
+  close OUTS;
+  print "Family Refinement: " . elapsedTime( "family_refinement" ) . "\n";
+
+  #return \%families, $numModels;
+  undef %families;
+  return $numModels;
+}
+
+# For multi threaded jobs
+sub refineOneFamily {
+  my $instancesFile = shift;
+  my $genomeDB = shift;
+  my $workDir = shift;
+  my $threads = shift;
+  my $DEBUG = shift;
+  
+  my $threadParam = "";
+  $threadParam = " -threads $threads " if ( $threads );
+  my $cmd = "$FindBin::RealBin/Refiner $threadParam "
+          . "-noTmp -giToID $genomeDB.translation $instancesFile";
+  $cmd .= " -quiet" unless ( $DEBUG );
+print "Running: $cmd\n";
+  system( $cmd );
+}
+
+ 
 #
 # initializeSampleSourceList
 #

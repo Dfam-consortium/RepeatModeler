@@ -165,6 +165,7 @@ use EMBL;
 use SeedAlignment;
 use SeedAlignmentCollection;
 use File::Temp qw/ tempfile tempdir /;
+use File::Basename;
 use Time::HiRes qw( gettimeofday tv_interval);
 
 #
@@ -590,7 +591,8 @@ my $totalAttemptedBuilds = 0;
 # Set the identifier for the assembly to be used in Stockholm file.  If not provided
 # explicitly use the filename of the assembly (sans path).
 my $assemblyName = $options{'assemblyFile'};
-$assemblyName = $1 if ( $assemblyName =~ /.*\/([^\/\s]+)\s*$/ );
+$assemblyName = basename($assemblyName);
+$assemblyName =~ s/\.2bit//i;
 $assemblyName = $options{'assemblyID'} if ( $options{'assemblyID'} );
 
 my $totalBuilt = 0;
@@ -886,11 +888,12 @@ foreach my $id ( keys( %alignByID ) )
   if ( $options{'taxon'} ) {
     $seedAlign->addClade($options{'taxon'});
   }
-  #my $desc = "Seed alignments generated from RepeatMasker annotations using generateSeedAlignments.pl. ".
-  #           "The median Kimura divergence for the family is $medianDiv, $sampleCount where chosen from $countInGenome identified in " . 
-  #           "the ". $options{'assembly'} . " assembly file.";
-  my $desc = "Source:gsa, mDiv=$medianDiv, $options{'assembly'}:$countInGenome";
-  $seedAlign->setDescription($desc);
+  my $desc = "Seed alignments generated from RepeatMasker annotations using generateSeedAlignments.pl. ".
+             "The median Kimura divergence for the family is $medianDiv, $sampleCount where chosen from $countInGenome identified in " . 
+             "the ". $options{'assembly'} . " assembly file.";
+  $seedAlign->setComments($desc);
+  $desc = "Source:gsa, mDiv=$medianDiv, $options{'assembly'}:$countInGenome";
+  $seedAlign->setCuratorComments($desc);
 
   if ( $options{'outSTKFile'} ) 
   {

@@ -32,7 +32,6 @@ RepeatClassifier - Classify Repeat Models
 
   RepeatClassifier [-options] -consensi <repeat model file>
                    [-stockholm <stockholm file>]
-                   [-engine <abblast|ncbi>]
 
 =head1 DESCRIPTION
 
@@ -113,7 +112,7 @@ my $version = $RepModelConfig::VERSION;
 #   -t=s: String parameters
 #   -t=i: Number paramters
 #
-my @opts = qw( help consensi=s engine=s stockholm=s debug preserve_class pa=s );
+my @opts = qw( help consensi=s stockholm=s debug preserve_class threads=s );
 
 # Add configuration parameters as additional command-line options
 push @opts, RepModelConfig::getCommandLineOptions();
@@ -179,41 +178,19 @@ my $config           = $RepModelConfig::configuration;
 my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLASTN_PRGM    = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $NCBIBLASTX_PRGM  = $config->{'RMBLAST_DIR'}->{'value'} . "/blastx";
-my $WUBLAST_DIR      = $config->{'ABBLAST_DIR'}->{'value'};
-my $WUBLASTN_PRGM    = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
-my $WUBLASTX_PRGM    = $config->{'ABBLAST_DIR'}->{'value'} . "/blastx";
 
 #
 # Setup the search engine
 #
 my $searchEngineN;
 my $engine = "rmblast";
-$engine = $options{'engine'} if ( $options{'engine'} );
-if ( $engine ) {
-  if ( $engine =~ /wublast|abblast/i ) {
-    $engine = "abblast";
-    $searchEngineN = WUBlastSearchEngine->new( pathToEngine => $WUBLASTN_PRGM );
-    if ( not defined $searchEngineN ) {
-      die "Cannot execute $WUBLASTN_PRGM please make "
-          . "sure you have setup RepeatModeler to use AB/WUBlast "
-          . "by running the configure script.\n";
-    }
-  }
-  elsif ( $engine =~ /rmblast|ncbi/i ) {
-    $engine        = "rmblast";
-    $searchEngineN =
-        NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
-    if ( not defined $searchEngineN ) {
-      die "Cannot execute $RMBLASTN_PRGM please make "
-          . "sure you have setup RepeatModeler to use NCBI (RMBlast) by "
-          . "running the configure script.\n";
-    }
-  }
-  else {
-    print "I don't recognize the search engine type:  $engine\n";
-    exec "pod2text $0";
-    die;
-  }
+$engine        = "rmblast";
+$searchEngineN =
+    NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
+if ( not defined $searchEngineN ) {
+  die "Cannot execute $RMBLASTN_PRGM please make "
+      . "sure you have setup RepeatModeler to use NCBI (RMBlast) by "
+      . "running the configure script.\n";
 }
 
 #
@@ -221,7 +198,6 @@ if ( $engine ) {
 #
 print "RepeatClassifier Version $version\n";
 print "======================================\n";
-print "Search Engine = $engine\n";
 
 if ( $DEBUG ) {
   print "\nRepeatClassifier run as: $0 " . join( @ARGV ) . "\n";
@@ -392,40 +368,20 @@ my $masklevel = 80;
 
 # initialize the search
 my $blastCmd;
-if ( $engine eq "abblast" ) {
-  if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib.xps" ) {
-    die "Missing $REPEATMASKER_DIR/Libraries/"
-        . "RepeatPeps.lib.xps!\n"
-        . "Please rerun the configure program in the RepeatMasker directory\n"
-        . "before running this script.\n";
-  }
-
-  # Setup the matrix directory so that wublast can find Blossom62
-  $ENV{BLASTMAT}   = "$WUBLAST_DIR/matrix";
-  $ENV{WUBLASTMAT} = $ENV{BLASTMAT};
-  $blastCmd        =
-        "$WUBLASTX_PRGM "
-      . "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib "
-      . "$options{'consensi'}.masked -W 2 "
-      . " > tmpBlastXResults.out 2>&1";
-  print "      + Running abblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
+if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib.psq" ) {
+  die "Missing $REPEATMASKER_DIR/Libraries/"
+      . "RepeatPeps.lib.psq!\n"
+      . "Please rerun the configure program in the RepeatMasker directory\n"
+      . "before running this script.\n";
 }
-elsif ( $engine eq "rmblast" ) {
-  if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib.psq" ) {
-    die "Missing $REPEATMASKER_DIR/Libraries/"
-        . "RepeatPeps.lib.psq!\n"
-        . "Please rerun the configure program in the RepeatMasker directory\n"
-        . "before running this script.\n";
-  }
-  my $additionalOpts = "";
-  $additionalOpts = "-num_threads $options{'pa'} " if ( $options{'pa'} );
-  $blastCmd =
-        "$NCBIBLASTX_PRGM "
-      . "-db $REPEATMASKER_DIR/Libraries/RepeatPeps.lib "
-      . $additionalOpts
-      . "-query tmpConsensi.fa.masked -word_size 2 > tmpBlastXResults.out 2>&1";
-  print "      + Running rmblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
-}
+my $additionalOpts = "";
+$additionalOpts = "-num_threads $options{'threads'} " if ( $options{'threads'} );
+$blastCmd =
+      "$NCBIBLASTX_PRGM "
+    . "-db $REPEATMASKER_DIR/Libraries/RepeatPeps.lib "
+    . $additionalOpts
+    . "-query tmpConsensi.fa.masked -word_size 2 > tmpBlastXResults.out 2>&1";
+print "      + Running rmblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
 
 print "        o Running: $blastCmd\n" if ( $DEBUG );
 system( $blastCmd );
@@ -476,31 +432,21 @@ $searchEngineN->setDelGapExt( -5 );
 $searchEngineN->setMinMatch( 7 );
 $searchEngineN->setUseDustSeg( 0 );
 
-if ( $options{'pa'} ) {
-  $searchEngineN->setCores( $options{'pa'} );
+if ( $options{'threads'} ) {
+  $searchEngineN->setCores( $options{'threads'} );
+}else {
+  $searchEngineN->setCores( 1 );
 }
 $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
 $searchEngineN->setQuery( "tmpConsensi.fa.masked" );
 
-if ( $engine eq "abblast" ) {
-  $searchEngineN->setMatrix(
-                    "$FindBin::RealBin/Matrices/wublast/nt/comparison.matrix" );
-  if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib.xns" ) {
-    die "Missing $REPEATMASKER_DIR/Libraries/"
-        . "RepeatMasker.lib.xns!\nPlease rerun the configure program "
-        . "in the RepeatMasker directory\nbefore running this script.\n";
-  }
-  $searchEngineN->setAdditionalParameters( " -gapW=32" );
-}
-else {
-  $searchEngineN->setMatrix(
+$searchEngineN->setMatrix(
                        "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
 
-  if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib.nsq" ) {
-    die "Missing $REPEATMASKER_DIR/Libraries/"
-        . "RepeatMasker.lib.nsq!\nPlease rerun the configure program "
-        . "in the RepeatMasker directory\nbefore running this script.\n";
-  }
+if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib.nsq" ) {
+  die "Missing $REPEATMASKER_DIR/Libraries/"
+      . "RepeatMasker.lib.nsq!\nPlease rerun the configure program "
+      . "in the RepeatMasker directory\nbefore running this script.\n";
 }
 
 $searchEngineN->setSubject( "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib" );

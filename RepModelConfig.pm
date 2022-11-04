@@ -54,17 +54,6 @@ BEGIN {
 ##                                                                      ##
   ## STCFG --do-not-remove--
   $configuration = {
-          'ABBLAST_DIR' => {
-                             'command_line_override' => 'abblast_dir',
-                             'description' => 'The path to the installation of the ABBLAST sequence alignment program.',
-                             'environment_override' => 'ABBLAST_DIR',
-                             'expected_binaries' => [
-                                                      'blastp'
-                                                    ],
-                             'param_type' => 'directory',
-                             'required' => 0,
-                             'value' => '/usr/local/abblast'
-                           },
           'CDHIT_DIR' => {
                            'command_line_override' => 'cdhit_dir',
                            'description' => 'The path to the installation of the CD-Hit sequence clustering package.',
@@ -134,7 +123,7 @@ BEGIN {
                          },
           'REPEATMASKER_DIR' => {
                                   'command_line_override' => 'repeatmasker_dir',
-                                  'description' => 'The path to the installation of RepeatMasker (RM 4.1.4+)',
+                                  'description' => 'The path to the installation of RepeatMasker (RM 4.1.4 or higher)',
                                   'environment_override' => 'REPEATMASKER_DIR',
                                   'expected_binaries' => [
                                                            'RepeatMasker'
@@ -145,7 +134,7 @@ BEGIN {
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
-                             'description' => 'The path to the installation of the RMBLAST sequence alignment program.',
+                             'description' => 'The path to the installation of the RMBLAST (2.13.0 or higher)',
                              'environment_override' => 'RMBLAST_DIR',
                              'expected_binaries' => [
                                                       'rmblastn',
@@ -157,7 +146,7 @@ BEGIN {
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/home/rhubley/projects/RMBlast_project/RMBlast/ncbi-blast-2.13.0+-src/c++/ReleaseMT/bin'
+                             'value' => '/usr/local/rmblast-2.13.0/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
@@ -562,12 +551,6 @@ BEGIN {
       $tmpStr = `strings $value/twoBitInfo | grep "kent source version"`;
       $version = "unknown";
       $version = $1 if ( $tmpStr =~ /kent source version\s+(\d+)/ );
-    }elsif ( $param eq "ABBLAST_DIR" ) {
-      #blastp -blah
-      #BLASTP 3.0SE-AB [2009-10-30] [linux26-x64-I32LPF64 2009-10-30T17:06:09]
-      $tmpStr = `$value/blastp -blah 2>&1`;
-      $tmpStr =~ /BLASTP\s+(\d+\.\d+\S+)/;
-      $version = $1;
     }elsif ( $param eq "CDHIT_DIR" ) {
       #cd-hit -blah
       # 	====== CD-HIT version 4.8.1 (built on Mar 21 2019) ======
