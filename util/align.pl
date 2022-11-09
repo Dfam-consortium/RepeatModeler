@@ -6,8 +6,8 @@
 ##      Robert M. Hubley   rhubley@systemsbiology.org
 ##      Arian Smit         asmit@systemsbiology.org
 ##  Description:
-##      A wrapper script around cross_match and rmblastn with a 
-##      common command line interface.
+##      A wrapper script around cross_match, rmblastn and
+##      nhmmer with a common command line interface.
 #******************************************************************************
 #*  This software is provided ``AS IS'' and any express or implied            *
 #*  warranties, including, but not limited to, the implied warranties of      *
@@ -31,9 +31,11 @@ align.pl - A standard interface for several sequence aligners
 
   align.pl [-version]
 or
-  align.pl [options] <fasta seq1> (<fasta seq2>)
+  align.pl [options] <fasta seq1> <fasta seq2>
 or
   align.pl [options] -query <fasta seq1> -database (<fasta seq2>)
+
+  TBD: align.pl [options] <fasta seq1> (<fasta seq2>)
 
   options            
   -alignments,-a    Instruct aligner to produce full alignment details. (default: off)
@@ -65,20 +67,27 @@ or
                          - A string "##p##" resolves to "##p##g.matrix"
   -minmatch,-mi     The minimum length alignment to report. (default: 14)
   -raw,-r           -raw (default off, i.e. score is complexity adjusted) 
-  -score,-s         -minscore (default 200)
+  -minscore,-s      -minscore (default 200)
   -word_raw,-w      -word_raw (default off, i.e. length of seeds is higher with lower complexity)
-  -x                -screen (default off)
+  -x                This invokes the '-screen' option if the crossmatch search engine is
+                    used. This will create a *.screen file where all aligned regions of the
+                    query are replaced with "X"s. (default off)
   -threads,-t       Set the number of threads to use for rmblastn (cross_match is single threaded).
                     (default: 6)
   -mt_qmode,-mtq    Set the threading scheme for rmblastn (2.13+) to query mode (mt_mode 1). The
                     default rmblastn scheme is to thread by subject. (default: off)
-  -crossmatch,-cm   Use cross_match rather than RMBlast.  This option only works if the system
-                      contains an installation of Phil Green's phrap program suite and the
-                      RepeatMasker installation used by RepeatModeler was configured to use it.
-  -rmblast,-bl      Use RMBlast rather than cross_match otherwise the default search engine
-                      will be used (configured at installation).
+  -crossmatch,-cm   Use cross_match search engine.  Otherwise use the default search
+                      engine (configured at installation).
+  -rmblast,-rm      Use RMBlast as the search engine. Otherwise use the default search
+                      engine (configured at installation).
+  -nhmmer,-nh       Use nhmmer as the search engine. Otherwise use the default search
+                      engine (configured at installation). 
+  -fmindex,-fm      If using the nhmmer search engine this will turn on the use of the
+                      fmindex acceleration.
+
+  Xmatch.pl options not yet supported:
   -original,-o      keep the original cross_match mismatch level (mismatches/length_of_query) 
-                    By default Xmatch.pl recalculates the mismatch level as mismatches/aligned_bases
+                    By default align.pl recalculates the mismatch level as mismatches/aligned_bases
   -quiet,-q         STDERR of cross_match gets redirected to a file \"tempxmatch.stderr\" 
 
   -nab,-n           Only prints the summary lines and adds a \"+\" for forward match to give constant nr of columns
@@ -140,8 +149,10 @@ use File::Temp qw/ tempfile tempdir /;
 #
 use RepModelConfig;
 use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
+#use lib "/home/rhubley/projects/RepeatMasker";
 use NCBIBlastSearchEngine;
 use CrossmatchSearchEngine;
+use HMMERSearchEngine;
 use SearchResult;
 use SearchResultCollection;
 use RepeatMaskerConfig;
@@ -154,6 +165,7 @@ my $DEBUG = 0;
 #
 my $phrapDir = "/usr/local/phrap";
 my $matrixDir = "$FindBin::RealBin/../Matrices";
+my $RMSK_DIR = $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLAST_DIR = $RepModelConfig::configuration->{'RMBLAST_DIR'}->{'value'};
 my $defaultEngine = "rmblast";
 
@@ -165,15 +177,17 @@ my $defaultEngine = "rmblast";
 #   -t=i: Number paramters
 #
 my @getopt_args = (
-    '-version', # print out the version and exit
+    'version|v', # print out the version and exit
     'alignments|a',
     'bandwidth|ba=s',
     'blast|bl',
     'crossmatch|cm',
     'cg',
     'database=s',
-    'del_gap_exti|d=i',
+    'del_gap_ext|d=i',
+    'ins_gap_ext|i=i',
     'extension|e=i',
+    'fmindex|fm',
     'gap_init|g=i',
     'masklevel|level|l=i',
     'matrix|ma=s',
@@ -181,14 +195,17 @@ my @getopt_args = (
     'minscore|score|s=i',
     'mt_qmode|mtq',
     'nab|n',
+    'nhmmer|nh',
     'original|o',
     'perbasescore|p',
     'quiet|q',
     'query=s',
+    'verbose|verb',
     'threads|t=i',
     'raw|r',
+    'rmblast|rm',
     'word_raw|w',
-    'x',
+    'screen|x',
     'zip=s'
 );
 
@@ -222,11 +239,15 @@ if ( -e $options{'query'} && -e $options{'database'} ) {
   usage();
 }
 
-my $engine = "rmblast";
+my $engine = $defaultEngine;
+$engine = "crossmatch" if ( exists $options{'crossmatch'} );
+$engine = "rmblast" if ( exists $options{'rmbalst'} );
+$engine = "nhmmer" if ( exists $options{'nhmmer'} );
+
 my $engine_dir;
 my $engine_prg;
 my $sEngineObj;
-if ( $engine eq "crossmatch" || exists $options{'crossmatch' } ) 
+if ( $engine eq "crossmatch" )
 {
   $engine = "crossmatch";
   my $CM_DIR = $RepeatMaskerConfig::configuration->{'CROSSMATCH_DIR'}->{'value'};
@@ -238,7 +259,7 @@ if ( $engine eq "crossmatch" || exists $options{'crossmatch' } )
       $engine_dir = dirname($engine_prg);
     }else {
       print "\n\nERROR: Could not locate the cross_match program.  Perhaps, the configured RepeatMasker\n" .
-            "       program ($CM_DIR) is not configured to use that\n" .
+            "       program ($RMSK_DIR) is not configured to use that\n" .
             "       search engine.\n\n";
       exit;
     }
@@ -248,8 +269,11 @@ if ( $engine eq "crossmatch" || exists $options{'crossmatch' } )
   }
 
   $sEngineObj = CrossmatchSearchEngine->new( pathToEngine => $engine_prg );
+  my $params = "";
+  $params .= " -screen " if ( $options{'screen'} );
+  $sEngineObj->setAdditionalParameters($params);
 
-}elsif ( $engine eq "rmblast" || exists $options{'rmblast'} ) {
+}elsif ( $engine eq "rmblast" ) {
   $engine = "rmblast";
   my $RMBLAST_DIR = $RepModelConfig::configuration->{'RMBLAST_DIR'}->{'value'};
   unless ( -d $RMBLAST_DIR && -x "$RMBLAST_DIR/rmblastn") { 
@@ -275,6 +299,30 @@ if ( $engine eq "crossmatch" || exists $options{'crossmatch' } )
   if ( exists $options{'threads'} && exists $options{'mt_qmode'} ) {
     $sEngineObj->setThreadByQuery(1);
   }
+}elsif ( $engine eq "nhmmer" ) {
+  $engine = "nhmmer";
+  my $HM_DIR = $RepeatMaskerConfig::configuration->{'HMMER_DIR'}->{'value'};
+  unless ( -d $HM_DIR && -x "$HM_DIR/nhmmer") {
+    # fall back to path resolution
+    my $retVal = `whereis nhmmer`;
+    if ( $retVal =~ /^nhmmer:\s+(\S+)/ ) {
+      $engine_prg = $1;
+      $engine_dir = dirname($engine_prg);
+    }else {
+      print "\n\nERROR: Could not locate the nhmmer program.  Perhaps, the configured RepeatMasker\n" .
+            "       program ($RMSK_DIR) is not configured to use that\n" .
+            "       search engine.\n\n";
+      exit;
+    }
+  }else {
+    $engine_dir = $HM_DIR;
+    $engine_prg = "$HM_DIR/nhmmer";
+  }
+
+  $sEngineObj = HMMERSearchEngine->new( pathToEngine => $engine_prg );
+  # Engine specific parameters
+  $sEngineObj->setCores( $options{'threads'} ? $options{'threads'} : undef );
+
 }else {
   print "\n\nERROR: Could not locate the default aligner ($engine)!\n";
   exit;
@@ -349,6 +397,7 @@ if ( $options{'matrix'} ) {
       }
     }
   }
+  die "ERROR: Could not find matrix ($options{'matrix'})!\n" if ( $resolvedMatrix eq "" );
 }else{
   if ( $engine eq "rmblast" ) {
     $resolvedMatrix = "$FindBin::RealBin/../Matrices/ncbi/nt/comparison.matrix";
@@ -356,19 +405,33 @@ if ( $options{'matrix'} ) {
     $resolvedMatrix = "$FindBin::RealBin/../Matrices/crossmatch/comparison.matrix";
   }
 }
-if ( $resolvedMatrix eq "" ) {
-  print "ERROR: Could not resolve matrix!\n";
+if ( $resolvedMatrix ne "" ) {
+  $sEngineObj->setMatrix( $resolvedMatrix );
 }
-$sEngineObj->setMatrix( $resolvedMatrix );
 
 if ( $engine eq "rmblast" ) {
   if ( ! -s "$databaseFile.nhr" ) {
-    system(   "makeblastdb -out $databaseFile "
+    system(   "$engine_dir/makeblastdb -out $databaseFile "
             . "-parse_seqids -dbtype nucl -in $databaseFile > "
-            . "makeblastdb.log 2>&1" );
+            . "makedb.log 2>&1" );
   }
-  #system("cat makeblastdb.log");
-  #unlink("makeblastdb.log");
+}elsif ( $engine eq "nhmmer" ) {
+  my $dbFile = $databaseFile;
+  if ( $options{'fmindex'} ) {
+     if ( ! -s "$databaseFile.fm" ) {
+       system("$engine_dir/makehmmerdb $databaseFile $databaseFile.fm > makedb.log 2>&1");
+     }
+     $dbFile = "$databaseFile.fm";
+  }
+  # If query is a fasta file, treat it as a singlemx search
+  if ( $queryFile =~ /.*\.(fa|fna|fasta)/i ) { 
+    my $params = " --singlemx ";
+    $params .= " --mxfile $resolvedMatrix " if ( $resolvedMatrix );
+    # TODO: Add gap probabilities
+    $params .= " --cpu $options{'threads'}" if ( $options{'threads'} );
+    $params .= " $queryFile $dbFile";
+    $sEngineObj->setOverrideParameters($params);
+  }
 }
 
 unless ( $options{'quiet'} ) {
@@ -376,20 +439,63 @@ unless ( $options{'quiet'} ) {
   print "# $engine [$engine_ver]\n";
   print "#\n";
   my $cmdLine = $sEngineObj->getParameters();
-  $cmdLine =~ s/(.{50}[^\/\s]+)/$1\n\#                /g;
-  print "#  command_line: $cmdLine\n";
+  $cmdLine =~ s/(.{50}[^\/\s]+)/$1\n\#                  /g;
+  if ( $engine eq "rmblast" ) {
+    print "#  command_line  : export BLASTMAT=" . dirname($resolvedMatrix) . ";\n";
+    print "#                $cmdLine\n";
+    print "#  copy_paste    : export BLASTMAT=" . dirname($resolvedMatrix) . "; " . 
+          $sEngineObj->getParameters() . "\n"; #if ( $options{'verbose'} );
+  }else {
+    print "#  command_line  : $cmdLine\n";
+    print "#  copy_paste    : " . $sEngineObj->getParameters() . "\n";
+    #  if ( $options{'verbose'} );
+  }
   print "#\n";
 }
 
+my $start = time;
 my ( $status, $resultCollection ) = $sEngineObj->search();
+my $end = time;
+unless( $options{'quiet'} ) {
+  print "#  search_time(s): " . ( $end - $start + 1 ) . "\n";
+  print "#  alignments    : " . $resultCollection->size() . "\n";
+  print "#\n";
+}
+
+# TODO: add an option to cleanup the databases unless iterative searches are planned
 
 if ( $status )
 {
   print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
 } else
 {
+  my $matrixObj;
+  if ( $engine eq "nhmmer" && $resolvedMatrix ne "" ) {
+    $matrixObj = Matrix->new( fileName => $resolvedMatrix );
+  }
   for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
     my $resultRef = $resultCollection->get( $k );
+
+    #my ( $div, $transi, $transv, $wellCharBases, $numCpGs ) =
+    #    $resultRef->calcKimuraDivergence( divCpGMod => 1 );
+    #
+    if ( $engine eq "nhmmer" && $matrixObj && 1 ) {
+   
+      my ( $score, $divergence, $cpgsites, $percIns, $percDel,
+           $positionScores, $xdrop_fragments, $well_characterized_bases,
+           $transisitions, $transversions ) 
+                = $resultRef->rescoreAlignment( scoreMatrix => $matrixObj,
+                                gapOpenPenalty => -25,
+                                insGapExtensionPenalty => -5,
+                                delGapExtensionPenalty => -5,
+                                complexityAdjust => 1 );
+      if ( $options{'minscore'} ) {
+        next if ( $score < $options{'minscore'} );
+      }
+      $resultRef->setScore($score);
+    
+    }
+    
     if ( $options{'alignments'} ) {
       print "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
     }else {
@@ -398,7 +504,7 @@ if ( $status )
   }
 }
 
-#
+
 ##### NOT PORTED BELOW HERE ####
 #die "$USAGE\n$ARGV[0] is not a readable file\n" unless -s $ARGV[0] || $opt_zip;
 #my $fastafile1 = shift if $ARGV[0];
