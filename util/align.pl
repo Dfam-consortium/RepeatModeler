@@ -317,6 +317,9 @@ if ( $engine eq "crossmatch" )
   }else {
     $engine_dir = $HM_DIR;
     $engine_prg = "$HM_DIR/nhmmer";
+# TESTING
+    $engine_dir = "/u1/home/rhubley/projects/nhmmer/hmmer-3.3.2/src";
+    $engine_prg = "$engine_dir/nhmmer";
   }
 
   $sEngineObj = HMMERSearchEngine->new( pathToEngine => $engine_prg );
