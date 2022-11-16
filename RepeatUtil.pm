@@ -1254,7 +1254,7 @@ sub openAsMultAln{
             # where the orientation appears to change if
             # the alignment ends on a block with only
             # "-" characters.
-            #if ( $start == $rec->[0] && $orient eq $rec->[2] ){ 
+            #if ( $start == $rec->[0] && $orient eq $rec->[2] )
             if ( $start == $rec->[0] ){ 
               $lineID = $rec->[1];
             }
@@ -1342,29 +1342,12 @@ sub openAsMultAln{
       my $end = $seqHash{$lineID}->{'end'};
       my $orient = $seqHash{$lineID}->{'orient'};
       my $len = $end - $start + 1;
+      # We now honor edge gaps if present
       #$seq =~ s/[-\s]/\./g;
       $seq =~ s/\-/\./g;
-      
-#if ( $id eq "fullTreeAnc238refChr9443:349-3091_R" ) { 
-#  print "$id: >$seq< $start $end $orient\n";
-#}
-      #if ( $id =~ /(\S+)\:(\d+)-(\d+)/ ) {
-      #  my $newStart;
-      #  my $newEnd;
-      #  my $newID;
-      #  if ( $2 > $3 ) {
-      #    # Reverse
-      #    $newStart = $2 - $start + 1;
-      #    $newEnd = $newStart - ( $len );
-      #  }else {
-      #    $newStart = $2 + $start - 1;
-      #    $newEnd = $newStart + ( $len );
-      #  }
-      #  $newID = $1 . ":" . $newStart . "-" . $newEnd;
-      #  $id = $newID;
-      #}
       push @seqs, [ $id, $seq, $start, $end ];
     }
+    # Honoring edge gaps is for Linup format only ( for now and not optional )
     $mAlign = MultAln->new( reference => $refSeq, sequences => \@seqs, keepEdgeGaps => 1 );
   }else {
     die "openAsMultAln(): Support for $fileType is not complete yet ";

@@ -409,7 +409,6 @@ if ( $options{'quick'} ) {
   $rsSampleSize               = 40000000; 
   $fragmentSize               = 40000;       
   $reconSampleSizeStart       = 3000000;   
-  $reconSampleSizeStart       = 1000000;   
   $genomeSampleSizeMax        = 243000000;   
   $genomeSampleSizeMultiplier = 3; 
   $numAdditionalRounds = 0;                  

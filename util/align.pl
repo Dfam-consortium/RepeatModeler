@@ -86,22 +86,22 @@ or
                       fmindex acceleration.
 
   Xmatch.pl options not yet supported:
-  -original,-o      keep the original cross_match mismatch level (mismatches/length_of_query) 
-                    By default align.pl recalculates the mismatch level as mismatches/aligned_bases
-  -quiet,-q         STDERR of cross_match gets redirected to a file \"tempxmatch.stderr\" 
-
-  -nab,-n           Only prints the summary lines and adds a \"+\" for forward match to give constant nr of columns
-  -zip <xmoutput>   Skip the cross_match part and take the indicated cross_match output or Xmatch.pl .rawxmout output
-                    (e.g. to increase the minimum score displayed (-score) or to add or skip -perbasescore, -cg, or -nab)
-  
-     # Not reliable with -blast option, until rmblast.pl has a -raw option: 
-  -perbasescore,-p  Adds a first column reporting the raw score per base of the query 
-                   NOTE1: this forces the -raw option, so only use this on established matches, and the -cg option
-                   NOTE2:  unless a -matrix option is used, this mode will use ~asmit/Matrices/symmetricNscores0matrix 
-     #  For now only works within a -p run.
-  -cg              Only works and effects a -p run right for now. Subtracts from mismatch level and adjusts up scores for
-                   one transition/ambiguous mismatch per CG in either consensus and treats TG/CA pairs as one transition.
-                   Forces -a (as alignments are needed for the adjustment)
+  #-original,-o      keep the original cross_match mismatch level (mismatches/length_of_query) 
+  #                  By default align.pl recalculates the mismatch level as mismatches/aligned_bases
+  #-quiet,-q         STDERR of cross_match gets redirected to a file \"tempxmatch.stderr\" 
+  #
+  #-nab,-n           Only prints the summary lines and adds a \"+\" for forward match to give constant nr of columns
+  #-zip <xmoutput>   Skip the cross_match part and take the indicated cross_match output or Xmatch.pl .rawxmout output
+  #                  (e.g. to increase the minimum score displayed (-score) or to add or skip -perbasescore, -cg, or -nab)
+  #
+  #   # Not reliable with -blast option, until rmblast.pl has a -raw option: 
+  #-perbasescore,-p  Adds a first column reporting the raw score per base of the query 
+  #                 NOTE1: this forces the -raw option, so only use this on established matches, and the -cg option
+  #                 NOTE2:  unless a -matrix option is used, this mode will use ~asmit/Matrices/symmetricNscores0matrix 
+  #   #  For now only works within a -p run.
+  #-cg              Only works and effects a -p run right for now. Subtracts from mismatch level and adjusts up scores for
+  #                 one transition/ambiguous mismatch per CG in either consensus and treats TG/CA pairs as one transition.
+  #                 Forces -a (as alignments are needed for the adjustment)
 
 =head1 DESCRIPTION
 
@@ -148,8 +148,8 @@ use File::Basename;
 use File::Temp qw/ tempfile tempdir /;
 #
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
-#use lib "/home/rhubley/projects/RepeatMasker";
+#use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
+use lib "/home/rhubley/projects/RepeatMasker";
 use NCBIBlastSearchEngine;
 use CrossmatchSearchEngine;
 use HMMERSearchEngine;
@@ -318,7 +318,8 @@ if ( $engine eq "crossmatch" )
     $engine_dir = $HM_DIR;
     $engine_prg = "$HM_DIR/nhmmer";
 # TESTING
-    $engine_dir = "/u1/home/rhubley/projects/nhmmer/hmmer-3.3.2/src";
+    #$engine_dir = "/u1/home/rhubley/projects/nhmmer/hmmer-3.3.2/src";
+    $engine_dir = "/u1/home/rhubley/projects/nhmmer/hmmer-git/src";
     $engine_prg = "$engine_dir/nhmmer";
   }
 
@@ -432,6 +433,10 @@ if ( $engine eq "rmblast" ) {
     $params .= " --mxfile $resolvedMatrix " if ( $resolvedMatrix );
     # TODO: Add gap probabilities
     $params .= " --cpu $options{'threads'}" if ( $options{'threads'} );
+    # TESTING:
+    #$params .= " --popen 0.03125 --pextend 0.75 "; # defaults
+    # Seems to do better
+    $params .= " --popen 0.021 --pextend 0.52 "; # defaults
     $params .= " $queryFile $dbFile";
     $sEngineObj->setOverrideParameters($params);
   }
