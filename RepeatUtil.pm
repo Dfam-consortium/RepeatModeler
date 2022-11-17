@@ -289,7 +289,7 @@ sub ncbiMaskDatabaseMT {
                ($_[ 1 ]->getSubjEnd() <=> $_[ 0 ]->getSubjEnd());
                      });
  
-      print "    -- Collecting " . $resultCollection->size() . " ranges...\n"
+      print "   - Collecting " . $resultCollection->size() . " ranges...\n"
           if ( $DEBUG );
       my %maskRanges = ();
       my $seqID;
