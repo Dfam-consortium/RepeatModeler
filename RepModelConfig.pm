@@ -74,7 +74,7 @@ BEGIN {
                                                         ],
                                  'param_type' => 'directory',
                                  'required' => 0,
-                                 'value' => '/usr/local/genometools-1.5.10/bin'
+                                 'value' => '/usr/local/genometools-1.5.10'
                                },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
@@ -96,7 +96,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/mafft/bin'
+                           'value' => '/usr/local/mafft-7.471'
                          },
           'NINJA_DIR' => {
                            'command_line_override' => 'ninja_dir',
@@ -107,7 +107,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/NINJA-0.95-cluster_only/NINJA'
+                           'value' => '/usr/local/NINJA'
                          },
           'RECON_DIR' => {
                            'command_line_override' => 'recon_dir',
@@ -119,7 +119,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 1,
-                           'value' => '/usr/local/RECON'
+                           'value' => '/usr/local/RECON-1.08'
                          },
           'REPEATMASKER_DIR' => {
                                   'command_line_override' => 'repeatmasker_dir',
@@ -130,7 +130,7 @@ BEGIN {
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/u1/local/RepeatMasker-4.1.4'
+                                  'value' => '/usr/local/RepeatMasker-4.1.4'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
@@ -161,28 +161,29 @@ BEGIN {
                             'value' => '/usr/local/RepeatScout-1.0.6'
                           },
           'TRF_DIR' => {
-                          'command_line_override' => 'trf_dir',
-                          'description' => 'The full path to TRF program.  TRF must be named \"trf\". ( 4.0.9 or higher )',
-                          'environment_override' => 'TRF_DIR',
-                          'param_type' => 'directory',
-                          'required' => 1,
-                          'expected_binaries' => [ 'trf' ],
-                          'value' => '/usr/local/bin'
-                        },
+                         'command_line_override' => 'trf_dir',
+                         'description' => 'The full path to TRF program.  TRF must be named "trf". ( 4.0.9 or higher )',
+                         'environment_override' => 'TRF_DIR',
+                         'expected_binaries' => [
+                                                  'trf'
+                                                ],
+                         'param_type' => 'directory',
+                         'required' => 1,
+                         'value' => '/usr/local/bin'
+                       },
           'UCSCTOOLS_DIR' => {
-                          'command_line_override' => 'ucsctools_dir',
-                          'description' => 'The path to the installation directory of the UCSC TwoBit Tools (twoBitToFa, faToTwoBit, twoBitInfo etc).',
-                          'environment_override' => 'UCSCTOOLS_PRGM',
-                          'param_type' => 'directory',
-                          'required' => 1,
-                          'expected_binaries' => [
-                                                     'twoBitToFa',
-                                                     'faToTwoBit',
-                                                     'twoBitInfo'
-                                                   ],
-                          'value' => '/usr/local/ucscTools'
-                        }
- 
+                               'command_line_override' => 'ucsctools_dir',
+                               'description' => 'The path to the installation directory of the UCSC TwoBit Tools (twoBitToFa, faToTwoBit, twoBitInfo etc).',
+                               'environment_override' => 'UCSCTOOLS_PRGM',
+                               'expected_binaries' => [
+                                                        'twoBitToFa',
+                                                        'faToTwoBit',
+                                                        'twoBitInfo'
+                                                      ],
+                               'param_type' => 'directory',
+                               'required' => 1,
+                               'value' => '/usr/local/ucscTools'
+                             }
         };
 
   ## EDCFG --do-not-remove--

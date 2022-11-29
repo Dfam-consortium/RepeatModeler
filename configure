@@ -233,6 +233,7 @@ unless( $options{'a'} ) {
 }
 
 
+my $goodParam;
 ## RepeatMasker
 if ( !$options{'repeatmasker_dir'} ) {
   $goodParam = 1;
@@ -271,12 +272,8 @@ if ( !$options{'ucsctools_dir'} ) {
   RepModelConfig::promptForParam( 'UCSCTOOLS_DIR' );
 }
 
-
-##
-## Search Engine Configuration
-##
 if ( !$options{'rmblast_dir'}  ) {
-  searchEngineMenu();
+  RepModelConfig::promptForParam( 'RMBLAST_DIR' );
 }
 
 my $engineVersion = RepModelConfig::getDependencyVersion("RMBLAST_DIR");
@@ -288,6 +285,7 @@ if ( $engineVersion =~ /(\d+)\.(\d+)\.(\d+).*/ ) {
   }
 }
 
+my $answer;
 unless ( $options{'a'} ) {
   ##
   ## LTRPipeline Configuration
@@ -335,6 +333,7 @@ my @progFiles = (
                   "BuildDatabase",     "Refiner",
                   "RepeatClassifier",  "RepeatModeler",
                   "TRFMask",           "LTRPipeline",
+                  "util/align.pl",
                   "util/Linup",
                   "util/CntSubst",
                   "util/alignAndCallConsensus.pl",
