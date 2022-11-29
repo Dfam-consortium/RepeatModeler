@@ -28,7 +28,26 @@ Refiner - Generate and refine a seed alignment given a set of family instances
 
   Refiner [-options] <family fasta sequences>
 
+  -threads #     : The maximum number of threads the program may use.
+
+  NOTE: The fasta file should contain only sequence identifiers and sequences.
+        The fasta description field is currently reserved for RepeatModeler
+        use at this time.
+
 =head1 DESCRIPTION
+
+This tool was developed to overcome the limitation many multiple sequence
+aligners when supplied with highly diverged and fragmented sequences. Given
+a set of related instances of TE family this tool:
+
+  - Generates an all-vs-all pairwise alignment to identify the sequence
+    with the minimal distance (best score) to all other sequences.
+
+  - A transitive multiple sequence alignment is generated from the pairwise
+    alignments to this minimally distant copy and a new consensus is drawn.
+ 
+  - If the consensus has changed, the new consensus is realigned to the 
+    instances and the process is repeated until the consensus stabilizes.
 
 The options are:
 
@@ -38,13 +57,7 @@ The options are:
 
 Detailed help
 
-=item -foo
-
-bar
-
 =back
-
-=head1 CONFIGURATION OVERRIDES
 
 =head1 SEE ALSO
 
@@ -56,7 +69,7 @@ RepeatModeler, RepeatMasker
 
 =head1 COPYRIGHT
 
- Copyright 2005-2019 Institute for Systems Biology
+ Copyright 2005-2022 Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -122,10 +135,13 @@ if ( $ARGV[ 0 ] && $ARGV[ 0 ] eq '-v' ) {
 #   -t=s: String parameters
 #   -t=i: Number paramters
 #
-my @opts = (
-             '-help',     '-noTmp',    '-debug', '-quiet',
-             '-engine=s', '-giToID=s', '-name=s'
-);
+my @opts = ( '-help',     
+             '-debug', 
+             '-noTmp',  
+             '-quiet',
+             '-giToID=s', 
+             '-name=s', 
+             '-threads=i' );
 
 # Add configuration parameters as additional command-line options
 push @opts, RepModelConfig::getCommandLineOptions();
@@ -177,9 +193,6 @@ RepModelConfig::resolveConfiguration( \%options );
 my $config           = $RepModelConfig::configuration;
 my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
 my $RMBLASTN_PRGM    = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
-my $XDFORMAT_PRGM    = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
-my $WUBLASTN_PRGM    = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
-my $WUBLASTP_PRGM    = $config->{'ABBLAST_DIR'}->{'value'} . "/blastp";
 
 # Print the internal POD documentation if something is missing
 if ( $#ARGV == -1 || $options{'help'} ) {
@@ -215,39 +228,27 @@ if ( $options{'giToID'} ) {
 #
 my $srchEngAllVsAll;
 my $srchEngOneVsAll;
-my $engine = "rmblast";
-$engine = $options{'engine'} if ( $options{'engine'} );
-if ( $engine ) {
-  if ( $engine =~ /wublast|abblast/i ) {
-    $engine          = "abblast";
-    $srchEngAllVsAll =
-        WUBlastSearchEngine->new( pathToEngine => $WUBLASTN_PRGM );
-    $srchEngOneVsAll =
-        WUBlastSearchEngine->new( pathToEngine => $WUBLASTP_PRGM );
-    if ( not defined $srchEngAllVsAll ) {
-      die "Refiner Failed: Cannot execute $WUBLASTN_PRGM please make "
-          . "sure you have setup RepeatModeler to use AB/WUBlast "
-          . "by running the configure script.\n";
-    }
-  }
-  elsif ( $engine =~ /rmblast|ncbi/i ) {
-    $engine          = "ncbi";
-    $srchEngAllVsAll =
-        NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
-    $srchEngOneVsAll =
-        NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
-    if ( not defined $srchEngAllVsAll ) {
-      die "Refiner Failed: Cannot execute $RMBLASTN_PRGM please make "
-          . "sure you have setup RepeatModeler to use NCBI (RMBlast) by "
-          . "running the configure script.\n";
-    }
-  }
-  else {
-    print "I don't recognize the search engine type:  $engine\n";
-    exec "pod2text $0";
-    die;
+$srchEngAllVsAll =
+    NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
+$srchEngOneVsAll =
+    NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
+if ( not defined $srchEngAllVsAll ) {
+  die "Refiner Failed: Cannot execute $RMBLASTN_PRGM please make "
+    . "sure you have setup RepeatModeler to use RMBlast by "
+    . "running the configure script.\n";
+}
+
+my $rmblast_version = $srchEngOneVsAll->getVersion();
+my $engineHasQueryThreading = 0;
+if ( $rmblast_version =~ /(\d+)\.(\d+)\.(\d+)\+/ ) {
+  my $majorVer = $1;
+  my $minorVer = $2;
+  my $revision = $3;
+  if ( $majorVer > 2 || ($majorVer == 2 && $minorVer >= 13 )) {
+    $engineHasQueryThreading = 1;
   }
 }
+
 
 #
 # Parse filenames
@@ -302,10 +303,11 @@ foreach my $file ( @ARGV ) {
       next;
     }
     s/[\n\r\s]+//g;
-    $firstSeq .= $_;
+    $firstSeq .= uc($_);
   }
   close IN;
 
+  # Name the final consensus sequence
   my $id = "family";
   $id = $options{'name'} if ( $options{'name'} );
 
@@ -314,7 +316,7 @@ foreach my $file ( @ARGV ) {
   my $avgKDiv;
   if ( $count > 1 ) {
     ( $cons, $maSize, $avgKDiv ) =
-        &buildConsensus( "$FindBin::RealBin/Matrices", $XDFORMAT_PRGM,
+        &buildConsensus( "$FindBin::RealBin/Matrices", 
                          $srchEngAllVsAll, $srchEngOneVsAll, $file, $tmpDir );
   }
   else {
@@ -328,7 +330,6 @@ foreach my $file ( @ARGV ) {
 
     adjustIdentifiers($malign, $db);
 
-#$malign->toSTK( filename => "$file.refiner.stk", id => $id, includeTemplate => 1, nuclRF => 1 );
     $malign->toSTK( filename => "$file.refiner.stk", id => $id );
   }
 
@@ -349,7 +350,6 @@ foreach my $file ( @ARGV ) {
 
 sub buildConsensus {
   my $matrixDir       = shift;
-  my $xdformatPrgm    = shift;
   my $srchEngAllVsAll = shift();
   my $srchEngOneVsAll = shift();
   my $pathToFastaFile = shift();
@@ -375,48 +375,39 @@ sub buildConsensus {
     print " -------------------ROUND 1 ------------------ \n";
   }
 
-  ## Build database of input file
-  if ( $engine eq "abblast" ) {
+  # MAKEBLASTDB the database
+  system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $pathToFastaFile "
+          . "-dbtype nucl -in $pathToFastaFile >> "
+          . "$wrkDir/makeblastdb.log 2>&1" );
 
-    # Build wublast databases for fasta file.
-    system(
-           "$xdformatPrgm -n $pathToFastaFile >> " . "$wrkDir/setdb.log 2>&1" );
-    $srchEngAllVsAll->setMatrix( "$matrixDir/wublast/nt/comparison.matrix" );
-    $srchEngOneVsAll->setMatrix( "$matrixDir/wublast/aa/comparison.matrix" );
-  }
-  else {
-
-    # MAKEBLASTDB the database
-    #. "-parse_seqids -dbtype nucl -in $pathToFastaFile >> "
-    system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $pathToFastaFile "
-            . "-dbtype nucl -in $pathToFastaFile >> "
-            . "$wrkDir/makeblastdb.log 2>&1" );
-    $srchEngAllVsAll->setMatrix( "$matrixDir/ncbi/nt/comparison.matrix" );
-    $srchEngOneVsAll->setMatrix( "$matrixDir/ncbi/nt/comparison.matrix" );
-  }
-
-  ## Setup the general search parameters
+  ## Setup the ALL vs ALL parameters 
+  $srchEngAllVsAll->setMatrix( "$matrixDir/ncbi/nt/comparison.matrix" );
   $srchEngAllVsAll->setMinScore( 150 );
   $srchEngAllVsAll->setGenerateAlignments( 1 );
   $srchEngAllVsAll->setGapInit( -25 );
   $srchEngAllVsAll->setInsGapExt( -5 );
   $srchEngAllVsAll->setDelGapExt( -5 );
   $srchEngAllVsAll->setMinMatch( 7 );
+  $srchEngAllVsAll->setCores( $options{'threads'} ? $options{'threads'} : undef );
   #$srchEngAllVsAll->setBandwidth( -50 );
   $srchEngAllVsAll->setTempDir( dirname( $pathToFastaFile ) );
   $srchEngAllVsAll->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
 
+  ## Setup the ONE vs ALL parameters 
+  $srchEngOneVsAll->setMatrix( "$matrixDir/ncbi/nt/comparison.matrix" );
   $srchEngOneVsAll->setMinScore( 150 );
   $srchEngOneVsAll->setGenerateAlignments( 1 );
   $srchEngOneVsAll->setGapInit( -25 );
   $srchEngOneVsAll->setInsGapExt( -5 );
   $srchEngOneVsAll->setDelGapExt( -5 );
   $srchEngOneVsAll->setMinMatch( 7 );
+  $srchEngOneVsAll->setCores( $options{'threads'} ? $options{'threads'} : undef);
   $srchEngOneVsAll->setTempDir( dirname( $pathToFastaFile ) );
   $srchEngOneVsAll->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
   $srchEngOneVsAll->setMaskLevel( 80 );
 
-  # Search family file against itself.
+
+  # 1. Search all instances against each other
   $srchEngAllVsAll->setQuery( $pathToFastaFile );
   $srchEngAllVsAll->setSubject( $pathToFastaFile );
 
@@ -433,18 +424,10 @@ sub buildConsensus {
   print "Search complete\n" if ( $DEBUG );
 
   ## Cleanup after run
-  if ( $engine eq "abblast" ) {
-
-    # Remove wublast databases
-    system( "rm $pathToFastaFile.xn*" ) unless ( $DEBUG );
-  }
-  else {
-
-    # Remove ncbi databases
-    system(   "rm $pathToFastaFile.nin "
-            . "$pathToFastaFile.nhr $pathToFastaFile.nsq " )
-        unless ( $DEBUG );
-  }
+  # Remove ncbi databases
+  system(   "rm $pathToFastaFile.nin "
+          . "$pathToFastaFile.nhr $pathToFastaFile.nsq " )
+      unless ( $DEBUG );
 
   print $CLASS
       . "::buildConsensus(): Returned "
@@ -464,8 +447,7 @@ sub buildConsensus {
     open $MOUT, ">$wrkDir/$consName-cons.html";
 
     my $refID =
-        &findHighestScoringAlignmentSet(
-                                        searchCollection => $familyCollection );
+        &findHighestScoringAlignmentSet( searchCollection => $familyCollection );
 
     ##
     ## Prototype
@@ -606,21 +588,19 @@ sub buildConsensus {
         $leftMostSequence  = "";
         $rightMostSequence = "";
 
-        if ( $engine eq "abblast" ) {
-          system(   "$xdformatPrgm -p $wrkDir/$consName-cons-$round.fa >> "
-                  . "$wrkDir/setdb.log 2>&1" );
-        }
-        else {
-          # MAKEBLASTDB the database
-          #. "-parse_seqids -dbtype nucl -in "
-          system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out "
-                  . "$wrkDir/$consName-cons-$round.fa "
-                  . "-dbtype nucl -in "
-                  . "$wrkDir/$consName-cons-$round.fa >> "
-                  . "$wrkDir/makeblastdb.log 2>&1" );
-        }
+        # MAKEBLASTDB the database
+        #. "-parse_seqids -dbtype nucl -in "
+        system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out "
+                . "$wrkDir/$consName-cons-$round.fa "
+                . "-dbtype nucl -in "
+                . "$wrkDir/$consName-cons-$round.fa >> "
+                . "$wrkDir/makeblastdb.log 2>&1" );
 
         # Setup the search parameters
+        # TODO: Get version of RMBLAST if 2.13+ use mt_mode=1
+        if ( $engineHasQueryThreading ) {
+          $srchEngOneVsAll->setThreadByQuery(1);
+        }
         $srchEngOneVsAll->setSubject( "$wrkDir/$consName-cons-$round.fa" );
         $srchEngOneVsAll->setQuery( $pathToFastaFile );
 
@@ -633,19 +613,12 @@ sub buildConsensus {
             if ( $DEBUG );
         ( $runStat, $familyCollection ) = $srchEngOneVsAll->search();
 
-        if ( $engine eq "abblast" ) {
 
-          # Remove the wublast databases
-          system( "rm $wrkDir/$consName-cons-$round.fa.xp*" ) unless ( $DEBUG );
-        }
-        else {
-
-          # Remove the ncbi databases
-          system( "rm $wrkDir/$consName-cons-$round.fa.n*" ) unless ( $DEBUG );
-        }
+        # Remove the ncbi databases
+        system( "rm $wrkDir/$consName-cons-$round.fa.n*" ) unless ( $DEBUG );
 
         print $CLASS
-            . "::buildConsensus(): AB/RM Blast returned "
+            . "::buildConsensus(): RMBlast returned "
             . $familyCollection->size()
             . " hits\n"
             if ( $DEBUG );
@@ -795,8 +768,7 @@ sub buildConsensus {
             . " ( orig = $round1ConsLen )\n";
         print "  - Avg Kimura Divergence = "
             . sprintf( "%0.2f", $avgKDiv ) . "\n";
-        print
-"  - Unaligned sequences = $numUnAlignSeqs ( orig = $round1NumUnAlignSeqs )\n";
+        print "  - Unaligned sequences = $numUnAlignSeqs ( orig = $round1NumUnAlignSeqs )\n";
       }
     }
     else {

@@ -54,17 +54,6 @@ BEGIN {
 ##                                                                      ##
   ## STCFG --do-not-remove--
   $configuration = {
-          'ABBLAST_DIR' => {
-                             'command_line_override' => 'abblast_dir',
-                             'description' => 'The path to the installation of the ABBLAST sequence alignment program.',
-                             'environment_override' => 'ABBLAST_DIR',
-                             'expected_binaries' => [
-                                                      'blastp'
-                                                    ],
-                             'param_type' => 'directory',
-                             'required' => 0,
-                             'value' => '/usr/local/abblast'
-                           },
           'CDHIT_DIR' => {
                            'command_line_override' => 'cdhit_dir',
                            'description' => 'The path to the installation of the CD-Hit sequence clustering package.',
@@ -85,7 +74,7 @@ BEGIN {
                                                         ],
                                  'param_type' => 'directory',
                                  'required' => 0,
-                                 'value' => '/usr/local/genometools-1.5.10/bin'
+                                 'value' => '/usr/local/genometools-1.5.10'
                                },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
@@ -107,7 +96,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/mafft/bin'
+                           'value' => '/usr/local/mafft-7.471'
                          },
           'NINJA_DIR' => {
                            'command_line_override' => 'ninja_dir',
@@ -118,7 +107,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/NINJA-0.95-cluster_only/NINJA'
+                           'value' => '/usr/local/NINJA'
                          },
           'RECON_DIR' => {
                            'command_line_override' => 'recon_dir',
@@ -130,22 +119,22 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 1,
-                           'value' => '/usr/local/RECON'
+                           'value' => '/usr/local/RECON-1.08'
                          },
           'REPEATMASKER_DIR' => {
                                   'command_line_override' => 'repeatmasker_dir',
-                                  'description' => 'The path to the installation of RepeatMasker.',
+                                  'description' => 'The path to the installation of RepeatMasker (RM 4.1.4 or higher)',
                                   'environment_override' => 'REPEATMASKER_DIR',
                                   'expected_binaries' => [
                                                            'RepeatMasker'
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/usr/local/RepeatMasker'
+                                  'value' => '/usr/local/RepeatMasker-4.1.4'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
-                             'description' => 'The path to the installation of the RMBLAST sequence alignment program.',
+                             'description' => 'The path to the installation of the RMBLAST (2.13.0 or higher)',
                              'environment_override' => 'RMBLAST_DIR',
                              'expected_binaries' => [
                                                       'rmblastn',
@@ -157,7 +146,7 @@ BEGIN {
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast-2.10.0/bin'
+                             'value' => '/usr/local/rmblast-2.13.0/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
@@ -172,28 +161,29 @@ BEGIN {
                             'value' => '/usr/local/RepeatScout-1.0.6'
                           },
           'TRF_DIR' => {
-                          'command_line_override' => 'trf_dir',
-                          'description' => 'The full path to TRF program.  TRF must be named \"trf\". ( 4.0.9 or higher )',
-                          'environment_override' => 'TRF_DIR',
-                          'param_type' => 'directory',
-                          'required' => 1,
-                          'expected_binaries' => [ 'trf' ],
-                          'value' => '/usr/local/bin'
-                        },
+                         'command_line_override' => 'trf_dir',
+                         'description' => 'The full path to TRF program.  TRF must be named "trf". ( 4.0.9 or higher )',
+                         'environment_override' => 'TRF_DIR',
+                         'expected_binaries' => [
+                                                  'trf'
+                                                ],
+                         'param_type' => 'directory',
+                         'required' => 1,
+                         'value' => '/usr/local/bin'
+                       },
           'UCSCTOOLS_DIR' => {
-                          'command_line_override' => 'ucsctools_dir',
-                          'description' => 'The path to the installation directory of the UCSC TwoBit Tools (twoBitToFa, faToTwoBit, twoBitInfo etc).',
-                          'environment_override' => 'UCSCTOOLS_PRGM',
-                          'param_type' => 'directory',
-                          'required' => 1,
-                          'expected_binaries' => [
-                                                     'twoBitToFa',
-                                                     'faToTwoBit',
-                                                     'twoBitInfo'
-                                                   ],
-                          'value' => '/usr/local/ucscTools'
-                        }
- 
+                               'command_line_override' => 'ucsctools_dir',
+                               'description' => 'The path to the installation directory of the UCSC TwoBit Tools (twoBitToFa, faToTwoBit, twoBitInfo etc).',
+                               'environment_override' => 'UCSCTOOLS_PRGM',
+                               'expected_binaries' => [
+                                                        'twoBitToFa',
+                                                        'faToTwoBit',
+                                                        'twoBitInfo'
+                                                      ],
+                               'param_type' => 'directory',
+                               'required' => 1,
+                               'value' => '/usr/local/ucscTools'
+                             }
         };
 
   ## EDCFG --do-not-remove--
@@ -208,7 +198,7 @@ BEGIN {
   #
   # Current version of the software
   #
-  $VERSION = "2.0.3";
+  $VERSION = "2.0.4";
 
   #
   # Set this flag to default to debug mode for the entire package
@@ -358,7 +348,6 @@ BEGIN {
 
     my $value = $configuration->{$param}->{'value'};
     $value = $new_setting if ( defined $new_setting );
-
 
     # Always assume the "good" in parameters...
     my $validParam = 1;
@@ -563,12 +552,6 @@ BEGIN {
       $tmpStr = `strings $value/twoBitInfo | grep "kent source version"`;
       $version = "unknown";
       $version = $1 if ( $tmpStr =~ /kent source version\s+(\d+)/ );
-    }elsif ( $param eq "ABBLAST_DIR" ) {
-      #blastp -blah
-      #BLASTP 3.0SE-AB [2009-10-30] [linux26-x64-I32LPF64 2009-10-30T17:06:09]
-      $tmpStr = `$value/blastp -blah 2>&1`;
-      $tmpStr =~ /BLASTP\s+(\d+\.\d+\S+)/;
-      $version = $1;
     }elsif ( $param eq "CDHIT_DIR" ) {
       #cd-hit -blah
       # 	====== CD-HIT version 4.8.1 (built on Mar 21 2019) ======

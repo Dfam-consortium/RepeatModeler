@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl
 ###---------------------------------------------------------------------------##
 ###  File:
 ###      @(#) ClusterPartialMatchingSubs.pl
@@ -152,16 +152,14 @@ Arian Smit <asmit@systemsbiology.org>
 # Module Dependence
 #
 use strict;
-use Getopt::Long;
 use FindBin;
-use lib $FindBin::Bin;
-use lib "$FindBin::Bin/../";
+use lib $FindBin::RealBin;
+use lib "$FindBin::RealBin/../";
 use Data::Dumper;
 use Getopt::Long;
 use File::Spec;
-use Storable qw(nstore retrieve);
-use File::Temp qw/ tempfile tempdir /;
 use File::Basename;
+use File::Temp qw/ tempfile tempdir /;
 #
 use RepModelConfig;
 use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};

@@ -32,7 +32,7 @@ LTRPipeline - Run a structural LTR finder on the genome and polish the results
 
 =head1 SYNOPSIS
 
-  LTRPipeline [-version] [-pa #] <input_sequence.fa>
+  LTRPipeline [-version] [-threads #] <input_sequence.fa>
 
 =head1 DESCRIPTION
 
@@ -54,7 +54,7 @@ RepeatModeler
 
 =head1 COPYRIGHT
 
-Copyright 2019 Institute for Systems Biology
+Copyright 2019-2022 Institute for Systems Biology
 
 =head1 LICENSE
 
@@ -115,7 +115,7 @@ my @getopt_args = (
                     '-LTRSeqLimit=i',
                     '-giToID=s',
                     '-LTRMaxSeqLen=i',
-                    '-pa=i',
+                    '-threads=i',
 );
 
 # Add configuration parameters as additional command-line options
@@ -197,8 +197,8 @@ $ltrSeqLimit = $options{'LTRSeqLimit'} if ( $options{'LTRSeqLimit'} );
 #   Produce seed alignments and consensi
 #
 my $threads = 1;
-if ( $options{'pa'} ) {
-  $threads = $options{'pa'};
+if ( $options{'threads'} ) {
+  $threads = $options{'threads'};
 }
 
 unless ( -s $ARGV[ 0 ] ) {
@@ -861,7 +861,7 @@ sub runLtrHarvest {
 
 # There is a bug in 1.5.9 and 1.5.10 that appears to not generate the correct files
 # if -j is used.
-#$addlOpts = "-j $options{'pa'} " if ( $options{'pa'} );
+#$addlOpts = "-j $options{'threads'} " if ( $options{'threads'} );
   chdir( $tmpDir );
   my $cmd =
 "$binDir/gt $addlOpts suffixerator -db $full_seqFile -indexname esa_index -tis -suf -lcp -des -ssp -sds -dna > suffixerator.log 2>&1";

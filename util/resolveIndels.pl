@@ -213,6 +213,7 @@ if ( $options{'discrete_windows'} && ( $options{'window_min'} || $options{'windo
   print "\n\nOption discrete_windows cannot be combined with window_min/window_max\n\n";
   usage()
 }
+
 if ( ! ( $options{'window_min'} && $options{'window_max'} ) &&
      ( $options{'window_min'} || $options{'window_max'} ) ) {
   print "\n\nOptions window_min and window_max must be used together.\n\n";
@@ -262,6 +263,7 @@ if ( !-s $inputFile )
   print "\nCannot locate file!: $inputFile\n\n";
   usage();
 }
+
 my $inputFileDir = cwd;
 my($filename, $dirs, $suffix) = fileparse($inputFile);
 $inputFileDir = $dirs;
@@ -299,7 +301,7 @@ if ( $verbose ) {
   $gaplessCons =~ s/-//g;
   print STDERR "#  - MSA Consensus Length = " . length($gaplessCons) . "\n";
   print STDERR "# Min Sequences with Alternative Length (min_copy) = $copymin\n";
-  print STDERR "# Min Ratio of Altenative Length to Current Length Blocks (min_ratio) = $ratio\n";
+  print STDERR "# Min Ratio of Alternative Length to Current Length Blocks (min_ratio) = $ratio\n";
   print STDERR "# Aggregation Method = $aggregationMethod\n";
   print STDERR "# Min Gap Between Ranges = $minSep\n";
   print STDERR "#\n";
@@ -393,19 +395,13 @@ if ( $aggregationMethod eq "tile" ) {
       push @{$range}, $overlap;
     }
   }
-  #print "  Ratio   Range      Consensus\n";
-  #print "  -------------------------------\n";
-  #foreach my $range ( @tilingPath ) {
-  #    print "" . sprintf("%7.2f",$range->[0]) . " : " . $range->[1] . " - " . $range->[2] . ", " . $range->[3] . "\n";
-  #}
-  #print "\n";
-  # Alternate Report
-  print "  Sel? Ratio  MSA_Range  Cons_Range   Consensus\n"; 
-  print "  -------------------------------------------------------\n";
+  print "  Sel? Ratio  MSA_Range  Cons_Range Delta       Consensus\n"; 
+  print "  ---------------------------------------------------------------------\n";
   @sortedRanges = sort { $a->[1] <=> $b->[1] || $b->[2] <=> $a->[2] } @{$ranges};
   my $grpIdx = 0;
   my $minRange;
   my $maxRange;
+  my @colWidths;
   for ( my $i = 0; $i <= $#sortedRanges; $i++ ) {
     my $range = $sortedRanges[$i];
     
@@ -422,13 +418,19 @@ if ( $aggregationMethod eq "tile" ) {
       }
       my $consSegment = substr($cons,$minRange, $maxRange-$minRange+1);
       $consSegment =~ s/-//g;
-      print "Region Consensus:        " . 
-            $msaToConPos[$minRange] .  " - " . $msaToConPos[$maxRange] . ", " .
+      $colWidths[0] = length($minRange);
+      $colWidths[1] = length($maxRange);
+      $colWidths[2] = length($msaToConPos[$minRange]);
+      $colWidths[3] = length($msaToConPos[$maxRange]);
+      print "  Region Consensus:" . " "x($colWidths[0] + $colWidths[1]) . 
+            sprintf("%$colWidths[2]d",$msaToConPos[$minRange]) .  " - " . sprintf("%$colWidths[3]d",$msaToConPos[$maxRange]) . ", " .
+            "      ".
             "$consSegment\n";
     }
     print "  " . $range->[4] . " " . sprintf("%7.2f",$range->[0]) . 
-            " : " . $range->[1] . " - " . $range->[2] . 
-            ", " . $msaToConPos[$range->[1]] .  " - " . $msaToConPos[$range->[2]] . 
+            " : " . sprintf("%$colWidths[0]d",$range->[1]) . " - " . sprintf("%$colWidths[1]d",$range->[2]) . 
+            ", " . sprintf("%$colWidths[2]d",$msaToConPos[$range->[1]]) .  " - " . sprintf("%$colWidths[3]d",$msaToConPos[$range->[2]]) . 
+            ", " . sprintf("%+4d",length($range->[3]) - ($msaToConPos[$range->[2]]-$msaToConPos[$range->[1]]+1)) . 
             ", " . " "x($msaToConPos[$range->[1]] - $msaToConPos[$minRange]) . $range->[3] . "\n";
   }
   print "\n";
@@ -680,6 +682,8 @@ sub evalMSABlock{
   }
   #print "Best Length = $bestlength [ $bestcnt ]\n";
   #print "Second Best Length = $secondbestlength [ $secondbestcnt ]\n";
+  #print "Count with consensus length = $conscnt\n";
+  #print "Total rows " . ( $#{$subMSA}+1 ) . "\n";
   
   # Develop a crude consensus for each column
   my %col;
@@ -724,9 +728,10 @@ sub evalMSABlock{
   if ( $bestcnt >= $copymin && (!$conscnt || $bestcnt/$conscnt >= $adjustedratio)
        && ($ncount < 2 || $newlength/$ncount > $nratiocut ) )
   {
+    #print "ACCEPT: $start-$end bestcnt = $bestcnt ($copymin) conscnt = $conscnt adjustedratio = $adjustedratio ncount = $ncount  newlength = $newlength\n";
     return ( $bestcnt, $conscnt, $newconsensus, $newlength, $ncount, $secondbestcnt, $secondbestlength);
   }else {
-    #print "bestcnt = $bestcnt ($copymin) conscnt = $conscnt adjustedratio = $adjustedratio ncount = $ncount  newlength = $newlength\n";
+    print "REJECT: $start-$end bestcnt = $bestcnt ($copymin) conscnt = $conscnt adjustedratio = $adjustedratio ncount = $ncount  newlength = $newlength consLen=$conslen $newconsensus\n";
     return ( 0, 0, "", 0, 0, 0, 0 );
   }
 }

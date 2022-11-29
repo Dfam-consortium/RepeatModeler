@@ -1206,8 +1206,8 @@ sub getMSASummaryViewJSON {
       $orient = "R";
     }
     push @{ $data{'alignments'} },
-        [ $name, $refStart, $aligned, [ @scores ], $orient, $div, $start,
-          $end ];
+        [ $name, $refStart, $aligned, [ @scores ], $orient, $div, $start+0,
+          $end+0 ];
 
   }
 
@@ -1345,8 +1345,8 @@ sub generateJavascriptSummaryAndAlignmentViewer {
       $orient = "R";
     }
     push @{ $summaryData{'alignments'} },
-        [ $name, $refStart, $aligned, [ @scores ], $orient, $div, $start,
-          $end ];
+        [ $name, $refStart, $aligned, [ @scores ], $orient, $div, $start+0,
+          $end+0 ];
 
   }
 

@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) AutoRunBlocker.pl
@@ -330,6 +330,8 @@ if ( @changes )
 }else {
   print STDERR "There are no changes\n";
 }
+
+print "Dumper:" . Dumper(\@changes) . "\n";
 
 my $newconsensus = $consensus; 
 foreach my $change ( sort { $b->[0] <=> $a->[0] } @changes ) {

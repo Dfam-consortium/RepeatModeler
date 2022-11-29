@@ -1716,10 +1716,25 @@ sub alignFromCrossMatchFile {
 ## Use: _importAlignedSeqs( $this,
 ##                          sequences => [ [ id0, seq0 ], [ id1, seq1 ],
 ##                                          ... ] );
+## or
+##
+## Use: _importAlignedSeqs( $this,
+##                          reference => $seq,
+##                          sequences => [ [ id0, seq0, start, end ], 
+##                                         [ id1, seq1, start, end ],
+##                                          ... ],
+##                          keepEdgeGaps => 1 );
 ##
 ## This is a private method for generating a multiple alignment from
 ## a simple structure containing pre-aligned sequences using the standard
 ## "-" or "." alignment spacing symbols.
+##
+## Sequences may simply be an identifier and a sequence or optionally
+## include the start/end position within the identified sequence.
+##
+## Optional:
+##     reference    :
+##     keepEdgeGaps :
 ##
 ##---------------------------------------------------------------------##
 sub _importAlignedSeqs {
@@ -1734,6 +1749,9 @@ sub _importAlignedSeqs {
       if ( ref( $parameters{'sequences'} ) ne "ARRAY" );
   my $sequences = $parameters{'sequences'};
 
+  my $keepEdgeGaps = 0;
+  $keepEdgeGaps = 1 if ( exists $parameters{'keepEdgeGaps'} );
+
   for ( my $l = 0 ; $l <= $#{$sequences} ; $l++ ) {
     my $sequence = $sequences->[ $l ]->[ 1 ];
     my $tmpSeq   = $sequence;
@@ -1742,29 +1760,60 @@ sub _importAlignedSeqs {
 
     my $assemblyName   = "";
     my $sequenceName   = $sequences->[ $l ]->[ 0 ];
+
+    # Sequence Position Determination 
     my $alignedBaseLen = length( $tmpSeq );
     my $startPos       = 1;
     my $endPos         = 0;
-    if ( $sequenceName =~ /(\S+)\:(\d+)-(\d+)/ )
-        # Hack...deletme
-        #         || $sequenceName =~ /(\S+)\_[\-]?(\d+)-(\d+)/ )
+    if ( @{$sequences->[$l]} == 4  ) 
     {
-      $sequenceName = $1;
-      $startPos     = $2;
-      $endPos       = $3;
-    }
-    else {
-      $startPos = 1;
-      $endPos   = $alignedBaseLen;
+      # Sequence array is in the form [$id, $seq, $start, $end]
+      # Where the orientation of the aligned bases is determined
+      # by the order of start-end positions.
+      $startPos = $sequences->[ $l ]->[ 2 ];
+      $endPos = $sequences->[ $l ]->[ 3 ];
+    }else {
+      # Sequence start/end is not specified, attempt to glean
+      # it from standard id format:
+      #      seq_id:start-end
+      if ( $sequenceName =~ /(\S+)\:(\d+)-(\d+)/ )
+        #         || $sequenceName =~ /(\S+)\_[\-]?(\d+)-(\d+)/ )
+      {
+        $sequenceName = $1;
+        $startPos     = $2;
+        $endPos       = $3;
+      }
+      # Finally...fallback to simply using 1-based start/end based on
+      # sequence length
+      else {
+        $startPos = 1;
+        $endPos   = $alignedBaseLen;
+      }
     }
 
+    # Prefix/Suffix aligned gaps
+    #   Some MSAs are the result of sequence anchoring where the
+    #   anchor is left out of the final MSA.  This would lead to
+    #   sequences with prefix/suffix "-" gap occupancy characters:
+    #
+    #     seq1  --ACCATATGGTCC
+    #     seq2  ACACCGTATGC---
+    #
+    #   In the implementation below a choice was made to discard
+    #   these prefix/suffix "-".  This can cause a length difference
+    #   in the consensus where this occupancy information is accounted
+    #   for in the consensus caller.  Consider making this an optional
+    #   behaviour.
+    #
     my $refStart = 0;
-    if ( $sequence =~ /^([\.\s\-]+)/ ) {
+    if ( ( $keepEdgeGaps == 1 && $sequence =~ /^([\s]+)/) 
+        || ( $keepEdgeGaps == 0 && $sequence =~ /^([\.\s\-]+)/) ) {
       $refStart = length( $1 );
       $sequence = substr( $sequence, $refStart );
     }
 
-    if ( $sequence =~ /([^\.\s\-])([\.\s\-]+)$/ ) {
+    if ( ( $keepEdgeGaps == 1 && $sequence =~ /([^\.\s\-])(\s+)$/ ) 
+        || ( $keepEdgeGaps == 0 && $sequence =~ /([^\.\s\-])([\.\s\-]+)$/ ) ) {
       $sequence = substr( $sequence, 0, length( $sequence ) - length( $2 ) );
     }
     my $refEnd = length( $sequence ) + $refStart - 1;
@@ -1793,14 +1842,24 @@ sub _importAlignedSeqs {
     #  $ID .= "$endPos-$startPos";
     #}
     $object->setAlignedName( $l, $ID );
-    $object->setAlignedSeqStart( $l, $startPos );
-    $object->setAlignedSeqEnd( $l, $endPos );
 
-    # Is this necessary?
-    $object->setAlignedOrientation( $l, "+" );
+    if ( $startPos > $endPos ) {
+      $object->setAlignedOrientation( $l, "-" );
+      $object->setAlignedSeqStart( $l, $endPos );
+      $object->setAlignedSeqEnd( $l, $startPos );
+    }else {
+      $object->setAlignedOrientation( $l, "+" );
+      $object->setAlignedSeqStart( $l, $startPos );
+      $object->setAlignedSeqEnd( $l, $endPos );
+    }
   }
 
-  $object->setReferenceSeq( $object->consensus() );
+  if ( exists $parameters{'reference'} ) {
+    $object->setReferenceSeq( $parameters{'reference'} );
+  }else {
+    $object->setReferenceSeq( $object->consensus() );
+  }
+  $object->setReferenceSeqStart( 1 );
 }
 
 ##---------------------------------------------------------------------##
@@ -4475,16 +4534,20 @@ sub printAlignments {
       #  $start = $object->getAlignedSeqStart( $i ) + $numLetters;
       #}
       $numLetters = ( $seq =~ tr/A-Z/A-Z/ );
+      my $endAdj = $numLetters == 0 ? 0 : ($numLetters - 1);
       #$end        = $start + $numLetters - 1;
 
       my $seqCoordStart = $seqCoordIdx[$i];
+      $seqCoordStart-- if ( $numLetters == 0 );
       my $orient = $object->getAlignedOrientation( $i );
       my $seqCoordEnd;
       if ( $orient eq "+" ) {
-        $seqCoordEnd = $seqCoordStart + $numLetters - 1;
+        #$seqCoordEnd = $seqCoordStart + $numLetters - 1;
+        $seqCoordEnd = $seqCoordStart + $endAdj;
         $seqCoordIdx[$i] += $numLetters;
       }else {
-        $seqCoordEnd = $seqCoordStart - $numLetters + 1;
+        #$seqCoordEnd = $seqCoordStart - $numLetters + 1;
+        $seqCoordEnd = $seqCoordStart - $endAdj;
         $seqCoordIdx[$i] -= $numLetters;
       }
        
@@ -5021,7 +5084,7 @@ sub buildConsensusFromArray {
   my @profile   = ();
   foreach my $seq ( @{$sequences} ) {
     my $i = 0;
-    grep $profile[ $i++ ]{$_}++, split( '', $seq );
+    grep $profile[ $i++ ]{uc($_)}++, split( '', $seq );
   }
 
   #
@@ -5057,22 +5120,13 @@ sub buildConsensusFromArray {
       $n = "N";
     }
     $consensus .= $n;
-
-    #my $foo = $consensus;
-    #$foo =~ s/-//g;
-    #print "col $i conspos " .length($foo).": max_base = $n max_score = $maxScore\n";
     push @cScore, $maxScore;
   }
-  #print "precons=$consensus\n";
-  #my $foo = $consensus;
-  #$foo =~ s/-//g;
-  #print "Leng = " . length($foo) . "\n";
 
   #
   #   go through the consensus and consider changing each dinucleotide
   #   to a 'CG'
   #
-  #print "Consensus = $consensus\n";
 FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
     next if ( substr( $consensus, $i, 1 ) eq '-' );
     my $CGscore = 0;
@@ -5088,8 +5142,8 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
       last FLOOP if ( $k >= length( $consensus ) );
     }
     my $consDNRight = substr( $consensus, $k, 1 );
-    #print "cons: $consDNLeft$consDNRight\n";
     foreach ( @{$sequences} ) {
+      $_ = uc($_);
       my $j = $i;
       next if ( $j >= length( $_ ) );
       my $hitDNLeft = substr( $_, $j, 1 );
@@ -5162,7 +5216,6 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
         $CGscore += $matrix_r->{ "C" . $hitDNLeft };
         $CGscore += $matrix_r->{ "G" . $hitDNRight };
       }
-      #print " -- hitDN=$hitDN CGScore = $CGscore dnScore =  $dnScore\n";
     }
     if ( $CGscore > $dnScore ) {
       substr( $consensus, $i, 1 ) = 'C';
