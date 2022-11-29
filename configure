@@ -88,6 +88,8 @@ if ( cwd() ne $FindBin::RealBin ) {
 #
 my @getopt_args = (
                     '-version',    # print out the version and exit
+                    '-perlbin=s',
+                    '-a'
 );
 
 # Add configuration parameters as additional command-line options
@@ -141,7 +143,53 @@ RepModelConfig::resolveConfiguration( \%options );
 my $config = $RepModelConfig::configuration;
 
 ##
-## Check for RepeatMasker dependencies
+## Perl interpreter location
+##
+my $perlLocation = $^X;
+if ( $options{'perlbin'} ) {
+  my $tbin = "";
+  if ( -d $options{'perlbin'} ) {
+    if ( -x ( $options{'perlbin'} . "/perl" ) ) {
+      $tbin = $options{'perlbin'} . "/perl";
+    }
+    elsif ( -x ( $options{'perlbin'} . "/bin/perl" ) ) {
+      $tbin = $options{'perlbin'} . "/bin/perl";
+    }
+    else {
+      die "Could not find perl using supplied -perlbin parameter $options{'perlbin'}\n"
+          . "as $options{'perlbin'}/perl or $options{'perlbin'}/bin/perl.  Please fix\n"
+          . "and rerun configure.\n";
+    }
+  }
+  elsif ( -x $options{'perlbin'} ) {
+    $tbin = $options{'perlbin'};
+  }
+  if ( $tbin ne $perlLocation ) {
+    my $optStr;
+    foreach my $key ( keys %options ) {
+      if ( $key ne "perlbin" ) {
+        $optStr .= " -$key " . $options{$key};
+      }
+    }
+
+    # Rerun with intended version of perl
+    exec( "$tbin $FindBin::RealBin/configure $optStr" );
+  }
+}
+
+##
+## Check for perl version
+##
+if ( $] && $] < 5.008 ) {
+  system( "clear" );
+  print "RepeatModeler should be used with perl 5.008 or higher.\n"
+      . "Perl $] is being used to run configure.";
+  print "\n\n\n<PRESS ENTER TO CONTINUE>\n";
+  my $answer = <STDIN>;
+}
+
+##
+## Check for RepeatModeler dependencies
 ##
 BEGIN {
   my @modDependencies = (
@@ -168,55 +216,22 @@ BEGIN {
   }
 }
 
-##
-## Check for perl version
-##
-if ( $] && $] < 5.008 ) {
-  system( "clear" );
-  print "RepeatModeler should be used with perl 5.008 or higher.\n"
-      . "Perl $] is being used to run configure.";
-  print "\n\n\n<PRESS ENTER TO CONTINUE>\n";
-  my $answer = <STDIN>;
-}
 
 ##
 ## Introduce ourselves
 ##
 system( "clear" );
 print "\n\n\nRepeatModeler Configuration Program\n\n";
-print "This program assists with the configuration of the\n";
-print "RepeatModeler program.  The next set of screens will ask\n";
-print "you to enter information pertaining to your system\n";
-print "configuration.  At the end of the program your RepeatModeler\n";
-print "installation will be ready to use.\n";
-print "\n\n\n<PRESS ENTER TO CONTINUE>\n";
-my $answer = <STDIN>;
+unless( $options{'a'} ) {
+  print "This program assists with the configuration of the\n";
+  print "RepeatModeler program.  The next set of screens will ask\n";
+  print "you to enter information pertaining to your system\n";
+  print "configuration.  At the end of the program your RepeatModeler\n";
+  print "installation will be ready to use.\n";
+  print "\n\n\n<PRESS ENTER TO CONTINUE>\n";
+  my $answer = <STDIN>;
+}
 
-##
-## Perl interpreter location
-##
-my $goodParam;
-my $perlLocation = $^X;
-do {
-  $goodParam = 1;
-  $perlLocation = &promptScreen(
-"**PERL INSTALLATION PATH**\n\n  This is the full path to the Perl interpreter.\n  ie. /usr/local/bin/perl\n",
-    "Enter path",
-    $perlLocation
-  );
-  if ( !( $perlLocation =~ /^.*perl$/ ) ) {
-    $perlLocation .= "/" if ( !( $perlLocation =~ /^.*\/$/ ) );
-    $perlLocation .= "perl";
-  }
-  if (    !-f $perlLocation
-       || !-x $perlLocation )
-  {
-    print "Perl not found at \"$perlLocation\"\n";
-    print "<PRESS ENTER TO CONTINUE, CTRL-C TO BREAK>\n";
-    $answer    = <STDIN>;
-    $goodParam = 0;
-  }
-} while ( $goodParam != 1 );
 
 ## RepeatMasker
 if ( !$options{'repeatmasker_dir'} ) {
@@ -260,7 +275,7 @@ if ( !$options{'ucsctools_dir'} ) {
 ##
 ## Search Engine Configuration
 ##
-if ( !( $options{'abblast_dir'} || $options{'rmblast_dir'} ) ) {
+if ( !$options{'rmblast_dir'}  ) {
   searchEngineMenu();
 }
 
@@ -273,36 +288,38 @@ if ( $engineVersion =~ /(\d+)\.(\d+)\.(\d+).*/ ) {
   }
 }
 
-##
-## LTRPipeline Configuration
-##
-system( "clear" );
-print "\n\n\n";
-print "LTR Structural Identication Pipeline [optional]\n\n";
-print "In addition to RECON/RepeatScout this version of RepeatModeler\n";
-print "has the option of running an additional analysis to identify\n";
-print "structural features of LTR sequences.\n\n";
-print "Do you wish to configure RepeatModeler for this type\n";
-print "of analysis [y] or n?: ";
-$answer = <STDIN>;
-$answer =~ s/[\n\r]+//g;
+unless ( $options{'a'} ) {
+  ##
+  ## LTRPipeline Configuration
+  ##
+  system( "clear" );
+  print "\n\n\n";
+  print "LTR Structural Identication Pipeline [optional]\n\n";
+  print "In addition to RECON/RepeatScout this version of RepeatModeler\n";
+  print "has the option of running an additional analysis to identify\n";
+  print "structural features of LTR sequences.\n\n";
+  print "Do you wish to configure RepeatModeler for this type\n";
+  print "of analysis [y] or n?: ";
+  $answer = <STDIN>;
+  $answer =~ s/[\n\r]+//g;
+  
+  if ( $answer =~ /y|yes/i || $answer eq "" ) {
 
-if ( $answer =~ /y|yes/i || $answer eq "" ) {
-
-  #if ( ! $options{'ltr_detector_dir'} ) {
-  #  RepModelConfig::promptForParam('LTR_DETECTOR_DIR');
-  #}
-  if ( !$options{'genometools_dir'} ) {
-    RepModelConfig::promptForParam( 'GENOMETOOLS_DIR' );
-  }
-  if ( !$options{'ltr_retriever_dir'} ) {
-    RepModelConfig::promptForParam( 'LTR_RETRIEVER_DIR' );
-  }
-  if ( !$options{'mafft_dir'} ) {
-    RepModelConfig::promptForParam( 'MAFFT_DIR' );
-  }
-  if ( !$options{'ninja_dir'} ) {
-    RepModelConfig::promptForParam( 'NINJA_DIR' );
+    #if ( ! $options{'ltr_detector_dir'} ) {
+    #  RepModelConfig::promptForParam('LTR_DETECTOR_DIR');
+    #}
+    if ( !$options{'genometools_dir'} ) {
+      RepModelConfig::promptForParam( 'GENOMETOOLS_DIR' );
+    }
+    if ( !$options{'ltr_retriever_dir'} ) {
+      RepModelConfig::promptForParam( 'LTR_RETRIEVER_DIR' );
+    }
+    if ( !$options{'mafft_dir'} ) {
+      RepModelConfig::promptForParam( 'MAFFT_DIR' );
+    }
+    if ( !$options{'ninja_dir'} ) {
+      RepModelConfig::promptForParam( 'NINJA_DIR' );
+    }
   }
 }
 
