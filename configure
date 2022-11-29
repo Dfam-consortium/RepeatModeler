@@ -264,7 +264,7 @@ if ( !( $options{'abblast_dir'} || $options{'rmblast_dir'} ) ) {
   searchEngineMenu();
 }
 
-my $engineVersion = RepModelConfig::getDependencyVersion("RMBLAST_DIR")
+my $engineVersion = RepModelConfig::getDependencyVersion("RMBLAST_DIR");
 if ( $engineVersion =~ /(\d+)\.(\d+)\.(\d+).*/ ) {
   my $major = $1;
   my $minor = $2;
