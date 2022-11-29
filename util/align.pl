@@ -317,10 +317,6 @@ if ( $engine eq "crossmatch" )
   }else {
     $engine_dir = $HM_DIR;
     $engine_prg = "$HM_DIR/nhmmer";
-# TESTING
-    #$engine_dir = "/u1/home/rhubley/projects/nhmmer/hmmer-3.3.2/src";
-    $engine_dir = "/u1/home/rhubley/projects/nhmmer/hmmer-git/src";
-    $engine_prg = "$engine_dir/nhmmer";
   }
 
   $sEngineObj = HMMERSearchEngine->new( pathToEngine => $engine_prg );
@@ -415,7 +411,11 @@ if ( $resolvedMatrix ne "" ) {
 
 if ( $engine eq "rmblast" ) {
   if ( ! -s "$databaseFile.nhr" ) {
+    unless ( $options{'quiet'} ) {
+      print "# WARNING: RMBlast database exists for $databaseFile.  Use -force to force rebuilding of the database\n";
+    }
     system(   "$engine_dir/makeblastdb -out $databaseFile "
+            . "-blastdb_version 4 "
             . "-parse_seqids -dbtype nucl -in $databaseFile > "
             . "makedb.log 2>&1" );
   }
@@ -436,7 +436,7 @@ if ( $engine eq "rmblast" ) {
     # TESTING:
     #$params .= " --popen 0.03125 --pextend 0.75 "; # defaults
     # Seems to do better
-    $params .= " --popen 0.021 --pextend 0.52 "; # defaults
+    #$params .= " --popen 0.021 --pextend 0.52 "; # defaults
     $params .= " $queryFile $dbFile";
     $sEngineObj->setOverrideParameters($params);
   }
