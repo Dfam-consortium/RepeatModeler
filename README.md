@@ -282,6 +282,7 @@ Caveats
     file in the users home directory with the stanza:
 
     [BLAST]
+
     BLAST_USAGE_REPORT=false
 
   + RepeatModeler is designed to run on assemblies rather
