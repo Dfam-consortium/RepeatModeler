@@ -1,7 +1,18 @@
-RepeatModeler NEXT
-==================
+RepeatModeler 2.0.4
+====================
   - Improved the gathering of RepeatScout examplars for building
     seed alignments.
+  - Parallelized and improved the masking between rounds for faster
+    runs and fewer redicoveries.
+  - The 'pa' (parallel batches) option has been replaced with a new
+    'threads' option which maps directly to the maximum number of
+    threads the program will attempt to use.
+  - Takes advantage of RepeatMasker 4.1.4 and RMBlast 2.13.0 parallel
+    query feature.
+  - Larger default sample sizes are now possible with speed improvements.
+    The original sampling strategy can be selected with the new 'quick'
+    option.
+  - ABBlast is no longer supported.
   - Fixed a few visual artifacts in the viewMSA.pl html 
     visualization.
 
