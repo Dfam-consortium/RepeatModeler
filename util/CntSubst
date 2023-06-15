@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 #
 # Calculates the Jukes and Kimura substitution level of individual
 # copies and average level for all copies in a fasta file from a
