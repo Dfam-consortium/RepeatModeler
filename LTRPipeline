@@ -690,31 +690,35 @@ sub runLtrRetriever {
   # Currently there isn't a way to get the orientation of the sequences other than comparing them with
   # the input.  So here we go:
   # Read in the library sequences and ranges
-  open IN,"<$outFile" or die;
+  open IN,"<$outFile" or die "LTR_retriever failed to generate a file.  Please check $tmpDir/LTR_retriever.log for details.";
   my $seqID = "";
   my $start = 0;
   my $end = 0;
   my $seq = "";
+  my $suffix = "";
   my @lib = ();
   while ( <IN> ) {
-    if ( /^>(\S+):(\d+)\.\.(\d+).*/ ) {
+    # e.g.  >utg7180:3885179..3890145_INT#LTR/Gypsy
+    if ( /^>(\S+):(\d+)\.\.(\d+)(.*)/ ) {
       my $tmpSeqID = $1;
       my $tmpStart = $2;
       my $tmpEnd = $3;
+      my $tmpSuffix = $4;
       if ( $seqID ne "" ) {
-        push @lib,[ $seqID, $start, $end, $seq];
+        push @lib,[ $seqID, $start, $end, $seq, $suffix];
       }
       $seqID = $tmpSeqID;
       $start = $tmpStart;
       $end = $tmpEnd;
       $seq = "";
+      $suffix = $tmpSuffix;
       next;
     }
     s/[\n\r\s]+//g;
     $seq .= $_;
   }
   if ($seqID ne ""){
-    push @lib,[ $seqID, $start, $end, $seq];
+    push @lib,[ $seqID, $start, $end, $seq, $suffix];
   }
   close IN;
 
@@ -727,13 +731,19 @@ sub runLtrRetriever {
   system("mv $outFile $outFile.no_orient");
   open OUT,">$outFile" or die;
   foreach my $entry ( @lib ) {
+    my $type = "";
+    if ( $entry->[4] =~ /_LTR/ ) {
+      $type = "_LTR";
+    }elsif ( $entry->[4] =~ /_INT/ ) {
+      $type = "_INT";
+    }
     my $id = $entry->[0] . ":";
-    if ( $entry->[4] eq "!" ) {
-      $id .= $entry->[1] . ".." . $entry->[2] . " [warning: bad ltr_retriever range]";
-    }elsif ( $entry->[4] eq "+" ) {
-      $id .= $entry->[1] . ".." . $entry->[2] . " [forward]";
+    if ( $entry->[5] eq "!" ) {
+      $id .= $entry->[1] . ".." . $entry->[2] . "$type [warning: bad ltr_retriever range]";
+    }elsif ( $entry->[5] eq "+" ) {
+      $id .= $entry->[1] . ".." . $entry->[2] . "$type [forward]";
     }else {
-      $id .= $entry->[2] . ".." . $entry->[1] . " [reverse]";
+      $id .= $entry->[2] . ".." . $entry->[1] . "$type [reverse]";
     }
     print OUT ">$id\n$entry->[3]\n";
   }
