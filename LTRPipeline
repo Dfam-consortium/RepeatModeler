@@ -761,7 +761,7 @@ sub getOrientation {
   my $lib = shift;
   my $seqFile = shift;
 
-  system("$UCSCTOOLS_DIR/faToTwoBit $seqFile $seqFile.2bit");
+  system("$UCSCTOOLS_DIR/faToTwoBit -long $seqFile $seqFile.2bit");
   if ( ! -s "$seqFile.2bit" ) {
     die "getOrientation: Something went wrong calling $UCSCTOOLS_DIR/faToTwoBit on $seqFile!\n";
   }
@@ -893,7 +893,7 @@ sub runLtrHarvest {
     chdir( $origDir );
     if ( $retCode != 0 ) {
       warn "LtrPipeline: GenomeTools failed to run ltrharvest. Error code: "
-          . ( $? >> 8 ) . "\n";
+          . ( $? >> 8 ) . " Run on esa-index created from: $full_seqFile\n";
       $errorFlag = 1;
     }
     if ( -s "$tmpDir/ltrharvest.log" ) {

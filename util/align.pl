@@ -84,6 +84,12 @@ or
                       engine (configured at installation). 
   -fmindex,-fm      If using the nhmmer search engine this will turn on the use of the
                       fmindex acceleration.
+  -force,-fo        When using RMBlast this option will force the rebuilding of the frozen
+                      database files, if present.
+  -caf              Produce CAF output rather than standard cross_match formatting (this
+                      option implies -alignments will be used).
+  -k_param,-k       ALP K parameter for E_value calculation
+  -lambda,-la       ALP lambda parameter for E_value calculation
 
   Xmatch.pl options not yet supported:
   #-original,-o      keep the original cross_match mismatch level (mismatches/length_of_query) 
@@ -119,7 +125,7 @@ Displays the version of the program
 
 =head1 COPYRIGHT
 
-Copyright 2022 Robert Hubley, Institute for Systems Biology
+Copyright 2022-2023 Robert Hubley, Institute for Systems Biology
 
 =head1 LICENSE
 
@@ -164,9 +170,9 @@ my $DEBUG = 0;
 # Paths
 #
 my $phrapDir = "/usr/local/phrap";
-my $matrixDir = "$FindBin::RealBin/../Matrices";
 my $RMSK_DIR = $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLAST_DIR = $RepModelConfig::configuration->{'RMBLAST_DIR'}->{'value'};
+#my $RMBLAST_DIR = "/home/rhubley/projects/RMBlast_project/RMBlast/ncbi-blast-2.14.0+-src/c++/ReleaseMT/bin";
 my $defaultEngine = "rmblast";
 
 #
@@ -181,13 +187,17 @@ my @getopt_args = (
     'alignments|a',
     'bandwidth|ba=s',
     'blast|bl',
+    'caf',
     'crossmatch|cm',
     'cg',
     'database=s',
     'del_gap_ext|d=i',
     'ins_gap_ext|i=i',
+    'k_param|k=s',
+    'lambda|la=s',
     'extension|e=i',
     'fmindex|fm',
+    'force|fo',
     'gap_init|g=i',
     'masklevel|level|l=i',
     'matrix|ma=s',
@@ -204,6 +214,7 @@ my @getopt_args = (
     'threads|t=i',
     'raw|r',
     'rmblast|rm',
+    'rmb_db_softmask',
     'word_raw|w',
     'screen|x',
     'zip=s'
@@ -244,6 +255,11 @@ $engine = "crossmatch" if ( exists $options{'crossmatch'} );
 $engine = "rmblast" if ( exists $options{'rmbalst'} );
 $engine = "nhmmer" if ( exists $options{'nhmmer'} );
 
+my $gen_alignments = 0;
+if ( $options{'alignments'} || $options{'caf'} ) {
+  $gen_alignments = 1;
+}
+
 my $engine_dir;
 my $engine_prg;
 my $sEngineObj;
@@ -271,11 +287,11 @@ if ( $engine eq "crossmatch" )
   $sEngineObj = CrossmatchSearchEngine->new( pathToEngine => $engine_prg );
   my $params = "";
   $params .= " -screen " if ( $options{'screen'} );
-  $sEngineObj->setAdditionalParameters($params);
+  # TODO: Add to SearchEngineI and CrossMatchSearchEngine
+  #$sEngineObj->setAdditionalParameters($params);
 
 }elsif ( $engine eq "rmblast" ) {
   $engine = "rmblast";
-  my $RMBLAST_DIR = $RepModelConfig::configuration->{'RMBLAST_DIR'}->{'value'};
   unless ( -d $RMBLAST_DIR && -x "$RMBLAST_DIR/rmblastn") { 
     # fall back to path resolution
     my $retVal = `whereis rmblastn`;
@@ -298,6 +314,10 @@ if ( $engine eq "crossmatch" )
   $sEngineObj->setCores( $options{'threads'} ? $options{'threads'} : undef );
   if ( exists $options{'threads'} && exists $options{'mt_qmode'} ) {
     $sEngineObj->setThreadByQuery(1);
+  }
+  if ( $options{'rmb_db_softmask'} ) {
+    # See codes in section that build the database
+    $sEngineObj->setAdditionalParameters("-db_soft_mask 100");
   }
 }elsif ( $engine eq "nhmmer" ) {
   $engine = "nhmmer";
@@ -335,26 +355,46 @@ $sEngineObj->setQuery($queryFile);
 $sEngineObj->setSubject($databaseFile);
 $sEngineObj->setMinScore( $options{'minscore'} ? $options{'minscore'} : 200 );
 $sEngineObj->setBandwidth( $options{'bandwidth'} ? $options{'bandwidth'} : 14 );
-$sEngineObj->setMaskLevel( $options{'masklevel'} ? $options{'masklevel'} : 80 );
-$sEngineObj->setGapInit( $options{'gap_init'} ? $options{'gap_init'} : -25 );
+if ( $options{'masklevel'} ne "" ) {
+  $sEngineObj->setMaskLevel( $options{'masklevel'} );
+}else {
+  $sEngineObj->setMaskLevel( 80 );
+}
 $sEngineObj->setMinMatch( $options{'minmatch'} ? $options{'minmatch'} : 14 );
-$sEngineObj->setGenerateAlignments( $options{'alignments'} ? 1 : 0 );
+$sEngineObj->setGenerateAlignments( $gen_alignments );
+
+
+my $gap_open_penalty = -25;
+my $ins_extn_penalty = -5;
+my $del_extn_penalty = -5;
+if ( exists $options{'gap_init'} ){
+  $gap_open_penalty = $options{'gap_init'};
+}
 if ( exists $options{'gap_ext'} ) 
 {
-  $sEngineObj->setInsGapExt( $options{'gap_ext'} );
-  $sEngineObj->setDelGapExt( $options{'gap_ext'} );
+  $ins_extn_penalty = $options{'gap_ext'};
+  $del_extn_penalty = $options{'gap_ext'};
 }elsif ( exists $options{'del_gap_ext'} ) 
 {
-  $sEngineObj->setDelGapExt( $options{'del_gap_ext'} );
+  $del_extn_penalty = $options{'del_gap_ext'};
   if ( exists $options{'ins_gap_ext'} ) {
-    $sEngineObj->setInsGapExt( $options{'ins_gap_ext'} );
+    $ins_extn_penalty = $options{'ins_gap_ext'};
   }else {
-    $sEngineObj->setInsGapExt( -(abs($options{'del_gap_ext'})+1) );
+    $ins_extn_penalty = -(abs($del_extn_penalty)+1);
   }
-}else {
-  $sEngineObj->setInsGapExt( -5 );
-  $sEngineObj->setDelGapExt( -5 );
+}elsif ( exists $options{'ins_gap_ext'} ) {
+  $ins_extn_penalty = $options{'ins_gap_ext'};
+  if ( exists $options{'del_gap_ext'} ) {
+    $del_extn_penalty = $options{'del_gap_ext'};
+  }else {
+    $del_extn_penalty = -(abs($ins_extn_penalty)-1);
+  }
 }
+$sEngineObj->setGapInit( $gap_open_penalty );
+$sEngineObj->setInsGapExt( $ins_extn_penalty );
+$sEngineObj->setDelGapExt( $del_extn_penalty );
+
+
 if ( exists $options{'raw'} ) {
   $sEngineObj->setScoreMode( SearchEngineI::basicScoreMode );
 }else {
@@ -364,18 +404,17 @@ if ( exists $options{'raw'} ) {
 # Resolve matrix
 my $resolvedMatrix = "";
 if ( $options{'matrix'} ) {
-  my $nameAlias = "";
+
+  my $matFileName = $options{'matrix'};
   if ( $options{'matrix'} =~ /^(\d+)$/ ) {
-    $nameAlias = "$1p41g.matrix";
+    $matFileName = "$1p41g.matrix";
   }elsif ( $options{'matrix'} =~ /^(\d+)p(\d+)$/ ) {
-    $nameAlias = "$1p$2g.matrix";
+    $matFileName = "$1p$2g.matrix";
   }
 
   # Simple file reference
-  if ( -s $options{'matrix'} ) {
-    $resolvedMatrix = $options{'matrix'};
-  }elsif ( -s $nameAlias ) {
-    $resolvedMatrix = $nameAlias;
+  if ( -s $matFileName ) {
+    $resolvedMatrix = $matFileName;
   }else {
     # Look through path in priority order
     my @path = ();
@@ -388,11 +427,8 @@ if ( $options{'matrix'} ) {
       push @path, $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'} . "/Matrices/crossmatch";
     }
     foreach my $dir ( @path ) {
-      if ( -s "$dir/$options{'matrix'}" ) {
-        $resolvedMatrix = "$dir/$options{'matrix'}";
-        last;
-      }elsif ( -s "$dir/$nameAlias" ) {
-        $resolvedMatrix = "$dir/$nameAlias";
+      if ( -s "$dir/$matFileName" ) {
+        $resolvedMatrix = "$dir/$matFileName";
         last;
       }
     }
@@ -409,16 +445,63 @@ if ( $resolvedMatrix ne "" ) {
   $sEngineObj->setMatrix( $resolvedMatrix );
 }
 
+my $db_seqs;
+my $db_size;
 if ( $engine eq "rmblast" ) {
-  if ( ! -s "$databaseFile.nhr" ) {
-    unless ( $options{'quiet'} ) {
+  if ( ! -s "$databaseFile.nhr" || $options{'force'} ) {
+    if ( $options{'rmb_db_softmask'} ) {
+      # The blast database has several hardcoded IDs for a handful of standard filters:
+      #    enum EBlast_filter_program {
+      #        eBlast_filter_program_not_set      =   0,
+      #        eBlast_filter_program_dust         =  10,
+      #        eBlast_filter_program_seg          =  20,
+      #        eBlast_filter_program_windowmasker =  30,
+      #        eBlast_filter_program_repeat       =  40,
+      #        eBlast_filter_program_other        = 100,   <<< This is the one we will use
+      #        eBlast_filter_program_max          = 255
+      #    };
+      system(   "$engine_dir/convert2blastmask -in $databaseFile -parse_seqids " 
+              . "-masking_algorithm Unknown -masking_options \"all lowercase regions\" "
+              . "-outfmt maskinfo_asn1_bin -out $databaseFile.asnb" );
+      # Do we need to use blastdb version 4 anymore?
+      #      . "-blastdb_version 4 "
+      system(   "$engine_dir/makeblastdb -out $databaseFile "
+              . "-mask_data $databaseFile.asnb "
+              . "-parse_seqids -dbtype nucl -in $databaseFile > "
+              . "makedb.log 2>&1" );
+    }else {
+      # Do we need to use blastdb version 4 anymore?
+      #      . "-blastdb_version 4 "
+      system(   "$engine_dir/makeblastdb -out $databaseFile "
+              . "-parse_seqids -dbtype nucl -in $databaseFile > "
+              . "makedb.log 2>&1" );
+    }
+  }else {
+    unless ( ! $options{'quiet'} ) {
       print "# WARNING: RMBlast database exists for $databaseFile.  Use -force to force rebuilding of the database\n";
     }
-    system(   "$engine_dir/makeblastdb -out $databaseFile "
-            . "-blastdb_version 4 "
-            . "-parse_seqids -dbtype nucl -in $databaseFile > "
-            . "makedb.log 2>&1" );
   }
+  open IN,"$engine_dir/blastdbcmd -db $databaseFile -dbtype nucl -info|" or 
+     die "Could not obtain database info using $engine_dir/blastdbcmd";
+  while ( <IN> ) {
+    # Database: sva_a.fa
+    # 	1 sequences; 1,387 total bases
+    # 
+    # Date: Jun 5, 2023  12:33 PM	Longest sequence: 1,387 bases
+    # 
+    # BLASTDB Version: 5
+    # 
+    # Volumes:
+    # 	/u1/home/rhubley/projects/cons_thresholds/foo
+    if ( /^\s+([\d\,]+)\s+sequences;\s+([\d\,]+)\s+total bases\s*$/ ) {
+      $db_seqs = $1;
+      $db_size = $2;
+    }
+  }
+  close IN;
+  $db_seqs =~ s/,//g;
+  $db_size =~ s/,//g;
+
 }elsif ( $engine eq "nhmmer" ) {
   my $dbFile = $databaseFile;
   if ( $options{'fmindex'} ) {
@@ -453,6 +536,12 @@ unless ( $options{'quiet'} ) {
     print "#                $cmdLine\n";
     print "#  copy_paste    : export BLASTMAT=" . dirname($resolvedMatrix) . "; " . 
           $sEngineObj->getParameters() . "\n"; #if ( $options{'verbose'} );
+    print "#  database: $db_seqs sequences, $db_size bp\n";
+    print "#  matrix: $resolvedMatrix";
+    if ( exists $options{'k_param'} && exists $options{'lambda'} ) { 
+      print ", K=$options{'k_param'}, lambda=$options{'lambda'}";
+    }
+    print "\n";
   }else {
     print "#  command_line  : $cmdLine\n";
     print "#  copy_paste    : " . $sEngineObj->getParameters() . "\n";
@@ -478,7 +567,7 @@ if ( $status )
 } else
 {
   my $matrixObj;
-  if ( $engine eq "nhmmer" && $resolvedMatrix ne "" ) {
+  if ( $resolvedMatrix ne "" ) {
     $matrixObj = Matrix->new( fileName => $resolvedMatrix );
   }
   for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
@@ -493,9 +582,9 @@ if ( $status )
            $positionScores, $xdrop_fragments, $well_characterized_bases,
            $transisitions, $transversions ) 
                 = $resultRef->rescoreAlignment( scoreMatrix => $matrixObj,
-                                gapOpenPenalty => -25,
-                                insGapExtensionPenalty => -5,
-                                delGapExtensionPenalty => -5,
+                                gapOpenPenalty => $gap_open_penalty,
+                                insGapExtensionPenalty => $ins_extn_penalty,
+                                delGapExtensionPenalty => $del_extn_penalty,
                                 complexityAdjust => 1 );
       if ( $options{'minscore'} ) {
         next if ( $score < $options{'minscore'} );
@@ -503,9 +592,27 @@ if ( $status )
       $resultRef->setScore($score);
     
     }
+    if ( $engine eq "rmblast" && $options{'k_param'} ) {
+      my ( $raw_score, $divergence, $cpgsites, $percIns, $percDel,
+           $positionScores, $xdrop_fragments, $well_characterized_bases,
+           $transisitions, $transversions )
+                = $resultRef->rescoreAlignment( scoreMatrix => $matrixObj,
+                                gapOpenPenalty => $gap_open_penalty,
+                                insGapExtensionPenalty => $ins_extn_penalty,
+                                delGapExtensionPenalty => $del_extn_penalty 
+                                );
+      my $q_size = $resultRef->getQueryEnd() + $resultRef->getQueryRemaining();
+      my $e_value = 2*$db_size*$q_size*$options{'k_param'}*exp(-$options{'lambda'} * $raw_score);
+      print "e_value = $e_value\n";
+    }
     
     if ( $options{'alignments'} ) {
       print "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
+    }elsif ( $options{'caf'} ) { 
+      # TODO: Move this modified CAF to SearchResult.pm
+      #my $matrix = basename($resolvedMatrix);
+      my $matrix = $resultRef->getMatrixName();
+      print "" . $resultRef->toStringFormatted( SearchResult::CompressedAlignCSV ) . "," . $matrix . "\n";
     }else {
       print "" . $resultRef->toStringFormatted( SearchResult::OutFileFormat );
     }

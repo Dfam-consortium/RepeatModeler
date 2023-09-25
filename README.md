@@ -109,8 +109,8 @@ Source Distribution Installation
 
   Ninja - A tool for large-scale neighbor-joining phylogeny inference and 
     clustering.  We developed and tested RepeatModeler using Ninja version
-    "0.95-cluster_only". Please obtain a copy from:
-    https://github.com/TravisWheelerLab/NINJA/releases/tag/0.95-cluster_only
+    "0.98-cluster_only". Please obtain a copy from:
+    https://github.com/TravisWheelerLab/NINJA/releases/tag/0.98-cluster_only
 
 **Installation**
 

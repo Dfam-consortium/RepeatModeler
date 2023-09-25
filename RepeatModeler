@@ -1934,7 +1934,7 @@ sub runRECON {
 
   for ( my $i = 1 ; $i <= $sect ; $i++ ) {
     my $spread = "images/spread" . $i;
-    `sort -k 3,3 -k 4n,4n -k 5nr,5nr $spread >> images/images_sorted`;
+    `sort -T . -k 3,3 -k 4n,4n -k 5nr,5nr $spread >> images/images_sorted`;
     if ( $? ) { die "sort failed for $spread.\n"; }
   }
 
@@ -2330,8 +2330,10 @@ sub buildRSConsensiMT {
     undef $resultCollection;
 
     # Sort keys by most abundant family first
+    # RMH: 9/19/23 : Added secondary sort to ensure deterministic behaviour
     my @sortedKeys = sort {
-      $#{ $families{$b}->{'elements'} } <=> $#{ $families{$a}->{'elements'} }
+      $#{ $families{$b}->{'elements'} } <=> $#{ $families{$a}->{'elements'} } ||
+          $a cmp $b 
     } keys( %families );
 
     my $doRefinement = 1;
@@ -2340,10 +2342,12 @@ sub buildRSConsensiMT {
       # Create files of instances for refinement
       my $familyID = 0;
       my %refinableFamilies = ();
+      # key = "R=#" identifier
       foreach my $key ( @sortedKeys ) {
         # Quit if remaining family sizes are below cutoff
         last if ( ($#{ $families{$key}->{'elements'} }+1) < $familySizeCutoff );
  
+        #print "SORT: $key = family-$familyID\n";
         $families{$key}->{'roundfam'} = $familyID;
 
         open FAM, ">$workDir/family-$familyID.fa"
@@ -2534,9 +2538,10 @@ sub buildRSConsensiMT {
         or die "Could not open $combFamiliesFile for appending!\n";
 
     foreach my $familyKey (
+      # RMH: 9/19/23 Added secondary sort to ensure deterministic behaviour
       sort {
-        $families{$b}{'finalElementCount'} <=> $families{$a}
-            {'finalElementCount'}
+        $families{$b}{'finalElementCount'} <=> $families{$a}{'finalElementCount'} ||
+	$a cmp $b
       }
       keys( %families )
         )
@@ -2663,8 +2668,10 @@ sub buildReconConsensiMT {
 
   my @indices = ();
 
+  # RMH: 9/19/23 : added secondary sort to ensure deterministic behaviour
   my @sortedKeys = sort {
-    $#{ $families{$b}->{'elements'} } <=> $#{ $families{$a}->{'elements'} }
+    $#{ $families{$b}->{'elements'} } <=> $#{ $families{$a}->{'elements'} } ||
+    $a cmp $b  
   } keys( %families );
 
   log_print "Number of families returned by RECON: "
@@ -2791,11 +2798,11 @@ sub buildReconConsensiMT {
                 parameters => ["$workDir/family-$familyID.fa", $genomeDB, $workDir, 1, $DEBUG] );
     $jobIdx++;
   }  
-print "About to run $jobIdx refinement jobs\n";
+  print "Refining $jobIdx families\n";
 
   elapsedTime(2);
   $tsk->execute();
-  print "Refinement: " . elapsedTime( 2 ) . "\n" if ( 1 || $DEBUG );
+  print "Refinement: " . elapsedTime( 2 ) . "\n" if ( $DEBUG );
 
   for my $familyID ( keys %refinableFamilies ) {
     #print "  - Refining family-$familyID model...\n";
@@ -2817,7 +2824,7 @@ print "About to run $jobIdx refinement jobs\n";
       close INREF;
     }
     else {
-      print "  WARNING: Refiner did not return a consensus.\n";
+      print "  WARNING: Refiner did not return a consensus for $workDir/family-$familyID.fa.\n";
     }
 
     if ( $cons ne "" ) {
@@ -2925,8 +2932,10 @@ print "About to run $jobIdx refinement jobs\n";
       or die "Could not open $combFamiliesFile for appending!\n";
 
   foreach my $familyKey (
+    # RMH: 9/19/23: Added secondary sort to ensure deterministic behaviour
     sort {
-      $families{$b}{'finalElementCount'} <=> $families{$a}{'finalElementCount'}
+      $families{$b}{'finalElementCount'} <=> $families{$a}{'finalElementCount'} ||
+      $a cmp $b
     }
     keys( %families )
       )
