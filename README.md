@@ -189,7 +189,7 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
 
      The nohup (or screen) is used on our machines when running long 
      jobs.  The log output is saved to a file and the process is backgrounded.
-     For typical runtimes ( can be > 2-3 days with this configuration on a
+     For typical runtimes ( can be > 1-2 days with this configuration on a
      well assembled mammalian genome ) see the run statistics section of 
      this file.  It is important to save the log output for later usage.  
      It contains the random number generator seed so that the sampling 
