@@ -772,9 +772,13 @@ sub buildConsensus {
       }
     }
     else {
-      print $CLASS
+      if ( $DEBUG ) {
+        print $CLASS
           . "::buildConsensus(): $pathToFastaFile ( $consName ) "
           . "didn't have any hsps.\n";
+      }else{
+        print "  Refiner: Family $consName didn't produce any hsps.\n";
+      }
       exit;
     }
   }    # if Run stat from first pass
@@ -1391,13 +1395,18 @@ sub resolveLowQualityBlocks {
           print "  S: " . $seq . "\n" if ( $DEBUG );
           $seqLengthHisto{ length( $seq ) }++;
         }
-        my @keysSortedByLength =
-            sort { $seqLengthHisto{$b} <=> $seqLengthHisto{$a} }
+	# RMH: 9/19/23 This wasn't deterministic.  If two lengths
+	#      had equal counts it randomly chose one or the other.
+	#      Now it always chooses the longest one first.
+	my @keysByLenCountThenLen = 
+            sort { $seqLengthHisto{$b} <=> $seqLengthHisto{$a} ||
+	           $b <=> $a }
             keys( %seqLengthHisto );
-        my $mostFreqLen   = shift @keysSortedByLength;
+        my $mostFreqLen   = shift @keysByLenCountThenLen;
         my $mostFreqCount = $seqLengthHisto{$mostFreqLen};
 
         # Check to see if it's the same length as the reference/consensus
+print("mostFreqLen = $mostFreqLen, refSeq = $refSeq len=" . length($refSeq) . "\n") if ( $DEBUG );
         if ( $mostFreqLen != length( $refSeq ) ) {
 
           print "  - Block mostfreqLen = $mostFreqLen occurs in "
@@ -1460,7 +1469,9 @@ sub resolveLowQualityBlocks {
               }
             }
 
-            my @instSeqSortedByScore = sort { $seqScore{$b} <=> $seqScore{$a} }
+	    # RMH: 9/19/23 Added secondary sort to ensure deterministic behaviour
+            my @instSeqSortedByScore = sort { $seqScore{$b} <=> $seqScore{$a} ||
+	                                      $a cmp $b }
                 keys( %seqScore );
             my $maxScoreQueryIdx = shift @instSeqSortedByScore;
             my $maxScore         = $seqScore{$maxScoreQueryIdx};
@@ -1628,8 +1639,13 @@ sub findHighestScoringAlignmentSet {
           if ( $#{ $strandRec->{$instanceName} } > 0 ) {
   
             # Sort by score
+	    # RMH: 9/19/23
+	    #   - Added secondary sorts start, and length to 
+	    #     make sure this deterministic.
             my @sortedResults =
-                sort { $b->{'score'} <=> $a->{'score'} }
+                sort { $b->{'score'} <=> $a->{'score'} ||
+		       $a->{'start'} <=> $b->{'start'} ||
+	               ($b->{'end'} - $b->{'start'}) <=> ($a->{'end'} - $a->{'start'}) }
                 @{ $strandRec->{$instanceName} };
   
             print "     - $instanceName appears $#sortedResults times.\n" if ( $DEBUG );
@@ -1677,8 +1693,13 @@ sub findHighestScoringAlignmentSet {
         foreach my $instanceName ( keys( %{$strandRec} ) ) {
           if ( $#{ $strandRec->{$instanceName} } > 0 ) {
             # Sort by score
+	    # RMH: 9/19/23
+	    #   - Added secondary sorts start, and length to 
+	    #     make sure this deterministic.
             my @sortedResults =
-                sort { $b->{'score'} <=> $a->{'score'} }
+                sort { $b->{'score'} <=> $a->{'score'} ||
+		       $a->{'start'} <=> $b->{'start'} ||
+	               ($b->{'end'} - $b->{'start'}) <=> ($a->{'end'} - $a->{'start'}) }
                 @{ $strandRec->{$instanceName} };
   
             print "    - $instanceName appears " . ($#sortedResults+1) . " times.\n" if ( $DEBUG );
@@ -1758,9 +1779,13 @@ sub findHighestScoringAlignmentSet {
     }
   }
 
-  if ( keys %elements ) {
+  if ( keys %elements ) { 
+    # RMH: 9/19/23 added secondary sort after total score use
+    #      the ID itself.
     my @sortedElementKeys =
-        sort { $elements{$b} <=> $elements{$a} } keys( %elements );
+        sort { $elements{$b} <=> $elements{$a} ||
+	       $a cmp $b }
+	   keys( %elements );
 
     if ( $DEBUG ) {
       foreach my $key ( @sortedElementKeys ) {

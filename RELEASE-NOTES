@@ -1,3 +1,17 @@
+RepeatModeler 2.0.5
+===================
+  - Fixed a bug that caused failures in "absolute" reproducibility.  Prior
+    to this release use of the "-srand" would not gaurantee that the ouputs
+    consensi.fa.classified and families-classified.stk were exactly the same
+    in sequence and sequence order.  It did gaurantee that the same samples
+    were drawn from the genome, and that equivalent scoring families were
+    derived at at each step.  In this release secondary sorts were added 
+    to gaurantee a fixed sort order among equally scoring results, generating
+    exactly the same output files each time the random number generator seed
+    is used.  NOTE: This change only applies to results generated with 
+    this version and future releases.
+  - Added "-long" option to faToTwoBit to support larger genomes.
+    
 RepeatModeler 2.0.4
 ====================
   - Improved the gathering of RepeatScout examplars for building

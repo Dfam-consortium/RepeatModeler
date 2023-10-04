@@ -4216,6 +4216,115 @@ sub toFASTA {
 
 ##---------------------------------------------------------------------##
 
+=head2 toAlign()
+
+  Use: $obj->toAlign( filename => "filename" );
+
+  Export the multiple alignment data to a file in the Crossmatch Align
+  format.
+
+=cut
+
+##---------------------------------------------------------------------##
+sub toAlign {
+  my $object     = shift;
+  my %parameters = @_;
+
+  my $OUT;
+  if ( $parameters{'filename'} ) {
+    open $OUT, ">$parameters{'filename'}";
+  }
+  else {
+    $OUT = *STDOUT;
+  }
+
+  my $maxNameLen = 0;
+
+  my $refSeq = $object->getReferenceSeq();
+  my $start;
+  my $end;
+  my $refStart;
+  my $seq;
+
+  my $matrix =
+        Matrix->new(
+           fileName => "$FindBin::RealBin/../Matrices/crossmatch/18p43g.matrix" );
+
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
+    $start = $object->getAlignedStart( $i );
+    my $sstart = $object->getAlignedSeqStart($i);
+    $end   = $object->getAlignedEnd( $i );
+    $refStart = $object->getReferenceSeqStart($i);
+    $seq = $object->getAlignedSeq( $i );
+
+    my $refSubAlign = "";
+    my $seqSubAlign = "";
+    for ( my $j = 0; $j < length($seq); $j++ ) {
+      my $refBase = substr($refSeq,$j+$start,1);
+      my $seqBase = substr($seq,$j,1);
+
+      next if ( $refBase eq "-" and $seqBase eq "-" );
+      $refSubAlign .= $refBase;
+      $seqSubAlign .= $seqBase;
+
+    }
+
+    my $tmpSeq = $refSubAlign;
+    $tmpSeq =~ s/-//g;
+    my $refLen = length($tmpSeq);
+    $tmpSeq = $seqSubAlign;
+    $tmpSeq =~ s/-//g;
+    my $seqLen = length($tmpSeq);
+    
+    my $result = SearchResult->new(
+                                     queryName      => $object->getAlignedName( $i ),
+                                     queryStart     => 1,
+                                     queryEnd       => $seqLen,
+                                     queryRemaining => 0,
+                                     orientation    => "+",
+                                     subjName       => "consensus",
+                                     subjStart      => 1,
+                                     subjEnd        => $refLen,
+                                     subjRemaining  => 0,
+                                     pctDiverge     => 0,
+                                     pctInsert      => 0,
+                                     pctDelete      => 0,
+                                     matrixName     => "18p43g.matrix",
+                                     score          => 0 );
+    $result->setQueryString($seqSubAlign);
+    $result->setSubjString($refSubAlign);
+
+    my (
+       $rawScore,   $kimura,      $CpGSites, $percIns, $percDel,
+       $scoreArray, $goodRegions, $wcb,      $trans,   $transv
+      )
+      = $result->rescoreAlignment(
+                                   scoreMatrix    => $matrix,
+                                   gapOpenPenalty => -30,
+                                   gapExtPenalty  => -15
+      );
+    $result->setScore($rawScore);
+    $result->setPctInsert(sprintf("%0.2f",$percIns));
+    $result->setPctDelete(sprintf("%0.2f",$percDel));
+    $result->setPctDiverge(sprintf("%0.2f",$kimura));
+
+    if ( $parameters{'filename'} ) {
+      print $OUT "" . $result->toStringFormatted( SearchResult::AlignWithQuerySeq ) . "\n";
+    }else {
+      print "" . $result->toStringFormatted( SearchResult::AlignWithQuerySeq ) . "\n";
+    }
+
+    #print "STATS:," . sprintf("%0.2f",$kimura) . "," . sprintf("%0.2f",$percIns) . 
+    #      "," . sprintf("%0.2f",$percDel) . "\n";
+
+  }
+  if ( $parameters{'filename'} ) {
+    close $OUT;
+  }
+}
+
+##---------------------------------------------------------------------##
+
 =head2 toMSF()
 
   Use: $obj->toMSF( filename => "filename",

@@ -49,7 +49,7 @@ Linup - Display or convert MSA into various formats
                         [-malignOut <file>]
                         [-stockholm | -msf | 
                          -consensus | -msa
-                         -fasta | -stats]
+                         -fasta | -stats | -align]
         <crossmatch file> | <stockholm file> | <msa fasta> | <malign file>
 
 
@@ -198,6 +198,7 @@ $DEBUG = 1 if ( $RepModelConfig::DEBUG == 1 );
 my @getopt_args = (
                     '-version',          # print out the version and exit
                     '-i',
+                    '-align',
                     '-stockholm',
                     '-showScore',
                     '-malignOut=s',
@@ -378,6 +379,8 @@ if ( $options{'stockholm'} )
 } elsif ( $options{'msf'} )
 {
   $mAlign->toMSF( includeReference => 1 );
+} elsif ( $options{'align'} ) {
+  $mAlign->toAlign();
 } elsif ( $options{'fasta'} )
 {
   $mAlign->toFASTA( seqOnly => 1 );

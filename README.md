@@ -109,8 +109,8 @@ Source Distribution Installation
 
   Ninja - A tool for large-scale neighbor-joining phylogeny inference and 
     clustering.  We developed and tested RepeatModeler using Ninja version
-    "0.95-cluster_only". Please obtain a copy from:
-    https://github.com/TravisWheelerLab/NINJA/releases/tag/0.95-cluster_only
+    "0.98-cluster_only". Please obtain a copy from:
+    https://github.com/TravisWheelerLab/NINJA/releases/tag/0.98-cluster_only
 
 **Installation**
 
@@ -189,7 +189,7 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
 
      The nohup (or screen) is used on our machines when running long 
      jobs.  The log output is saved to a file and the process is backgrounded.
-     For typical runtimes ( can be > 2-3 days with this configuration on a
+     For typical runtimes ( can be > 1-2 days with this configuration on a
      well assembled mammalian genome ) see the run statistics section of 
      this file.  It is important to save the log output for later usage.  
      It contains the random number generator seed so that the sampling 
@@ -282,6 +282,7 @@ Caveats
     file in the users home directory with the stanza:
 
     [BLAST]
+
     BLAST_USAGE_REPORT=false
 
   + RepeatModeler is designed to run on assemblies rather

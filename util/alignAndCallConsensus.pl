@@ -632,7 +632,7 @@ while ( 1 ) {
   }
  
   my %collected = ();
-  #print STDERR "Search Parameters: " . $searchEngineN->getParameters() . "\n";
+  print STDERR "Search Parameters: " . $searchEngineN->getParameters() . "\n" if ( $options{'debug'} );
   my ( $status, $resultCollection ) = $searchEngineN->search();
   if ( $status )
   {
@@ -1145,7 +1145,7 @@ sub cleanup {
   my $outdir = shift;
   my $conFile = shift;
   # cleanup
-  foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd" ){
+  foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd", "njs" ){
     unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
   }
 }

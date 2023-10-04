@@ -74,7 +74,7 @@ BEGIN {
                                                         ],
                                  'param_type' => 'directory',
                                  'required' => 0,
-                                 'value' => '/usr/local/genometools-1.5.10'
+                                 'value' => '/usr/local/genometools-1.5.10/bin'
                                },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
@@ -96,7 +96,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/mafft-7.471'
+                           'value' => '/usr/local/mafft-7.471/bin'
                          },
           'NINJA_DIR' => {
                            'command_line_override' => 'ninja_dir',
@@ -107,7 +107,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/NINJA'
+                           'value' => '/usr/local/NINJA/NINJA'
                          },
           'RECON_DIR' => {
                            'command_line_override' => 'recon_dir',
@@ -130,7 +130,7 @@ BEGIN {
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/usr/local/RepeatMasker-4.1.4'
+                                  'value' => '/home/rhubley/projects/RepeatMasker'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
@@ -146,7 +146,7 @@ BEGIN {
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast-2.13.0/bin'
+                             'value' => '/home/rhubley/projects/RMBlast_project/RMBlast/rmblast-2.14.1/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
@@ -198,7 +198,7 @@ BEGIN {
   #
   # Current version of the software
   #
-  $VERSION = "2.0.4";
+  $VERSION = "2.0.5";
 
   #
   # Set this flag to default to debug mode for the entire package
