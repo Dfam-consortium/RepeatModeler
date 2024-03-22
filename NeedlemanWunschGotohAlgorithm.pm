@@ -414,17 +414,32 @@ sub search {
   $queryAlignment = reverse( $queryAlignment );
   $subjAlignment  = reverse( $subjAlignment );
 
+  my ($insCnt) = ($queryAlignment =~ s/-/-/g); 
+  my $percIns = sprintf("%0.1f",( ( $insCnt ) * 100 ) / length($subjSeq));
+
+  my ($delCnt) = ($subjAlignment =~ s/-/-/g); 
+  my $percDel = sprintf("%0.1f",( ( $delCnt ) * 100 ) / length($querySeq));
+
+  my $sub = 0;
+  for ( my $i = 0; $i < length($queryAlignment); $i++ ) {
+     my $qbase = uc(substr($queryAlignment,$i,1));
+     my $sbase = uc(substr($subjAlignment,$i,1));
+     next if ( $qbase eq "-" || $sbase eq "-" );
+     $sub++ if ( $qbase =~ /[ACGT]/ && $sbase ne $qbase );
+  }
+  my $percSub = sprintf("%0.1f",( ( $sub ) * 100 ) / length($querySeq));
+
   my $result = SearchResult->new(
                                   queryName      => "query",
                                   subjName       => "subject",
-                                  pctInsert      => 0.0,
-                                  pctDelete      => 0.0,
+                                  pctInsert      => $percIns,
+                                  pctDelete      => $percDel,
                                   subjStart      => 1,
                                   subjEnd        => length( $subjSeq ),
                                   queryStart     => 1,
                                   queryEnd       => length( $querySeq ),
                                   score          => $score,
-                                  pctDiverge     => 0.0,
+                                  pctDiverge     => $percSub,
                                   subjRemaining  => 0,
                                   queryRemaining => 0,
                                   orientation    => "",

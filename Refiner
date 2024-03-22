@@ -639,11 +639,15 @@ sub buildConsensus {
 
           # Build consensus
           $cons = $malign->consensus( "$matrixDir/linupmatrix" );
-          my $sumDiv = $malign->kimuraDivergence( $cons );
-          $avgKDiv = 0;
-          if ( $malign->getNumAlignedSeqs() > 0 ) {
-            $avgKDiv = $sumDiv / $malign->getNumAlignedSeqs();
-          }
+          #my $sumDiv = $malign->kimuraDivergence( $cons );
+          #$avgKDiv = 0;
+          #if ( $malign->getNumAlignedSeqs() > 0 ) {
+          #  $avgKDiv = $sumDiv / $malign->getNumAlignedSeqs();
+          #}
+          # 10/23 Use new API
+          my ( $avgKimura, $avgKimuraMod, $totTransitions, $totTransitionsMod, $totTransversions, $wellCharacterized, $CpGSites ) = $mAlign->calculateKimuraDivergence( consensus => $cons );
+          # Note this now uses the CpG modified Kimura 
+          $avgKDiv = $avgKimuraMod;
           $malign->serializeOUT( "$wrkDir/$consName-malign-$round.ser" )
               if ( $DEBUG );
 

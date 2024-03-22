@@ -199,6 +199,39 @@ sub setId
 
 ##-------------------------------------------------------------------------##
 
+=head2 get_setAccession()
+
+  Use: my $value    = getAccession();
+  Use: my $oldValue = setAccession( $value );
+
+  Get/Set the database accession.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub getAccession
+{
+  my $obj = shift;
+
+  my $value = $obj->{'accession'};
+
+  return $value;
+}
+
+sub setAccession
+{
+  my $obj      = shift;
+  my $value    = shift;
+  my $oldValue = undef;
+
+  $oldValue = $obj->{'accession'};
+  $obj->{'accession'} = $value;
+
+  return $oldValue;
+}
+
+##-------------------------------------------------------------------------##
+
 =head2 get_setComment()
 
   Use: my $value    = getComment();
@@ -1098,17 +1131,20 @@ sub clearClades
   
   Compulsory fields:
   ------------------
-     ID   Identification:             One word name for family.
-     DE   Definition:                 Short description of family.
-     AU   Author:                     Authors of the entry.
+     ID   Identification:             One word name for family
+  and/or
+     AC   Accession:                  Primary Database Accession
+
+     DE   Definition:                 Short description of family
+     AU   Author:                     Authors of the entry
      SE   Source of seed:             The source suggesting the seed members 
-                                      belong to one family.
+                                        belong to one family
      TP   Type/Classification:        Classifcation of family -- Presently we use the
-                                      new unified RepeatMasker classification 
-                                      heirarchy.
+                                        new unified RepeatMasker classification 
+                                        heirarchy
      OC   Clade:                      Organism (clade, etc.) Multiple OC records are
-                                      allowed.
-     SQ   Sequence:                   Number of sequences in alignment.
+                                        allowed.
+     SQ   Sequence:                   Number of sequences in alignment
   
   
   Optional fields:
@@ -1174,9 +1210,16 @@ sub read_stockholm
     # Save the first identifier line
     if ( /^\#=GF\s+ID\s+(\S+)/ && !$this->getId() )
     {
-
       # Only keep the first word in the field.
       $this->setId( $1 );
+      next;
+    }
+
+    # Accession
+    if ( /^\#=GF\s+AC\s+(\S+)/ && !$this->getAccession() )
+    {
+      # Only keep the first word in the field.
+      $this->setAccession( $1 );
       next;
     }
 
@@ -1441,7 +1484,14 @@ sub toString
   my $retStr = "";
 
   $retStr .= "# STOCKHOLM 1.0\n";
-  $retStr .= "#=GF ID    " . $obj->getId() . "\n";
+  if ( $obj->getAccession() ) {
+    $retStr .= "#=GF AC    " . $obj->getAccession() . "\n";
+  }
+
+  if ( $obj->getId()  ) {
+    $retStr .= "#=GF ID    " . $obj->getId() . "\n";
+  }
+     
   if ( $obj->getDescription() )
   {
     my @lines = split( /[\n\r]+/, $obj->getDescription() );

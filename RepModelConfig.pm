@@ -146,7 +146,7 @@ BEGIN {
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/home/rhubley/projects/RMBlast_project/RMBlast/rmblast-2.14.1/bin'
+                             'value' => '/usr/local/rmblast-2.14.1/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',

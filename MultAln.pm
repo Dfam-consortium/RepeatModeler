@@ -166,11 +166,15 @@ Arnie Kas <akas@u.washington.edu>
 package MultAln;
 use strict;
 use Data::Dumper;
-use SequenceSimilarityMatrix;
-use SeedAlignment;
 use Carp;
 
 # RepeatModeler Libraries
+use FindBin;                                                   
+use lib $FindBin::RealBin;
+use SequenceSimilarityMatrix;
+use SeedAlignment;
+
+# RepeatMasker Libraries
 use RepModelConfig;
 use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use SearchResultCollection;
@@ -1226,10 +1230,166 @@ sub serializeIN {
 
 ##---------------------------------------------------------------------##
 
+=head2 calculateKimuraDivergence()
+  NOTE: This is the new API
+   
+  Use: () = $obj->calculateKimuraDivergence( consensus => "ACCCA--ACC",
+                                        seqidx => # );
+
+=cut
+##---------------------------------------------------------------------##
+sub calculateKimuraDivergence {
+  my $object     = shift;
+  my %parameters = @_;
+
+  my $consensus = $object->getReferenceSeq();
+  if ( exists $parameters{'consensus'} ) {
+    $consensus = $parameters{'consensus'};
+    delete $parameters{'consensus'};
+  }
+  my $singleSeqIdx = -1;
+  if ( exists $parameters{'seqidx'} ) {
+    $singleSeqIdx = $parameters{'seqidx'};
+    delete $parameters{'seqidx'};
+  }
+
+  if ( keys %parameters ) {
+    die "MultAln::calculateKimuraDivergence() called with unrecognized parameters: " . join(",",keys(%parameters)) . "\n";
+  }
+
+  my @seqIdxs = ();
+  if ( $singleSeqIdx >= 0 ) {
+    push @seqIdxs, $singleSeqIdx;
+  }else {
+    @seqIdxs = (0 .. $object->getNumAlignedSeqs() - 1);
+  }
+
+  my $totTransversions  = 0;
+  my $totTransitions    = 0;
+  my $totTransitionsMod = 0;
+  my $CpGSites          = 0;
+  my $wellCharacterized = 0;
+  my $totKdiv = 0;
+  my $totKdivMod = 0;
+  my $numHigh = 0;
+ 
+  foreach my $n ( @seqIdxs ) {
+    my $transitions            = 0;
+    my $transversions          = 0;
+    my $transitionsMod         = 0;
+    my $cpgs                   = 0;
+    my $wcb = 0;
+    my $pSBase                 = "";
+    my $prevTrans              = 0;
+    my @sBases                 = split //, 
+                                 substr($consensus,$object->getAlignedStart($n),
+                                   ($object->getAlignedEnd($n)-$object->getAlignedStart($n)+1));
+    my @qBases                 = split //, $object->getAlignedSeq( $n );
+    #print "cons:" . substr($consensus,$object->getAlignedStart($n),50). "...\n";
+    #print "inst:" . substr($object->getAlignedSeq( $n ), 0, 50) . "...\n";
+    #foreach my $i ( 0 .. ( length( $consensus ) - 1 ) ) {
+    foreach my $i ( 0 .. $#sBases ) {
+      next if ( $sBases[ $i ] eq "-" );
+      last if ( $i > $#qBases );
+
+      $wcb++
+        if ( $wellCharacterizedBases{ $qBases[ $i ] . $sBases[ $i ] } );
+
+      if ( $pSBase eq "C" && $sBases[ $i ] eq "G" ) {
+        # CpG
+        $cpgs++;
+        my $mt = $mutType{ $qBases[ $i ] . $sBases[ $i ] } || 0;
+        if ( $mt == 1 ) {
+          $prevTrans++;
+          $transitions++;
+        }
+        elsif ( $mt == 2 ) {
+          $transversions++;
+        }
+        if ( $prevTrans == 2 ) {
+          # CpG sites contains 2 transitions ( treat as 1 trans )
+          $prevTrans = 1;
+        }
+        elsif ( $prevTrans == 1 ) {
+          # CpG sites contains 1 transition ( treat as 1/10 trans )
+          $prevTrans = 1 / 10;
+        }
+      }
+      else {
+        $transitionsMod += $prevTrans;
+        $prevTrans = 0;
+  
+        # Normal
+        my $mt = $mutType{ $qBases[ $i ] . $sBases[ $i ] } || 0;
+        #print "Comparing $: $qBases[$i] to $sBases[$i]\n";
+        if ( $mt == 1 ) {
+          # Delay recording transition for CpG accounting
+          $prevTrans = 1;
+          $transitions++;
+        }
+        elsif ( $mt == 2 ) {
+          $transversions++;
+        }
+      }
+      $pSBase = $sBases[ $i ];
+    }
+    $transitionsMod += $prevTrans;
+
+    my $kimura = 100.00;
+    my $kimuraMod = 100.00;
+    if ( $wcb >= 1 ) {
+      my $p          = $transitions / $wcb;
+      my $q          = $transversions / $wcb;
+      my $logOperand = ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 );
+      if ( $logOperand > 0 ) {
+        $kimura = ( abs( ( -0.5 * log( $logOperand ) ) ) * 100 );
+      }
+      $p          = $transitionsMod / $wcb;
+      $logOperand = ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 );
+      if ( $logOperand > 0 ) {
+        $kimuraMod = ( abs( ( -0.5 * log( $logOperand ) ) ) * 100 );
+      }
+    }
+    #print "Kimura = $kimura Mod = $kimuraMod, trans = $transitions transv = $transversions\n";
+    # End of sequence
+    $totTransversions += $transversions;
+    $totTransitions += $transitions;
+    $totTransitionsMod += $transitionsMod;
+    $wellCharacterized += $wcb;
+    $CpGSites         = $cpgs;
+    $totKdiv += $kimura;
+    $totKdivMod += $kimuraMod;
+
+    # Count number of suspect alignments based on kimura divergence
+    if ( $kimura >= 90 ) {
+      $numHigh++;
+    }
+  }
+  my $avgKimura = sprintf("%0.2f",($totKdiv/scalar(@seqIdxs)));
+  my $avgKimuraMod = sprintf("%0.2f",($totKdivMod/scalar(@seqIdxs)));
+  $totTransitionsMod = sprintf("%0.1f", $totTransitionsMod);
+  
+  #print "Calculated:\n";
+  #print "  totTransversions = $totTransversions\n";
+  #print "  totTransitions = $totTransitions\n";
+  #print "  CpG Sites = $CpGSites\n";
+  #print "  well chara = $wellCharacterized\n";
+  #print "  avg kimura = $avgKimura\n";
+  #print "  avg kimura adjusted = $avgKimuraMod\n";
+  #print "  totKDiv = $totKdiv denom = " . scalar(@seqIdxs) . "\n";
+  return ( $avgKimura, $avgKimuraMod, $totTransitions, $totTransitionsMod, $totTransversions, $wellCharacterized, $CpGSites, $numHigh );
+  # NOTE: This no longer sets the object's divergence parameter.
+}
+
+##---------------------------------------------------------------------##
+
 =head2 kimuraDivergence()
+
+  DEPRECATED use calculateKimuraDivergence()
 
   Use: $obj->kimuraDivergence( $consensus );
 
+  NOTE: This is not CpG adjusted!
 =cut
 
 ##---------------------------------------------------------------------##
@@ -1313,6 +1473,7 @@ sub kimuraDivergence {
   }
   my $avgDiv = 0;
   if ( $hits > 0 ) {
+    # NOTE: this keeps two signifcant digits whereas the new routines keep four.
     $avgDiv = sprintf( "%0.2f", ( $totDiv / $hits ) );
   }
   return ( $sumDiv, $totDiv, $avgDiv );
@@ -1321,6 +1482,8 @@ sub kimuraDivergence {
 ##---------------------------------------------------------------------##
 
 =head2 kimuraDivergenceAlt()
+
+  DEPRECATED! Use calculateKimuraDivergence()
 
   Use: $obj->kimuraDivergenceAlt( seqidx => #, [consensus => "A----AAAG"] );
 
@@ -1439,6 +1602,8 @@ sub kimuraDivergenceAlt {
   on the current consensus sequence.  NOTE: This will
   count masked sequence ("*" bases) as divergent!
 
+  DEPRECATED: Use calculateKimuraDivergence() instead
+
 =cut
 
 ##---------------------------------------------------------------------##
@@ -1470,6 +1635,118 @@ sub divergence {
     }
     $object->setAlignedDiv( $n, $change / $total );
   }
+}
+
+##---------------------------------------------------------------------##
+
+=head2 identifySeedArtifacts()
+
+  TODO: Remove...this had to be abandoned
+
+  my ( [ seq_idx, shift ], .. ) $obj->identifySeedArtifacts( fix => # ); 
+
+=cut
+##---------------------------------------------------------------------##
+sub identifySeedArtifacts {
+  my $object     = shift;
+  my %parameters = @_;
+
+  my $fix = 0;
+  if ( exists $parameters{'fix'} ) {
+    $fix = 1;
+    delete $parameters{'fix'};
+  }
+  if ( keys %parameters ) {
+    die "MultAln::identifySeedArtifacts() called with unrecognized parameters: " . join(",",keys(%parameters)) . "\n";
+  }
+
+  my $consensus = $object->getReferenceSeq();
+  my @seqIdxs = (0 .. $object->getNumAlignedSeqs() - 1);
+  my @results = ();
+
+  print "Looking for seed alignment artifacts:\n";
+  foreach my $n ( @seqIdxs ) {
+    my @sBases                 = split //, 
+                                 substr($consensus,$object->getAlignedStart($n),
+                               ($object->getAlignedEnd($n)-$object->getAlignedStart($n)+1));
+    my @qBases                 = split //, $object->getAlignedSeq( $n );
+    #print "cons:" . substr($consensus,$object->getAlignedStart($n),50). "...\n";
+    #print "inst:" . substr($object->getAlignedSeq( $n ), 0, 50) . "...\n";
+    
+    my $alignInstBP = 0;
+    my $trans = 0;
+    my $tranv = 0;
+    #foreach my $i ( 0 .. ( length( $consensus ) - 1 ) ) {
+    foreach my $i ( 0 .. $#sBases ) {
+      last if ( $i > $#qBases );
+      # s is consensus
+      # q is instance
+      if ( $wellCharacterizedBases{ $qBases[ $i ] . $sBases[ $i ] } ) {
+        my $mt = $mutType{ $qBases[ $i ] . $sBases[ $i ] } || 0;
+        if ( $mt == 1 ) {
+          $trans++;
+        }elsif ( $mt == 2 ) {
+          $tranv++; 
+        }
+        $alignInstBP++;
+      }
+    }
+    my $kimura = 100.00;
+    if ( $alignInstBP > 0 ) {
+      my $p          = $trans / $alignInstBP;
+      my $q          = $tranv / $alignInstBP;
+      my $logOperand = ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 );
+      if ( $logOperand > 0 ) {
+        $kimura = ( abs( ( -0.5 * log( $logOperand ) ) ) * 100 );
+      }
+    }
+
+    print "  - kimura [$n] = $kimura trans/tranv = $trans/$tranv denom = $alignInstBP\n";
+    if ( $kimura > 80 ) {
+      my $minShift = 0;
+      my $minKimura = $kimura;
+      for( my $j = 1; $j <= 10; $j++ ){
+        my @cBases  = split //, 
+                       substr($consensus,$object->getAlignedStart($n)+$j,
+                       ($object->getAlignedEnd($n)-$object->getAlignedStart($n)+1));
+        my $shift_alignInstBP = 0;
+        my $shift_trans = 0;
+        my $shift_tranv = 0;
+        #foreach my $i ( 0 .. ( length( $consensus ) - 1 ) ) {
+        foreach my $i ( 0 .. $#cBases ) {
+          last if ( $i > $#qBases );
+          # c is consensus
+          # q is instance
+          if ( $wellCharacterizedBases{ $cBases[ $i ] . $qBases[ $i ] } ) {
+            my $mt = $mutType{ $qBases[ $i ] . $cBases[ $i ] } || 0;
+            if ( $mt == 1 ) {
+              $shift_trans++;
+            }elsif ( $mt == 2 ) {
+              $shift_tranv++; 
+            }
+            $shift_alignInstBP++;
+          }
+        }
+        my $shift_kimura = 100.00;
+        if ( $shift_alignInstBP > 0 ) {
+          my $p          = $shift_trans / $shift_alignInstBP;
+          my $q          = $shift_tranv / $shift_alignInstBP;
+          my $logOperand = ( ( 1 - ( 2 * $p ) - $q ) * ( 1 - ( 2 * $q ) )**0.5 );
+          if ( $logOperand > 0 ) {
+            $shift_kimura = ( abs( ( -0.5 * log( $logOperand ) ) ) * 100 );
+          }
+        }
+        print "      ** shift $j trans/tranv $shift_trans/$shift_tranv kimura = $shift_kimura denom = $shift_alignInstBP\n";
+        if ( $shift_kimura < $minKimura ) {
+          $minKimura = $shift_kimura;
+          $minShift = $j;
+        }
+      }
+      print "     - Identified one n=$n minShift=$minShift (kimura = $minKimura)!\n";
+      push @results, [$n, $minShift];
+    }
+  }
+  return @results;
 }
 
 ##---------------------------------------------------------------------##
@@ -1892,6 +2169,15 @@ sub _alignFromSeedAlignment {
   # to be called "alignment positions".  If we do not have this information
   # we need to develop it ourselves so we may set the alignStart/End
   # correctly.
+  
+  # First check if we have one:
+  my $RFSeq = "";
+  if ( $seedAlignment->getRfLine() ne "" ) {
+    $RFSeq = $seedAlignment->getRfLine();
+    # Stockholm spacer to Multaln spacer
+    $RFSeq =~ s/\./-/g;
+  }
+
   for ( my $l = 0 ; $l < $seedAlignment->alignmentCount() ; $l++ ) {
     my ( $assemblyName, $sequenceName, $start, $end, $orient, $sequence ) =
         $seedAlignment->getAlignment( $l );
@@ -1938,13 +2224,20 @@ sub _alignFromSeedAlignment {
     $object->setAlignedSeqEnd( $l, $end );
 
     # Is this necessary?
-    $object->setAlignedOrientation( $l, "+" );
+    #$object->setAlignedOrientation( $l, "+" );
+    # 10/23/23 : Wasn't populating the orientation from the seed alignment 
+    $object->setAlignedOrientation( $l, $orient );
   }
-  my $consensus = $object->consensus();
-  $object->setReferenceSeq( $consensus );
+  if ( $RFSeq ) {
+    $object->setReferenceSeq( $RFSeq );
+  }else {
+    my $consensus = $object->consensus();
+    $object->setReferenceSeq( $consensus );
+  }
   if ( $seedAlignment->getId() ne "" ){
     $object->setReferenceName($seedAlignment->getId());
   }
+  $object->setReferenceSeqStart( 1 );
 }
 
 ##---------------------------------------------------------------------##
@@ -2294,31 +2587,6 @@ sub _alignFromSearchResultCollection {
     my $seqStart     = $tMin;
     my $seqEnd       = $tMax;
     my $seqRemaining = $tRemaining;
-#    if ( $seqDB->getSeqLength( $seqID ) > 0 ) {
-#
-#      # Determine the left boundaries
-#      my $start = 0;
-#      my $end   = $seqStart - 2;
-#      if ( $maxLen > -1 ) {
-#        $start = $seqStart - $maxLen - 1 if ( $seqStart > $maxLen );
-#      }
-#print "REF $seqID (0) maxlen = $maxLen seqRemainining = $seqRemaining seqStart = $seqStart finalRange: $start - $end\n";
-#      $object->setLeftFlankingSequence(
-#                                        0,
-#                                        $seqDB->getSubstr(
-#                                                   $seqID, $start, $end - $start + 1
-#                                        )
-#      );
-#
-#      # Determine the right boundaries
-#      $start = $seqEnd + 1;
-#      $end   = $seqEnd + $seqRemaining - 1;
-#      if ( $maxLen > -1 ) {
-#        $end = $seqEnd + $maxLen - 1 if ( $seqRemaining > $maxLen );
-#      }
-#      $object->setRightFlankingSequence( 0,
-#                       $seqDB->getSubstr( $seqID, $start, $end - $start + 1 ) );
-#    }
 
     # Grab the instance flanking sequence
     for ( my $l = 0 ; $l < $searchCollection->size() ; $l++ ) {
@@ -2335,10 +2603,8 @@ sub _alignFromSearchResultCollection {
         if ( $maxLen > -1 ) {
           $start = $seqStart - $maxLen - 1 if ( $seqStart > $maxLen );
         }
-#print "$seqID (".($l).") maxlen = $maxLen seqRemainining = $seqRemaining seqStart = $seqStart finalRange: $start - $end\n";
         $object->setLeftFlankingSequence( $l,
                            $seqDB->getSubstr( $seqID, $start, $end - $start + 1 ) );
-#print "  seq = " . $seqDB->getSubstr( $seqID, $start, $end - $start + 1 ) . "\n";
 
         # Determine the right boundaries
         $start = $seqEnd;
@@ -2346,10 +2612,8 @@ sub _alignFromSearchResultCollection {
         if ( $maxLen > -1 ) {
           $end = $seqEnd + $maxLen - 1 if ( $seqRemaining > $maxLen );
         }
-#print "  now right seqEnd = $seqEnd finalRange: $start - $end\n";
         $object->setRightFlankingSequence( $l,
                            $seqDB->getSubstr( $seqID, $start, $end - $start + 1 ) );
-#print "  seq = " . $seqDB->getSubstr( $seqID, $start, $end - $start + 1 ) . "\n";
 
       } #else { print "Could not find $seqID\n"; }
     }
@@ -2618,6 +2882,7 @@ sub trimAlignments {
   croak $CLASS. "::trimAlignments(): Missing 'left' or 'right' parameter!\n"
       if ( !defined $parameters{'left'} && !defined $parameters{'right'} );
 
+  # TODO: Wouldn't the normal use case be to use the reference sequence and not the consensus?
   my $consensus = $this->consensus( inclRef => 0 );
 
   my $leftCols  = 0;
@@ -2751,6 +3016,161 @@ sub trimAlignments {
   return( $leftCols, $rightCols );
 }
 
+##---------------------------------------------------------------------##
+
+=head2 slice()
+
+  Use: slice( start => #, end => #, minLen => # );
+
+  Generate an in-place slice of a alignment using start/end
+  consensus bp positions (1-based, fully-closed).  For example,
+  given:
+
+        Cons:  T-AA--CTG...
+        Seq1:  TAAA--CAG...
+        Seq2:  T-CA--CTG...
+        Seq3:  T-AAC-CTG...
+        Seq4:  T-AA-TCTG...
+
+  Then slice ( start => 2, end => 4 ) would leave:
+
+        Cons:  AA--C
+        Seq1:  AA--C
+        Seq2:  CA--C
+        Seq3:  AAC-C
+        Seq4:  AA-TC
+
+   In some circumstances it's not desired to keep short sequences
+   in the output.  If a minLen parameter is included sequences will
+   be omitted if they contain fewer than minLen bp.
+
+=cut
+
+##---------------------------------------------------------------------##
+sub slice {
+  my $this       = shift;
+  my %parameters = @_;
+
+  croak $CLASS. "::slice(): Missing 'start' or 'end' parameter!\n"
+      if ( !defined $parameters{'start'} || !defined $parameters{'end'} );
+
+  my $minLen = 0;
+  $minLen = $parameters{'minLen'} if ( exists $parameters{'minLen'} );
+
+  # Sometimes the reference sequence is different perhaps we should
+  # have an option to use reference coordinates?
+  #my @ref = split //, $this->getReferenceSeq();
+  my @ref = split //, $this->consensus( inclRef => 0 );
+  my $startCol = -1;
+  my $endCol = -1;
+  my $bp = 0;
+  for ( my $i = 0; $i <= $#ref; $i++ ) {
+    next if ( $ref[$i] =~ /[\-\.\s]/ );
+    $bp++;
+    $startCol = $i if ( $bp == $parameters{'start'} );
+    if ( $bp == $parameters{'end'} )
+    {
+      $endCol = $i;
+      last;
+    }
+  }
+  if ( $parameters{'start'} < 1 ) {
+    croak $CLASS. "::slice(): Start position is beyond the alignment (start = $parameters{'start'}), should be in 1-based coordinates!\n\n";
+  }
+  if ( $bp < $parameters{'end'} ) {
+    croak $CLASS. "::slice(): End position is beyond the alignment (end = $parameters{'end'}, last reference position = $bp )!\n\n";
+  }
+  if ( $startCol < 0 ){
+    croak $CLASS. "::slice(): Could not identify reference column for start=$parameters{'start'}\n";
+  }
+  if ( $endCol < 0 ){
+    croak $CLASS. "::slice(): Could not identify reference column for end=$parameters{'end'}\n";
+  } 
+
+  #print "Slice: start=$parameters{'start'} col=$startCol, end=$parameters{'end'} col=$endCol\n"; 
+
+  # go from high to low so we may remove sequences
+  my $max = $this->getNumAlignedSeqs()-1;
+  for ( my $i = $max; $i >= 0; $i-- ) {
+    my $relStart = $this->getAlignedStart( $i );
+    my $relEnd   = $this->getAlignedEnd( $i );
+    my $seq      = $this->getAlignedSeq( $i );
+    
+    if ( $relStart >= $startCol && $relStart <= $endCol ||
+         $relEnd >= $startCol && $relEnd <= $endCol ||
+         $relStart < $startCol && $relEnd > $endCol ) {
+      # Overlaped or contained in slice
+      my $substrStart = 0;
+      $substrStart = $startCol - $relStart if ( $relStart < $startCol );
+
+      my $substrLen;
+      if ( $relStart <= $startCol && $relEnd >= $endCol ) {
+        $substrLen = $endCol - $startCol + 1;
+      }elsif ( $relStart > $startCol && $relEnd < $endCol ) {
+        $substrLen = length($seq);
+      }elsif ( $relStart <= $startCol && $relEnd < $endCol ) {
+        $substrLen = $relEnd - $startCol + 1;
+      }else {
+        $substrLen = $endCol - $relStart + 1;
+      }
+
+      my $leftTrim;
+      my $rightTrim;
+      $leftTrim = substr($seq, 0, $substrStart);
+      $leftTrim =~ s/[-\.\s]//g;
+      $rightTrim = substr($seq,$substrStart+$substrLen) if (($substrStart + $substrLen) < length($seq));
+      $rightTrim =~ s/[-\.\s]//g;
+
+      $seq = substr($seq, $substrStart, $substrLen);
+      # Tricky regex to replace prefix/suffix "." and "-" characters with space
+      $seq =~ s/^([\.\-]*)/' ' x length($1)/eg;
+      $seq =~ s/([\.\-]*$)/' ' x length($1)/eg;
+
+      my $bp = $seq;
+      $bp = $seq;
+      $bp =~ s/[\.\-\s]+//g;
+      if ( length($bp) >= $minLen ) {
+        $this->setAlignedSeq( $i, $seq );
+        if ( $this->getAlignedOrientation($i) eq "+" ) {
+          $this->setAlignedSeqStart( $i,
+                               $this->getAlignedSeqStart( $i ) + length( $leftTrim ) );
+          $this->setAlignedSeqEnd( $i,
+                               $this->getAlignedSeqEnd( $i ) - length( $rightTrim ) );
+        }else {
+          $this->setAlignedSeqStart( $i,
+                               $this->getAlignedSeqStart( $i ) + length( $rightTrim ) );
+          $this->setAlignedSeqEnd( $i,
+                               $this->getAlignedSeqEnd( $i ) - length( $leftTrim ) );
+        }
+
+        if ( $relStart > $startCol ) {
+          $this->setAlignedStart( $i, $relStart - $startCol );
+        }else {
+          $this->setAlignedStart( $i, 0 );
+        }
+        $this->setAlignedEnd( $i, $relStart + length($seq) );
+      }else {
+        # Inside the slice but fewer than minLen bp remain...delete
+        splice(@{ $this->{'alignCol'} }, $i+1, 1);
+        next;
+      }
+    }else{
+      # Outside the slice...must delete
+      # Don't forget that index = 0 is reserved for the reference sequence.
+      splice(@{ $this->{'alignCol'} }, $i+1, 1);
+      next;
+    }
+
+  }
+  $this->setReferenceSeq(
+         substr(
+                 $this->getReferenceSeq(),
+                 $startCol, $endCol - $startCol + 1 )
+  );
+  $this->resetGappedReferenceLength();
+  return;
+}
+
 # New method added 3/15/21 -- needs to be ported to Python object
 # NOTE: This prohibits the use of ":" in a identifier itself.
 #       Need to sanitize identifiers for that...discuss
@@ -2761,9 +3181,7 @@ sub reverseComplement {
   # First reverse complement the reference
   my $seq = $this->getReferenceSeq();
   my $refLen = length($seq);
-  #print "seq: $seq\n";
   $seq = _compl($seq);
-  #print "seqnow: $seq\n";
   $this->setReferenceSeq( $seq );
 
   for ( my $i = 0 ; $i < $this->getNumAlignedSeqs() ; $i++ ) {
@@ -2773,58 +3191,11 @@ sub reverseComplement {
     my $newAlignedStart = $refLen - ($this->getAlignedStart( $i ) + length($seq));
     $this->setAlignedStart($i, $newAlignedStart);
 
-    #my $idPrefix = '';
-    #my $idStart = 0;
-    #my $idEnd = 0; 
-    #my $idOrient = '+';
-    ## e.g. chrUn_KK085329v1_11857_12355_R
-    #if ( $id =~ /^(\S+)_(\d+)_(\d+)(_R)?:\d+-\d+$/ ) {
-    #  $idPrefix = $1;
-    #  $idStart = $2;
-    #  $idEnd = $3;
-    #  $idOrient = '-' if ( $4 eq '_R' );
-    ## e.g. hg38:chrUn_KK085329v1_11857_12355_R
-    #}elsif ( $id =~ /^\S+:(\S+)_(\d+)_(\d+)(_R):\d+-\d+?$/ ){
-    #  $idPrefix = $1;
-    #  $idStart = $2;
-    #  $idEnd = $3;
-    #  $idOrient = '-' if ( $4 eq '_R' );
-    #}
-#
-#    if ( $idPrefix ne "" ) {
-#print "Fixing id for $idPrefix\n";
-#      # Name needs to be adjusted
-#      my $curOrient  = $this->getAlignedOrientation( $i );
-#      my $curStart   = $this->getAlignedSeqStart( $i );
-#      my $curEnd     = $this->getAlignedSeqEnd( $i );
-#      if ( $idOrient eq '-' ) {
-#        $this->setAlignedSeqEnd( $i, $idEnd - $curStart + 1 );
-#        $this->setAlignedSeqStart( $i, $idEnd - $curEnd + 1 );
-#  
-#        # Original sequence is reverse
-#        if ( $curOrient eq '+' ) {
-#          # Alignment is forward
-#          $this->getAlignedOrientation( "-" );
-#        }
-#        else {
-#          # Alignment is reverse
-#          # two wrongs make a right
-#          $this->getAlignedOrientation( "+" );
-#        }
-#      }
-#      else {
-#        $this->setAlignedSeqStart( $i, $idStart + $curStart - 1 );
-#        $this->setAlignedSeqEnd( $i, $idStart + $curEnd - 1 );
-#      }
-#      $this->setAlignedName( $i, $idPrefix );
-#    }else {
-      if ( $curOrient eq '+' ){
-        $this->setAlignedOrientation( $i, '-' );
-      } else {
-        $this->setAlignedOrientation( $i, '+' );
-      }
-#    }
-    # TODO: setAlignedSeqStart correct...accounting for space
+    if ( $curOrient eq '+' ){
+      $this->setAlignedOrientation( $i, '-' );
+    } else {
+      $this->setAlignedOrientation( $i, '+' );
+    }
 
     # Do the actual reverse complement
     $seq = _compl($seq);
@@ -3864,6 +4235,12 @@ sub _getEndStartPairs {
                     header => "## foo", 
                     id => "fullID", includeTemplate => 1 );
 
+     includeReference: Place a copy of the reference sequence
+                       in the MSA.
+     consRF||nuclRF:   Use the consensus rather than the 
+                       reference sequence in the RF line.
+                       NOTE: Linup uses this by default
+
   Export the multiple alignment data to a file in the Stockholm 1.0
   format.
 
@@ -3919,7 +4296,7 @@ sub toSTK {
     print $OUT "#=GF BM RepeatModeler/MultAln\n";
   }elsif ( $parameters{'headerOverride'} ) {
     # NOTE: This must include all the minimal Stockholm fields no validation is
-    #       performed here.  Also this must not include the "GF SQ" or "GF RF" fields
+    #       performed here.  Also this must not include the "GF SQ" or "GC RF" fields
     #       as these are MSA specific and will be attached below.
     print $OUT $parameters{'headerOverride'};
   }else {
@@ -4121,6 +4498,9 @@ sub toSTK {
   Export the multiple alignment data to a msa FASTA format.
   All arguments are optional.
 
+     seqOnly: If set a sequence only FASTA is generated without
+              the gap characters.
+
 =cut
 
 ##---------------------------------------------------------------------##
@@ -4143,7 +4523,6 @@ sub toFASTA {
     $malignLen = length( $seq ) if ( length( $seq ) > $malignLen );
   }
 
-
   if ( exists $parameters{'includeConsensus'} ) {
     my $cons;
     if ( defined $parameters{'includeReference'} && $parameters{'includeReference'} > 0 ) {
@@ -4160,7 +4539,6 @@ sub toFASTA {
     }
   }
 
-
   if ( defined $parameters{'includeReference'} && $parameters{'includeReference'} > 0  && $object->getReferenceSeq() ) {
     my $refSeq = $object->getReferenceSeq();
     $malignLen = length( $refSeq ) if ( length( $refSeq ) > $malignLen );
@@ -4176,6 +4554,33 @@ sub toFASTA {
     $malignLen = length( $refSeq );
   }
 
+  my @labels = ();
+  my %uniq = ();
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
+    my $name = $object->getAlignedName($i);
+    my $start =  $object->getAlignedSeqStart($i);
+    my $end =  $object->getAlignedSeqEnd($i);
+    my $orient =  $object->getAlignedOrientation($i);
+    my $id;
+    if ( $orient eq "+" ) {
+      $id = "$name:$start-$end";
+      my $verIdx = 1;
+      while ( exists $uniq{$id} ) {
+        $id = "$name:$start-$end" . "_$verIdx";
+        $verIdx++;
+      }
+    }else {
+      $id = "$name:$end-$start";
+      my $verIdx = 1;
+      while ( exists $uniq{$id} ) {
+        $id = "$name:$end-$start" . "_$verIdx";
+        $verIdx++;
+      }
+    }
+    push @labels, $id;
+    $uniq{$id}++;
+  }
+
   for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
     my $seq = $object->getAlignedSeq( $i );
     if ( $parameters{'seqOnly'} ) {
@@ -4189,25 +4594,21 @@ sub toFASTA {
     if ( $parameters{'includeFlanking'} ) {
       # TODO sanity check flanking lengths are consistent
       my $lf = $object->getLeftFlankingSequence($i);
-#print "lf before: $lf";
       if ( length($lf) > $parameters{'includeFlanking'} ) {
         $lf = substr($lf, length($lf) - $parameters{'includeFlanking'} );
       }else {
         $lf = "-"x($parameters{'includeFlanking'} - length($lf)) . $lf;
       }
-#print " after: $lf\n";
       my $rf = $object->getRightFlankingSequence($i);
-#print "rf before: $rf";
       if ( length($rf) > $parameters{'includeFlanking'} ) {
         $rf = substr($rf, 0, $parameters{'includeFlanking'});
       }else {
         $rf = $rf . "-"x($parameters{'includeFlanking'} - length($rf));
       }
-#print " after: $rf\n";
       $seq = $lf . $seq . $rf;
-      print $OUT ">" . $object->getAlignedName( $i ) . " - including (up to) " . $parameters{'includeFlanking'} . "bp of flanking sequence\n";
+      print $OUT ">" . $labels[$i] . " - including (up to) " . $parameters{'includeFlanking'} . "bp of flanking sequence\n";
     }else {
-      print $OUT ">" . $object->getAlignedName( $i ) . "\n";
+      print $OUT ">" . $labels[$i] . "\n";
     }
     print $OUT "$seq\n";
   }
@@ -4584,7 +4985,7 @@ sub printAlignments {
           . " " x ( $maxCoordLen - length( $consBaseStartPos ) )
           . $consBaseStartPos . " "
           . $seq
-          . " " x ( $blockSize - length( $seq ) ) . "    "
+          . " " x ( $blockSize - length($seq) ) . "    "
           . $end . "\n";
       print "$outStr";
       $consBaseStartPos = $end + 1;
