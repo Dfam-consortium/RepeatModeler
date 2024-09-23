@@ -306,7 +306,7 @@ sub addFlankingSequence {
       my $seqRecordLen;
       # These have traditionally been in 1-based full-closed coordinates
       if ( $raw_id =~ /^(\S+)\_(\d+)\_(\d+)\_?(R?)$/ ||
-           $raw_id =~ /^(\S+):(\d+)-(\d+)/ )
+           $raw_id =~ /^(\S+):(\d+)-(\d+)_?(R?)$/ )
       {
         $seqRecordID = $1;
         $seqRecordStart = $2;
@@ -373,26 +373,42 @@ sub addFlankingSequence {
         if ( $align_start-1 >= $flankleft ){
           $leftAdequate++;  
           unless( $options{'shrink'} ) {
-            $globalStart = $seqRecordStart;
+       	    if ( $seqRecordOrient eq "+" ) {
+  	          $globalStart = $seqRecordStart;
+ 	          } else {
+ 	            $globalEnd = $seqRecordEnd;	      
+ 	          }
           }
         }
         if ( $align_remain >= $flankright ){
           $rightAdequate++;  
           unless ( $options{'shrink'} ) {
-            $globalEnd = $seqRecordEnd;
+            if ( $seqRecordOrient eq "+" ) {
+              $globalEnd = $seqRecordEnd;
+            } else {
+              $globalStart = $seqRecordStart;
+            }
           }
         }
       }else {
         if ( $align_start-1 >= $flankright ){
           $rightAdequate++;  
           unless ( $options{'shrink'} ) {
-            $globalEnd = $seqRecordEnd;
+            if ( $seqRecordOrient eq "+" ) {
+              $globalStart = $seqRecordStart;
+            } else {
+              $globalEnd = $seqRecordEnd;
+            }
           }
         }
         if ( $align_remain >= $flankleft ){
           $leftAdequate++;  
           unless ( $options{'shrink'} ) {
-            $globalStart = $seqRecordStart;
+            if ( $seqRecordOrient eq "+" ) {
+              $globalEnd = $seqRecordEnd;
+            } else {
+              $globalStart = $seqRecordStart;
+            }
           }
         }
       }
@@ -476,7 +492,7 @@ sub addFlankingSequence {
       $tmp_start = 0 if ( ! defined $tmp_start );
       $tmp_end = $seqLens{$tmp_id} if ( ! defined $tmp_end );
       if ( $seq ) {
-        my $outID = $id . "_" . ($start + 1) . "_$end";
+        my $outID = $id . ":" . ($start + 1) . "-$end";
         if ( $orientArr[$idx] eq "-" ) {
           $seq = reverse( $seq );
           $seq =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
@@ -499,7 +515,7 @@ sub addFlankingSequence {
     $seq .= uc($_);
    }
    if ( $seq ) {
-    my $outID = $id . "_" . ($start + 1) . "_$end";
+    my $outID = $id . ":" . ($start + 1) . "-$end";
     if ( $orientArr[$idx] eq "-" ) {
       $seq = reverse( $seq );
       $seq =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
