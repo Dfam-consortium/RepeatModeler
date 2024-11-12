@@ -1,3 +1,19 @@
+RepeatModeler 2.0.6
+===================
+  - Fixed a bug that caused RepeatClassifier to run with only one thread in the
+    last release.
+  - Fixed a bug that caused some RepeatScout derived exemplars to be reported 
+    on the wrong strand.
+  - Isolate long sequence identifiers from LTR_retriever which will alter 
+    names longer than 13 characters.
+  - Fixes for LTR_retriever changes in TRF parameter.
+  - MultAln - new API for calculating Kimura divergence
+            - new API for slicing operations on MSA
+            - switch to Smitten V2 for default stk output
+            - improvements to the Linup reporting format
+  - Refiner reorganization for future extension algorithm
+
+
 RepeatModeler 2.0.5
 ===================
   - Fixed a bug that caused failures in "absolute" reproducibility.  Prior

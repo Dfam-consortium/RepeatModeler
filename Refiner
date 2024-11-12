@@ -755,6 +755,8 @@ sub extendAlignment {
     # complementation of the sequence.
     # e.g.
     # >gi|6910 gi|3:53484767-53491827
+    # TODO: NO NO NO not the case anymore..the coordinates are now in Smitten V2
+    warn "WARNING: Not implemented for Smitten V2 yet!\n";
     my ( $genSeqID, $genStart, $genEnd, $genOrient ) = liftUpOneLevel( $id, $instStart, $instEnd, $instOrient, $genTrans );
     # Convert to zero based, fully closed
     $genStart--;

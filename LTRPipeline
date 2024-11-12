@@ -623,7 +623,7 @@ sub runLtrRetriever {
 
   my $full_annotFile = File::Spec->rel2abs( $annotFile );
 
-  # NOTE: in LTR_retriever 2.9.0 trf_path is not the path
+  # NOTE: in LTR_retriever 3.0.0 trf_path is not the path
   #       to the directory containing the binary but rather 
   #       the full path to the binary itself.
   my $cmd            = "cd $tmpDir; $binDir/LTR_retriever " .

@@ -311,6 +311,11 @@ unless ( $options{'a'} ) {
     }
     if ( !$options{'ltr_retriever_dir'} ) {
       RepModelConfig::promptForParam( 'LTR_RETRIEVER_DIR' );
+
+      my $ltrRetVersion = RepModelConfig::getDependencyVersion("LTR_RETRIEVER_DIR");
+      unless ( $ltrRetVersion eq "v2.9.0" ) {
+        die "LTR_retriever version ($ltrRetVersion) is not compatible with RepeatModeler, please use v2.9.0.\n";
+      }
     }
     if ( !$options{'mafft_dir'} ) {
       RepModelConfig::promptForParam( 'MAFFT_DIR' );

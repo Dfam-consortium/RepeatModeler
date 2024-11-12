@@ -466,7 +466,7 @@ my $dbIndex;
 $dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
 
 # The twobit version of the genomeDB
-my $genomeTwoBit = undef;
+my $genomeTwoBit = "";
 
 # Initialize working directory and logging
 my $tmpDir;
@@ -474,7 +474,7 @@ my $LOG;
 if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
   $tmpDir =  abs_path($options{'recoverDir'});
   open $LOG, ">>", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing (appending)!\n";
-  $genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
+  #$genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
 }else {
   #
   # Create temp directory
@@ -491,12 +491,12 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
   open $LOG, ">", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing!\n";
 
   # Build the genome.2bit file
-  my $cmd = "$NCBIDBCMD_PRGM -entry all -db $genomeDB -outfmt \"%f\" | $FATOTWOBIT stdin $tmpDir/genome.2bit";
-  system($cmd);
-  if ( ! -s "$tmpDir/genome.2bit" ) {
-    die "ERROR: Failed to create $tmpDir/genome.2bit file using command: $cmd\n";
-  }
-  $genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
+  #my $cmd = "$NCBIDBCMD_PRGM -entry all -db $genomeDB -outfmt \"%f\" | $FATOTWOBIT stdin $tmpDir/genome.2bit";
+  #system($cmd);
+  #if ( ! -s "$tmpDir/genome.2bit" ) {
+  #  die "ERROR: Failed to create $tmpDir/genome.2bit file using command: $cmd\n";
+  #}
+  #$genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
 }
 
 # print to screen and log
@@ -3022,11 +3022,11 @@ sub refineOneFamily {
   
   my $threadParam = "";
   $threadParam = " -threads $threads " if ( $threads );
-  #my $cmd = "$FindBin::RealBin/Refiner $threadParam "
-  #        . "-noTmp -giToID $genomeDB.translation $instancesFile";
   # New Refiner
+  #my $cmd = "$FindBin::RealBin/Refiner $threadParam "
+  #        . "-extTwoBit $genomeTwoBit -giToID $genomeDB.translation $instancesFile";
   my $cmd = "$FindBin::RealBin/Refiner $threadParam "
-          . "-extTwoBit $genomeTwoBit -giToID $genomeDB.translation $instancesFile";
+          . "-giToID $genomeDB.translation $instancesFile";
   $cmd .= " -quiet" unless ( $DEBUG );
   #print "CWD: " . `pwd` . "\n";
   #print "Running: $cmd\n";

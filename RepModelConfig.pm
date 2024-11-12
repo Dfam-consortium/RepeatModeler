@@ -78,14 +78,14 @@ BEGIN {
                                },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
-                                   'description' => 'The path to the installation of the LTR_Retriever (v2.9.0 and higher) structural LTR analysis package.',
+                                   'description' => 'The path to the installation of the LTR_Retriever v2.9.0 structural LTR analysis package.',
                                    'environment_override' => 'LTR_RETRIEVER_DIR',
                                    'expected_binaries' => [
                                                             'LTR_retriever'
                                                           ],
                                    'param_type' => 'directory',
                                    'required' => 0,
-                                   'value' => '/usr/local/LTR_retriever-2.9.5'
+                                   'value' => '/usr/local/LTR_retriever-2.9.0'
                                  },
           'MAFFT_DIR' => {
                            'command_line_override' => 'mafft_dir',
@@ -96,7 +96,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/mafft-7.505/bin'
+                           'value' => '/usr/local/mafft/bin'
                          },
           'NINJA_DIR' => {
                            'command_line_override' => 'ninja_dir',
@@ -130,7 +130,7 @@ BEGIN {
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/home/rhubley/projects/RepeatMasker'
+                                  'value' => '/usr/local/RepeatMasker'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
@@ -146,7 +146,7 @@ BEGIN {
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast-2.14.1/bin'
+                             'value' => '/usr/local/rmblast/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
@@ -183,18 +183,7 @@ BEGIN {
                                'param_type' => 'directory',
                                'required' => 1,
                                'value' => '/usr/local/ucscTools'
-                             },
-          #   'REPEATAFTERME_DIR' => {
-          #                    'command_line_override' => 'repeatafterme_dir',
-          #                    'description' => 'The path to the installation of the RepeatAfterMe package.',
-          #                    'environment_override' => 'REPEATAFTERME_DIR',
-          #                    'expected_binaries' => [
-          #                                             'RAMExtend'
-          #                                           ],
-          #                    'param_type' => 'directory',
-          #                    'required' => 1,
-          #                    'value' => '/home/rhubley/notebooks/2024/1004-repeat_after_me_satellites/RepeatAfterMe-dev'
-          #                  },
+                             }
         };
 
   ## EDCFG --do-not-remove--
