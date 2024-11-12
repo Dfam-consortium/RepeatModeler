@@ -995,6 +995,64 @@ sub gatherInstances {
   return ( \%instances );
 }
 
+#
+# Wrap the makeblastdb operation so that we can catch errors
+# 
+#   my ($error, $cmd, $retCode, $messages) = &makeBlastDB($NCBIBLASTDB_PRGM, $faFile, $faFile);
+#   if ( $error ) {
+#     die "Failed to execute: $cmd returned code $retCode!\nMessages: $messages\n";
+#   }
+#
+sub makeBlastDB {
+  my $makeblastdb_prgm = shift;
+  my $fa_file = shift;
+  my $db_name = shift;
+  my $parse_seq_ids = shift;
+  my $blastdb_version = shift;
+  my $fail_on_invalid_residue = shift;
+
+  $blastdb_version = 4 if ( $blastdb_version eq "" );      
+  my $cmd = "$makeblastdb_prgm -out $db_name" 
+          . " -dbtype nucl -in $fa_file";
+  $cmd .= " -parse_seqids" if ( $parse_seq_ids ne "" );
+  $cmd .= " -blastdb_version $blastdb_version";                               
+  $cmd .= " 2>&1";
+
+  open CMD, "$cmd |" or die "Error running command $cmd\n";
+  # Example good output:
+  #Building a new DB, current time: 07/26/2024 14:15:42
+  #New DB name:   /u3/home/rhubley/projects/RepeatModeler/test.fa
+  #New DB title:  test.fa
+  #Sequence type: Nucleotide
+  #Keep MBits: T
+  #Maximum file size: 3000000000B
+  #Adding sequences from FASTA; added 3 sequences in 0.000390053 seconds.
+  #Deleted existing Nucleotide BLAST database named /u3/home/rhubley/projects/RepeatModeler/test.fa
+  #
+  # Example warnings (that should be considered error) output:
+  #FASTA-Reader: Ignoring invalid residues at position(s): On line 4: 4
+  #
+  # Example error output that shoud be captured
+  #BLAST Database creation error: Input doesn't start with a defline or comment around line 1
+  my $messages = "";
+  my $error = 0;
+  while (<CMD>) {
+    if ( /FASTA-Reader|BLAST Database creation error/ ) {
+      if ( $fail_on_invalid_residue && /invalid residues at/ ) {
+        $error = 1;
+      }
+      $messages .= "$_";
+    }
+    #print $_;
+  }
+  close CMD;
+  my $retCode = $? >> 8;
+  $error = 1 if ( $retCode != 0 );
+  
+  return ( $error, $cmd, $retCode, $messages );
+}
+
+
 
 #
 # A helper function to open an input file, identify it as either a
@@ -1081,12 +1139,12 @@ sub openAsMultAln{
       my $sID    = $result->getSubjName();
       $staticQuery   = 0 if ( defined $queryID && $queryID ne $qID );
       $staticSubject = 0 if ( defined $subjID  && $subjID  ne $sID );
-      die "openAsMultAln(): Strange...this appears not to be a multiple alignment!"
+      die "openAsMultAln(): Strange...this input file $inputFile appears not to be a multiple alignment!"
           if ( $staticQuery == 0 && $staticSubject == 0 );
       $queryID = $qID;
       $subjID  = $sID;
     }
-    die "openAsMultAln(): Could not determine reference sequence.  This doesn't look like\n"
+    die "openAsMultAln(): Could not determine reference sequence in input file $inputFile.  This doesn't look like\n"
         . "a multiple alignment to one reference sequence!\n"
         if ( $staticQuery && $staticSubject );
   

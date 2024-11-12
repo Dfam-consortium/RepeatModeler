@@ -373,10 +373,10 @@ my $del_extn_penalty = -5;
 if ( exists $options{'gap_init'} ){
   $gap_open_penalty = $options{'gap_init'};
 }
-if ( exists $options{'gap_ext'} ) 
+if ( exists $options{'extension'} ) 
 {
-  $ins_extn_penalty = $options{'gap_ext'};
-  $del_extn_penalty = $options{'gap_ext'};
+  $ins_extn_penalty = $options{'extension'};
+  $del_extn_penalty = $options{'extension'};
 }elsif ( exists $options{'del_gap_ext'} ) 
 {
   $del_extn_penalty = $options{'del_gap_ext'};
@@ -475,11 +475,12 @@ if ( $engine eq "rmblast" ) {
     }else {
       # Do we need to use blastdb version 4 anymore?
       #      . "-blastdb_version 4 "
-      system(   "$engine_dir/makeblastdb -out $databaseFile "
+      my $cmd = "$engine_dir/makeblastdb -out $databaseFile "
               . "-parse_seqids -dbtype nucl -in $databaseFile > "
-              . "makedb.log 2>&1" );
+              . "makedb.log 2>&1";
+      system( $cmd );
       if ( $? ) {
-        printf "\n\nERROR building nucleotide database! makeblastdb exited with value %d\n\n", $? >> 8;
+        printf "\n\nERROR building nucleotide database! makeblastdb command ($cmd) exited with value %d\n\n", $? >> 8;
         system("cat makedb.log");
         exit(1);
       }

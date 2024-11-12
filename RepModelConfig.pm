@@ -63,7 +63,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 1,
-                           'value' => '/usr/local/cd-hit-v4.8.1-2019-0228'
+                           'value' => '/usr/local/cd-hit-4.8.1'
                          },
           'GENOMETOOLS_DIR' => {
                                  'command_line_override' => 'genometools_dir',
@@ -74,7 +74,7 @@ BEGIN {
                                                         ],
                                  'param_type' => 'directory',
                                  'required' => 0,
-                                 'value' => '/usr/local/genometools-1.5.10/bin'
+                                 'value' => '/usr/local/genometools-1.6.2/bin'
                                },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
@@ -85,7 +85,7 @@ BEGIN {
                                                           ],
                                    'param_type' => 'directory',
                                    'required' => 0,
-                                   'value' => '/usr/local/LTR_retriever-2.9.0'
+                                   'value' => '/usr/local/LTR_retriever-2.9.5'
                                  },
           'MAFFT_DIR' => {
                            'command_line_override' => 'mafft_dir',
@@ -96,7 +96,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/mafft-7.471/bin'
+                           'value' => '/usr/local/mafft-7.505/bin'
                          },
           'NINJA_DIR' => {
                            'command_line_override' => 'ninja_dir',
@@ -107,7 +107,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/NINJA/NINJA'
+                           'value' => '/usr/local/Ninja-0.98-cluster_only'
                          },
           'RECON_DIR' => {
                            'command_line_override' => 'recon_dir',
@@ -183,7 +183,18 @@ BEGIN {
                                'param_type' => 'directory',
                                'required' => 1,
                                'value' => '/usr/local/ucscTools'
-                             }
+                             },
+          #   'REPEATAFTERME_DIR' => {
+          #                    'command_line_override' => 'repeatafterme_dir',
+          #                    'description' => 'The path to the installation of the RepeatAfterMe package.',
+          #                    'environment_override' => 'REPEATAFTERME_DIR',
+          #                    'expected_binaries' => [
+          #                                             'RAMExtend'
+          #                                           ],
+          #                    'param_type' => 'directory',
+          #                    'required' => 1,
+          #                    'value' => '/home/rhubley/notebooks/2024/1004-repeat_after_me_satellites/RepeatAfterMe-dev'
+          #                  },
         };
 
   ## EDCFG --do-not-remove--
@@ -604,6 +615,12 @@ BEGIN {
       #RepeatMasker version 4.1.0
       $tmpStr = `$value/RepeatMasker -v 2>&1`;
       $tmpStr =~ /version\s+(\d+\.\d+\.\d+)/;
+      $version = $1;
+    }elsif ( $param eq "REPEATAFTERME_DIR" ) {
+      #ExtendAlign -h
+      #ExtendAlign Version 0.0.4 - build 436 date 20201118
+      $tmpStr = `$value/ExtendAlign -h 2>&1`;
+      $tmpStr =~ /Version\s+(\d+\.\d+\.\d+)/;
       $version = $1;
     }
     return $version;

@@ -1566,12 +1566,13 @@ sub toString
       my $id;
       $id = "$assemblyName:" if ( $assemblyName );
       $id .= "$sequenceName:";
+      # 11/12/2024: We now export Smitten V2 identifiers
       if ( $orient eq "+" )
       {
-        $id .= "$start-$end";
+        $id .= "$start-$end\_+";
       } else
       {
-        $id .= "$end-$start";
+        $id .= "$end-$start\_-";
       }
       $retStr .= "$id    $sequence\n";
     }

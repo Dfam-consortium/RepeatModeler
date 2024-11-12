@@ -127,6 +127,10 @@ Serialize the state of the MultAln object to file.  May be read
 back in as input at a later time or used to by utilities that 
 support MultAln.
 
+=item -subAlign #-#
+
+Slice the alignment to the provided consensus coordinates.
+
 =item -trimLeft # | -trimRight #
 
 Trim the left or right side of the MSA by provided number of 
@@ -417,9 +421,9 @@ if ( $options{'stockholm'} )
     $seedAlign->read_stockholm( $IN );
     close $IN;
     my $header = $seedAlign->toString(SeedAlignment::ExportHeadersOnly);
-    $mAlign->toSTK( headerOverride => $header, consRF => 1 );
+    $mAlign->toSTK( headerOverride => $header, consRF => 1, idFormat => 2 );
   }else {
-    $mAlign->toSTK( includeTemplate => $inclTempl, consRF => 1 );
+    $mAlign->toSTK( includeTemplate => $inclTempl, consRF => 1, idFormat => 2 );
   }
 
   # TODO : streamline STK generation.  Perhaps have

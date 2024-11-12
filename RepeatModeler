@@ -79,7 +79,7 @@ Optionally change the maximum sample size (bp).  The sample sizes for RECON
 are increased until this number is reached (default: 270MB in 5 rounds, or
 243MB in 6 rounds for '-quick' option).
 
-=item -numAdditionalRounds #
+=item -numAddlRounds #
 
 Optionally increase the number of rounds.  The sample size for 
 additional rounds will change by size multiplier (currently 3).
@@ -267,6 +267,7 @@ my $TRF_DIR         = $config->{'TRF_DIR'}->{'value'};
 my $RSCOUT_DIR      = $config->{'RSCOUT_DIR'}->{'value'};
 my $RECON_DIR       = $config->{'RECON_DIR'}->{'value'};
 my $CDHIT_DIR       = $config->{'CDHIT_DIR'}->{'value'};
+my $FATOTWOBIT      = $config->{'UCSCTOOLS_DIR'}->{'value'} . "/faToTwoBit";
 
 ## validate params
 # Minimal commands
@@ -458,9 +459,14 @@ if ( -s $genomeDB ) {
 }elsif ( -s "$genomeDB.nsq" ){
   $genomeDB = File::Spec->rel2abs("$genomeDB.nsq");
 }
+my $genomeDBDir = dirname($genomeDB);
 $genomeDB =~ s/(.+)\.n[nihs][rndiq]$/$1/;
+my $genomeDBName = basename($genomeDB);
 my $dbIndex;
 $dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
+
+# The twobit version of the genomeDB
+my $genomeTwoBit = undef;
 
 # Initialize working directory and logging
 my $tmpDir;
@@ -468,6 +474,7 @@ my $LOG;
 if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
   $tmpDir =  abs_path($options{'recoverDir'});
   open $LOG, ">>", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing (appending)!\n";
+  $genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
 }else {
   #
   # Create temp directory
@@ -482,6 +489,14 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
     $tmpDir = createTempDir( \@tmpDirPath );
   }
   open $LOG, ">", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing!\n";
+
+  # Build the genome.2bit file
+  my $cmd = "$NCBIDBCMD_PRGM -entry all -db $genomeDB -outfmt \"%f\" | $FATOTWOBIT stdin $tmpDir/genome.2bit";
+  system($cmd);
+  if ( ! -s "$tmpDir/genome.2bit" ) {
+    die "ERROR: Failed to create $tmpDir/genome.2bit file using command: $cmd\n";
+  }
+  $genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
 }
 
 # print to screen and log
@@ -955,9 +970,15 @@ while ( 1 ) {
       system( "cp $sampleFastaFile.rscons.filtered $roundConsensiFile" );
 
       # MAKEBLASTDB the database
-      system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $sampleFastaFile "
-              . "-parse_seqids -dbtype nucl -in $sampleFastaFile >> "
-              . "$roundTmpDir/makeblastdb.log 2>&1" );
+      #system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $sampleFastaFile "
+      #        . "-parse_seqids -dbtype nucl -in $sampleFastaFile >> "
+      #        . "$roundTmpDir/makeblastdb.log 2>&1" );
+      # RMH: 8/9/2024
+      my ($error, $cmd, $retCode, $messages) = &RepeatUtil::makeBlastDB($NCBIBLASTDB_PRGM, 
+                                                $sampleFastaFile, $sampleFastaFile,1, 4);
+      if ( $error ) {
+        die "Failed to execute: $cmd returned code $retCode!\nMessages: $messages\n";
+      }
 
       ( $roundModels ) = &buildRSConsensiMT(
                                  workDir          => $roundTmpDir,
@@ -1188,6 +1209,7 @@ while ( 1 ) {
   $searchEngineN->setMinMatch( 7 );
   $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
   $searchEngineN->setCores( $threads );
+  # TODO: Make sure this is using MaskLevel 101 here!
 
   my $numHSPs = 0;    # Number of High Scoring Pairs produced
   # First check to see if this was already run
@@ -1458,7 +1480,6 @@ if ( $options{'LTRStruct'} ) {
       or die "Could not run: $NCBIDBCMD_PRGM\n";
   while ( <SEQ> ) {
     if ( /^>/ ) {
-
       # Replace >gi|232 with >gi-232 so that LTR_retriever is happy.  This is
       # a known issue with LTR_retriever-2.6
       s/\|/-/;
@@ -1467,6 +1488,7 @@ if ( $options{'LTRStruct'} ) {
   }
   close SEQ;
   close OUT;
+  # LTRPipeline -giToID dmel.translation -threads 20 tmpInputSeq
   if ( -s "$tmpDir/tmpInputSeq" ) {
     my $optionalArgs = " -giToID $genomeDB.translation";
     $optionalArgs .= " -LTRMaxSeqLen $options{'LTRMaxSeqLen'}"
@@ -1700,6 +1722,8 @@ if ( $options{'LTRStruct'} ) {
             ( $rrFamCnt + $ltrFamCnt ) - scalar( keys( %redundant_families ) ) )
             . "\n";
       }
+    }else {
+      log_print "  -- No LTRs identified through structural analysis\n";
     }
   }
   else {
@@ -1717,7 +1741,7 @@ if ( $numModels > 0 ) {
   my $addlOpts = "";
   $addlOpts = "-threads $options{'threads'} " if ( $options{'threads'} );
   system(   "$FindBin::RealBin/RepeatClassifier "
-          . "-consensi consensi.fa -stockholm families.stk" );
+          . "-consensi consensi.fa $addlOpts -stockholm families.stk" );
   chdir( $origDir );
   log_print "Classification Time: " . elapsedTime( 1 ) . "\n";
 }
@@ -1734,19 +1758,27 @@ if ( $numModels > 0 ) {
   system( "cp $tmpDir/rmod.log $genomeDB-rmod.log" )
       if ( -s "$tmpDir/rmod.log" );
   print "\nThe results have been saved to:\n";
+  print "  $genomeDBDir/\n";
   print
-"  $genomeDB-families.fa  - Consensus sequences for each family identified.\n";
+"    $genomeDBName-families.fa  - Consensus sequences for each family identified.\n";
   print
-"  $genomeDB-families.stk - Seed alignments for each family identified.\n";
+"    $genomeDBName-families.stk - Seed alignments for each family identified.\n";
   print
-"  $genomeDB-rmod.log     - Execution log.  Useful for reproducing results.\n\n";
-  print "The RepeatModeler stockholm file is formatted so that it can\n";
-  print
-"easily be submitted to the Dfam database.  Please consider contributing\n";
-  print
-      "curated families to this open database and be a part of this growing\n";
-  print
-      "community resource.  For more information contact help\@dfam.org.\n\n\n";
+"    $genomeDBName-rmod.log     - Execution log.  Useful for reproducing results.\n\n";
+
+  print "For reproducibility and maintaining the provenance of your results,\n";
+  print "it is **highly** recommended that these three files are preserved\n";
+  print "(even the *-rmod.log file).  The seed alignment data is particularly\n";
+  print "important for understanding the origin of the family consensus\n";
+  print "and for submission to databases like Dfam.  If further curation is\n";
+  print "performed on these families, consider keeping modified multiple\n";
+  print "sequence alignments generated as part of that effort, in addition to\n";
+  print "the improved consensus sequences derived from them.\n\n";
+
+  print "Finally, please contribute de-novo or curated families to\n";
+  print "to the Dfam open database and be a part of this growing community\n";
+  print "resource.  For more information visit http://dfam.org or contact\n";
+  print "help\@dfam.org.\n\n\n";
 }
 else {
   print "No families identified.  Perhaps the database is too small\n";
@@ -2184,7 +2216,8 @@ sub buildRSConsensiMT {
   $searchEngineN->setCores($threads);
   $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
 
-  # TODO: Large Satellite Detection
+  # Large Satellite Detection
+  #    
   #    1. Build a database from consensi.fa
   elapsedTime( "satellite_filtering" );
   if ( $engine eq "abblast" ) {
@@ -2206,6 +2239,13 @@ sub buildRSConsensiMT {
   #       calculate the coverage of the off diagonal hits
   #       Filter out families which are larger than 3kb, 
   #       are covered by >90% by off diagonal hits.
+  #
+  #  TODO: Note...this identifies models that contain more than one
+  #        copy of the satellite.  It doesn't consider the case where
+  #        you have a single unit. That would require looking at the locations
+  #        of the copies relative to each other.  This can happen if there
+  #        are only a few tandem copies of the satellite and the extending amount
+  #        drops below the minimum count.
   my %satelliteSeqIDs = ();
   my ( $status, $resultCollection ) = $searchEngineN->search();
   if ( $status ) {
@@ -2320,6 +2360,14 @@ sub buildRSConsensiMT {
       }
       my $sequence = $resultRef->getQueryString();
       $sequence =~ s/-//g;
+      # RMH: 11/8/2024 The genomic sequence is in the Query which traditionally is not
+      #      reversed in the alignment output.  Must do that here.  This was placing 
+      #      the coordinates as reversed but keeping the sequence in the forward
+      #      direction.
+      if ( $orient eq "C" || $orient eq "-" ) {
+        $sequence = reverse( $sequence );
+        $sequence =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
+      }
       push @{ $families{ $resultRef->getSubjName() }->{'elements'} },
           {
             'seqID' => $seqID,
@@ -2361,7 +2409,8 @@ sub buildRSConsensiMT {
         {
           # Number of elements to keep
           last if ( $numElements == 100 );
-          print FAM ">" . $ele->{'seqID'} . "\n";
+          # 11/8/2024: RMH - Adding information that links the family back to the RS ID
+          print FAM ">" . $ele->{'seqID'} . " [$key]\n";
           print FAM "" . $ele->{'seq'} . "\n";
           $numElements++;
         }
@@ -2385,7 +2434,7 @@ sub buildRSConsensiMT {
         #    . ", Using $numElements )\n";
         $tsk->addJob( name => "refiner-job-$jobIdx",
                       function => \&refineOneFamily,
-                      parameters => ["$workDir/family-$familyID.fa", $genomeDB, $workDir, 1, $DEBUG] );
+                      parameters => ["$workDir/family-$familyID.fa", $genomeDB, $genomeTwoBit, $workDir, 1, $DEBUG] );
         $jobIdx++;
       }
       elapsedTime(2);
@@ -2401,8 +2450,8 @@ sub buildRSConsensiMT {
         if ( -s "$workDir/family-$familyID.fa.refiner_cons" ) {
           open INREF, "<$workDir/family-$familyID.fa.refiner_cons"
               or die $CLASS
-              . ": Could not open refined model $workDir/family-$familyID."
-              . "fa.refiner_cons!\n";
+              . ": Could not open refined model $workDir/family-$familyID.fa."
+              . "refiner_cons!\n";
           while ( <INREF> ) {
             if ( /Final Multiple Alignment Size = (\d+)/ ) {
               $maSize = $1;
@@ -2795,7 +2844,7 @@ sub buildReconConsensiMT {
   for my $familyID ( keys %refinableFamilies ) {
     $tsk->addJob( name => "refiner-job-$jobIdx",
                 function => \&refineOneFamily,
-                parameters => ["$workDir/family-$familyID.fa", $genomeDB, $workDir, 1, $DEBUG] );
+                parameters => ["$workDir/family-$familyID.fa", $genomeDB, $genomeTwoBit, $workDir, 1, $DEBUG] );
     $jobIdx++;
   }  
   print "Refining $jobIdx families\n";
@@ -2811,8 +2860,8 @@ sub buildReconConsensiMT {
     if ( -s "$workDir/family-$familyID.fa.refiner_cons" ) {
       open INREF, "<$workDir/family-$familyID.fa.refiner_cons"
           or die $CLASS
-          . ": Could not open refined model $workDir/family-$familyID."
-          . "fa.refiner_cons!\n";
+          . ": Could not open refined model $workDir/family-$familyID.fa."
+          . "refiner_cons!\n";
       while ( <INREF> ) {
         if ( /Final Multiple Alignment Size = (\d+)/ ) {
           $maSize = $1;
@@ -2966,15 +3015,20 @@ sub buildReconConsensiMT {
 sub refineOneFamily {
   my $instancesFile = shift;
   my $genomeDB = shift;
+  my $genomeTwoBit = shift;
   my $workDir = shift;
   my $threads = shift;
   my $DEBUG = shift;
   
   my $threadParam = "";
   $threadParam = " -threads $threads " if ( $threads );
+  #my $cmd = "$FindBin::RealBin/Refiner $threadParam "
+  #        . "-noTmp -giToID $genomeDB.translation $instancesFile";
+  # New Refiner
   my $cmd = "$FindBin::RealBin/Refiner $threadParam "
-          . "-noTmp -giToID $genomeDB.translation $instancesFile";
+          . "-extTwoBit $genomeTwoBit -giToID $genomeDB.translation $instancesFile";
   $cmd .= " -quiet" unless ( $DEBUG );
+  #print "CWD: " . `pwd` . "\n";
   #print "Running: $cmd\n";
   system( $cmd );
 }

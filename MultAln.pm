@@ -525,9 +525,23 @@ sub seq {
 
   Use: my $oldValue = $obj->setAlignedStart( $seqNum, $value );
 
-  Get/Set the relative position ( to the reference ) of an aligned sequence.  
-  The sequences are indexed from 0 - ( $obj->getNumAlignedSeqs() - 1 ) and
-  positions go from 0 to $obj->getReferenceLength().
+
+  Get/Set the relative position ( to the gapped reference ) of an 
+  aligned sequence. The sequences are indexed from 
+  0 - ( $obj->getNumAlignedSeqs() - 1 ) and excludes the reference
+  sequence.  The positions go from 0 to $obj->getReferenceLength().
+
+  Example:
+                   1         2
+         012345678901234567890123
+  Ref:   AGACG---G--TTT-T-A-T-GGG
+  inst1: A-A-G---G--TTT-T-A-C-GAG
+  inst2: --ACG---G--T-T-T-A-T-G--
+  inst3: -----------TTT-T-A-T-GGG
+
+  getAlignedStart( 0 ) = 0
+  getAlignedStart( 1 ) = 2
+  getAlignedStart( 2 ) = 11
 
   NOTE: This is a replacement for the old "OBJ::start()" method
   except that it doesn't include the reference sequence in 
@@ -570,10 +584,23 @@ sub setAlignedStart {
 
   Use: my $oldValue = setAlignedEnd( $seqNum, $value );
 
-  Get/Set the relative end position ( to the reference ) of an 
-  aligned sequence.  The sequences are indexed from 
-  0 - ( $obj->getNumAlignedSeqs() - 1 ) and
-  positions go from 0 to $obj->getReferenceLength().
+  Get/Set the relative end position ( to the gapped 
+  reference ) of an aligned sequence.  The sequences 
+  are indexed from 0 - ( $obj->getNumAlignedSeqs() - 1 ) and
+  excludes the reference sequence.  The positions go 
+  from 0 to $obj->getReferenceLength().
+
+  Example:
+                   1         2
+         012345678901234567890123
+  Ref:   AGACG---G--TTT-T-A-T-GGG
+  inst1: A-A-G---G---------------
+  inst2: --ACG---G--T-T-T-A-T-G--
+  inst3: -----------TTT-T-A-T-GGG
+
+  getAlignedStart( 0 ) = 8
+  getAlignedStart( 1 ) = 21
+  getAlignedStart( 2 ) = 23
 
   NOTE: This is a replacement for the old "OBJ::end()" method
   except that it doesn't include the reference sequence in 
@@ -3285,6 +3312,7 @@ sub getAlignmentBlock {
                           $start - $this->getAlignedStart( $j ),
                           $end - $start + 1 );
         $seq =~ s/-//g;
+        # NOTE: Sequences may be empty at this point.  E.g $seq = "------" => ""
         push @results, $seq;
       }
       else {
@@ -4233,13 +4261,19 @@ sub _getEndStartPairs {
                     includeReference => 1, 
                     headerOverride => "",
                     header => "## foo", 
-                    id => "fullID", includeTemplate => 1 );
+                    id => "fullID", 
+                    includeTemplate => 1,
+                    [consRF => 1 || nuclRF => 1],
+                    [idFormat = 2]);
 
      includeReference: Place a copy of the reference sequence
                        in the MSA.
      consRF||nuclRF:   Use the consensus rather than the 
                        reference sequence in the RF line.
                        NOTE: Linup uses this by default
+
+     idFormat:         1:  Use Smitten V1 (e.g :1-2 or :2-1) [default]
+                       2:  Use Smitten V2 (e.g :1-2_+ or :1-2_-)
 
   Export the multiple alignment data to a file in the Stockholm 1.0
   format.
@@ -4348,10 +4382,18 @@ sub toSTK {
       $orient = $object->getAlignedOrientation( $i );
     }
     if ( $orient eq "+" ) {
-      $name .= ":$start-$end";
+      if ( exists $parameters{'idFormat'} && $parameters{'idFormat'} == 2 ) {
+        $name .= ":$start-$end\_+";
+      }else {
+        $name .= ":$start-$end";
+      }
     }
     else {
-      $name .= ":$end-$start";
+      if ( exists $parameters{'idFormat'} && $parameters{'idFormat'} == 2 ) {
+        $name .= ":$start-$end\_-";
+      }else {
+        $name .= ":$end-$start";
+      }
     }
     $maxNameLen = length( $name ) if ( length( $name ) > $maxNameLen );
     push @ids, $name;
@@ -4660,6 +4702,12 @@ sub toAlign {
 
     my $refSubAlign = "";
     my $seqSubAlign = "";
+
+    # $sstart isn't correct
+    my $prevRef = substr($refSeq,0,$start-1);
+    $prevRef =~ s/-//g;
+    my $corSStart = length($prevRef) + 1;
+
     for ( my $j = 0; $j < length($seq); $j++ ) {
       my $refBase = substr($refSeq,$j+$start,1);
       my $seqBase = substr($seq,$j,1);
@@ -4684,8 +4732,11 @@ sub toAlign {
                                      queryRemaining => 0,
                                      orientation    => "+",
                                      subjName       => "consensus",
-                                     subjStart      => 1,
-                                     subjEnd        => $refLen,
+                                     #subjStart      => 1,
+                                     #subjEnd        => $refLen,
+                                     subjStart      => $corSStart,
+                                     subjEnd        => $corSStart + $refLen - 1,
+
                                      subjRemaining  => 0,
                                      pctDiverge     => 0,
                                      pctInsert      => 0,
@@ -4974,41 +5025,70 @@ sub printAlignments {
       }
     }
 
+    my $rseq = substr( $object->getReferenceSeq(), $lineStart, $blockSize );
+    my %trans = ( "CT" => 1, "TC" => 1, "AG" => 1, "GA" => 1 );
+    my %transv = ( "GT" => 1, "TG" => 1, "GC" => 1, "CG" => 1,
+                   "CA" => 1, "AC" => 1, "AT" => 1, "TA" => 1 );
+
+
     # Print out the consensus if requested
+    my $cseq = "";
     if ( $consensus ne "" ) {
-      my $seq        = substr( $consensus, $lineStart, $blockSize );
+      $cseq        = substr( $consensus, $lineStart, $blockSize );
       my $name       = "consensus";
-      my $numLetters = ( $seq =~ tr/A-Za-z/A-Za-z/ );
+      my $numLetters = ( $cseq =~ tr/A-Za-z/A-Za-z/ );
       my $end        = $consBaseStartPos + $numLetters - 1;
       my $outStr     = $name
           . " " x ( $maxIDLen - length( $name ) ) . " "
           . " " x ( $maxCoordLen - length( $consBaseStartPos ) )
           . $consBaseStartPos . " "
-          . $seq
-          . " " x ( $blockSize - length($seq) ) . "    "
+          . $cseq
+          . " " x ( $blockSize - length($cseq) ) . "    "
           . $end . "\n";
       print "$outStr";
       $consBaseStartPos = $end + 1;
+
+      my $diffStr = "";
+      for ( my $i = 0; $i < length($cseq); $i++ ) {
+        my $c = substr($cseq,$i,1);
+        my $r = substr($rseq,$i,1);
+        if ( $c eq $r ) {
+          $diffStr .= " ";
+        }elsif ( $c eq "-" || $r eq "-" ) {
+          $diffStr .= "-";
+        }elsif ( exists $trans{$c.$r} ) {
+          $diffStr .= "i";
+        }elsif ( exists $transv{$c.$r} ) {
+          $diffStr .= "v";
+        }else {
+          $diffStr .= "?";
+        }
+      }
+      my $outStr     =
+          " " x ( $maxIDLen + $maxCoordLen + 2) 
+          . $diffStr . "\n";
+      print "$outStr";
     }
 
     # Print out the reference
-    my $seq = substr( $object->getReferenceSeq(), $lineStart, $blockSize );
     my $name = substr( "ref:" . $object->getReferenceName(), 0, $maxIDLen );
 
-    my $numLetters = ( $seq =~ tr/A-Za-z/A-Za-z/ );
+    my $numLetters = ( $rseq =~ tr/A-Za-z/A-Za-z/ );
     my $end        = $refBaseStartPos + $numLetters - 1;
     my $outStr     = $name
         . " " x ( $maxIDLen - length( $name ) ) . " "
         . " " x ( $maxCoordLen - length( $refBaseStartPos ) )
         . $refBaseStartPos . " "
-        . $seq
-        . " " x ( $blockSize - length( $seq ) ) . "    "
+        . $rseq
+        . " " x ( $blockSize - length( $rseq ) ) . "    "
         . $end . "\n";
     print "$outStr";
+    print "~"x( $maxIDLen + 2 + $maxCoordLen + 1 + $blockSize + 1 + $maxCoordLen + 1 + 7) . "\n";
 
     $refBaseStartPos = $end + 1;
 
     # Now print out the aligned sequences
+    my $seq;
     foreach my $i ( @sortedIndexes ) {
       # These are the positions within the gapped multiple alignment ( not sequence positions )
       my $start = $object->getAlignedStart( $i );
@@ -5081,7 +5161,7 @@ sub printAlignments {
       print "$outStr";
 
     }
-    print "\n";
+    print "\n\n";
     $lineStart = $lineEnd + 1;
     $lineEnd   = $lineStart + $blockSize - 1;
   }

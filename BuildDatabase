@@ -130,7 +130,7 @@ my $version = $RepModelConfig::VERSION;
 #   -t=s: String parameters
 #   -t=i: Number paramters
 #
-my @opts = qw( help dir=s engine=s batch=s name=s );
+my @opts = qw( help dir=s batch=s name=s );
 
 # Add configuration parameters as additional command-line options
 push @opts, RepModelConfig::getCommandLineOptions();
@@ -196,28 +196,6 @@ my $engine = "rmblast";
 if ( $options{'engine'} && $options{'engine'} =~ /wublast|abblast/i ) {
   die "ERROR: \"-engine $options{'engine'}\" is deprecated, this verison of RepeatModeler uses rmblast only.\n";
 }
-
-if ( $options{'engine'} ) {
-  if ( $options{'engine'} =~ /wublast|abblast/i ) {
-    die "RepeatModeler doesn't appear to be configured to use the "
-        . "$options{'engine'} search engine.  Please re-run configure before "
-        . "using this or other RepeatModeler programs.\n"
-        if ( !-x $XDFORMAT_PRGM );
-    $engine = "abblast";
-  }
-  elsif ( $options{'engine'} =~ /rmblast|ncbi/i ) {
-    die "RepeatModeler doesn't appear to be configured to use the "
-        . "$options{'engine'} search engine.  Please re-run configure before "
-        . "using this or other RepeatModeler programs.\n"
-        if ( !-x $NCBIBLASTDB_PRGM );
-    $engine = "rmblast";
-  }
-  else {
-    print "I don't understand -engine $options{'engine'}\n";
-    usage();
-  }
-}
-
 die "Missing database name!\n" if ( !defined $options{'name'} );
 
 my @fileList = ();
@@ -283,7 +261,7 @@ foreach my $file ( @ARGV ) {
 my $IDX;
 my $index = 1;
 open $IDX, ">$options{'name'}.translation"
-    or die $CLASS . ": Cannot open file $options{'name'}.translation\n";
+    or die $CLASS . ": Cannot open file $options{'name'}.translation.  This may occur if your current working directory is not writable.\n";
 
 my $results = "";
 my $dbSeqs  = 0;
