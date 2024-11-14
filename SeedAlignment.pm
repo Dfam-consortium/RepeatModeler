@@ -1394,7 +1394,7 @@ sub read_stockholm
             $orient = $1;
           }else {
             croak "\n$subroutine:\n"
-                . "  Line [$origName ...] contains an unparable identifier!\n";
+                . "  Line [$origName ...] contains an unparsable identifier!\n";
           }
         }elsif ( $end < $start )
         {

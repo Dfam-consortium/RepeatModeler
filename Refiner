@@ -363,6 +363,10 @@ foreach my $file ( @ARGV ) {
     print OUTC "$cons\n";                           
     close OUTC;
 
+    unless ( $DEBUG ) {
+      rmtree( [ $tmpDir ] );
+    }
+
     next;
   }
 

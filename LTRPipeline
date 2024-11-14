@@ -249,7 +249,7 @@ print "     : " . elapsedTime( "step" ) . "\n";
 # Postprocess results using LTR_Retriever
 elapsedTime( "step" );
 print "Running Ltr_retriever...";
-&runLtrRetriever(
+my $ltrCount = &runLtrRetriever(
                   $LTR_RETRIEVER_DIR,
                   $inputFile,
                   "$tempDir/raw-struct-results.txt",
@@ -257,7 +257,7 @@ print "Running Ltr_retriever...";
                   $threads,
                   $ltrSeqLimit
 );
-if ( !-s "$tempDir/LtrRetriever-redundant-results.fa" ) {
+if ( $ltrCount == 0 || ! -s "$tempDir/LtrRetriever-redundant-results.fa" ) {
   print "LTRPipeline: No results after LTR_Retriever filtering.\n";
   exit;
 }
@@ -644,8 +644,23 @@ sub runLtrRetriever {
       or die
 "LTRPipeline::runLtrRetriever : Could not change directory back to $cwd : $!";
 
+  # Check for return status
+  if ( -s "$tmpDir/LTR_retriever.log" ) {
+    open IN, "<$tmpDir/LTR_retriever.log"
+        or die;
+    while(<IN>) {
+      if ( /No LTR-RT was found in your data./ ) {
+        # No LTR-RT was found so return 0
+        rmtree($tmpDir) unless ( $DEBUG );
+        unlink( "$tmpDir/seq.fa" );
+        return 0;
+      }
+    }
+    close IN;
+  }
+
+  my $error = 0;
   my $redundantLibFile = "";
-  my $error            = 0;
   if ( -s "$tmpDir/seq.fa.LTRlib.redundant.fa" ) {
     $redundantLibFile = "$tmpDir/seq.fa.LTRlib.redundant.fa";
   }
@@ -653,7 +668,6 @@ sub runLtrRetriever {
     $redundantLibFile = "$tmpDir/seq.fa.mod.LTRlib.redundant.fa";
   }
   else {
-    #print "\nERROR: LTRPipeline::runLtrRetriever : Could not locate redundant library in $tmpDir\n";
     $error = 1;
   }
 
@@ -706,74 +720,76 @@ sub runLtrRetriever {
       system( "mv $redundantLibFile $outFile" );
       $count = $numRedundant;
     }
-  }
 
-  # Currently there isn't a way to get the orientation of the sequences other than comparing them with
-  # the input.  So here we go:
-  # Read in the library sequences and ranges
-  open IN,"<$outFile" or die "LTR_retriever failed to generate a file.  Please check $tmpDir/LTR_retriever.log for details.";
-  my $seqID = "";
-  my $start = 0;
-  my $end = 0;
-  my $seq = "";
-  my $suffix = "";
-  my @lib = ();
-  while ( <IN> ) {
-    # e.g.  >utg7180:3885179..3890145_INT#LTR/Gypsy
-    if ( /^>(\S+):(\d+)\.\.(\d+)(.*)/ ) {
-      my $tmpSeqID = $1;
-      my $tmpStart = $2;
-      my $tmpEnd = $3;
-      my $tmpSuffix = $4;
-      if ( $seqID ne "" ) {
+    if ( -s $outFile ) {
+      # Currently there isn't a way to get the orientation of the sequences other than comparing them with
+      # the input.  So here we go:
+      # Read in the library sequences and ranges
+      open IN,"<$outFile" or die "LTR_retriever failed to generate a file.  Please check $tmpDir/LTR_retriever.log for details.";
+      my $seqID = "";
+      my $start = 0;
+      my $end = 0;
+      my $seq = "";
+      my $suffix = "";
+      my @lib = ();
+      while ( <IN> ) {
+        # e.g.  >utg7180:3885179..3890145_INT#LTR/Gypsy
+        if ( /^>(\S+):(\d+)\.\.(\d+)(.*)/ ) {
+          my $tmpSeqID = $1;
+          my $tmpStart = $2;
+          my $tmpEnd = $3;
+          my $tmpSuffix = $4;
+          if ( $seqID ne "" ) {
+            push @lib,[ $seqID, $start, $end, $seq, $suffix];
+          }
+          $seqID = $tmpSeqID;
+          $start = $tmpStart;
+          $end = $tmpEnd;
+          $seq = "";
+          $suffix = $tmpSuffix;
+          next;
+        }
+        s/[\n\r\s]+//g;
+        $seq .= $_;
+      }
+      if ($seqID ne ""){
         push @lib,[ $seqID, $start, $end, $seq, $suffix];
       }
-      $seqID = $tmpSeqID;
-      $start = $tmpStart;
-      $end = $tmpEnd;
-      $seq = "";
-      $suffix = $tmpSuffix;
-      next;
-    }
-    s/[\n\r\s]+//g;
-    $seq .= $_;
-  }
-  if ($seqID ne ""){
-    push @lib,[ $seqID, $start, $end, $seq, $suffix];
-  }
-  close IN;
+      close IN;
 
-  # Using the sequence file determine the orientation of each sequence
-  # NOTE: This also validates the sequence ranges and flags LTR_retriever
-  # results that have incorrect ranges
-  getOrientation(\@lib, "$tmpDir/seq.fa");
-  
-  # Backup original outFile and regenerate with oriented ranges.
-  system("mv $outFile $outFile.no_orient");
-  open OUT,">$outFile" or die;
-  foreach my $entry ( @lib ) {
-    my $type = "";
-    if ( $entry->[4] =~ /_LTR/ ) {
-      $type = "_LTR";
-    }elsif ( $entry->[4] =~ /_INT/ ) {
-      $type = "_INT";
-    }
+      # Using the sequence file determine the orientation of each sequence
+      # NOTE: This also validates the sequence ranges and flags LTR_retriever
+      # results that have incorrect ranges
+      getOrientation(\@lib, "$tmpDir/seq.fa");
+      
+      # Backup original outFile and regenerate with oriented ranges.
+      system("mv $outFile $outFile.no_orient");
+      open OUT,">$outFile" or die;
+      foreach my $entry ( @lib ) {
+        my $type = "";
+        if ( $entry->[4] =~ /_LTR/ ) {
+          $type = "_LTR";
+        }elsif ( $entry->[4] =~ /_INT/ ) {
+          $type = "_INT";
+        }
 
-    # Convert ids back to original
-    my $id;
-    if ( $seqIDMap{$entry->[0]} ) {
-      $id = $seqIDMap{$entry->[0]} . ":";
-    }else { die "Could not convert temporary id $entry->[0] back to original id!\n"; }
-    if ( $entry->[5] eq "!" ) {
-      $id .= $entry->[1] . ".." . $entry->[2] . "$type [warning: bad ltr_retriever range]";
-    }elsif ( $entry->[5] eq "+" ) {
-      $id .= $entry->[1] . ".." . $entry->[2] . "$type [forward]";
-    }else {
-      $id .= $entry->[2] . ".." . $entry->[1] . "$type [reverse]";
+        # Convert ids back to original
+        my $id;
+        if ( $seqIDMap{$entry->[0]} ) {
+          $id = $seqIDMap{$entry->[0]} . ":";
+        }else { die "Could not convert temporary id $entry->[0] back to original id!\n"; }
+        if ( $entry->[5] eq "!" ) {
+          $id .= $entry->[1] . ".." . $entry->[2] . "$type [warning: bad ltr_retriever range]";
+        }elsif ( $entry->[5] eq "+" ) {
+          $id .= $entry->[1] . ".." . $entry->[2] . "$type [forward]";
+        }else {
+          $id .= $entry->[2] . ".." . $entry->[1] . "$type [reverse]";
+        }
+        print OUT ">$id\n$entry->[3]\n";
+      }
+      close OUT;
     }
-    print OUT ">$id\n$entry->[3]\n";
-  }
-  close OUT;
+ }
 
   unless ( $DEBUG || $error ) {
     rmtree( $tmpDir );

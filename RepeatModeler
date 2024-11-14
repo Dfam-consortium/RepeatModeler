@@ -538,7 +538,7 @@ while ( $dbIndex =~ />?(\S+)\s+(\d+)\s*$/mg ) {
   $dbSize += $2;
 }
 undef $dbIndex;
-print "\n";
+log_print "\n";
 
 die "Database $genomeDB does not contain any sequences!\n"
     if ( scalar(@contigSizes) < 1 );
