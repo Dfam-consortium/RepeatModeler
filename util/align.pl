@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl 
+#!/usr/bin/perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) align.pl
@@ -88,8 +88,11 @@ or
                       database files, if present.
   -caf              Produce CAF output rather than standard cross_match formatting (this
                       option implies -alignments will be used).
+  -bed3             Produce BED3 format: sequence_id<tab>seq_start<tab>seq_end
+  -bed6             Produce BED6 format: sequence_id<tab>seq_start<tab>seq_end<tab>q_name<tab>score<tab>strand
   -k_param,-k       ALP K parameter for E_value calculation
   -lambda,-la       ALP lambda parameter for E_value calculation
+  -q_size           Required when -k_param and -lambda are provided for evalue calculation
 
   Xmatch.pl options not yet supported:
   #-original,-o      keep the original cross_match mismatch level (mismatches/length_of_query) 
@@ -154,8 +157,7 @@ use File::Basename;
 use File::Temp qw/ tempfile tempdir /;
 #
 use RepModelConfig;
-#use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
-use lib "/home/rhubley/projects/RepeatMasker";
+use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use NCBIBlastSearchEngine;
 use CrossmatchSearchEngine;
 use HMMERSearchEngine;
@@ -169,10 +171,9 @@ my $DEBUG = 0;
 #
 # Paths
 #
-my $phrapDir = "/usr/local/phrap";
+my $CM_DIR = $RepeatMaskerConfig::configuration->{'CROSSMATCH_DIR'}->{'value'};
 my $RMSK_DIR = $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLAST_DIR = $RepModelConfig::configuration->{'RMBLAST_DIR'}->{'value'};
-#my $RMBLAST_DIR = "/home/rhubley/projects/RMBlast_project/RMBlast/ncbi-blast-2.14.0+-src/c++/ReleaseMT/bin";
 my $defaultEngine = "rmblast";
 
 #
@@ -188,6 +189,8 @@ my @getopt_args = (
     'bandwidth|ba=s',
     'blast|bl',
     'caf',
+    'bed3',
+    'bed6',
     'crossmatch|cm',
     'cg',
     'database=s',
@@ -195,6 +198,7 @@ my @getopt_args = (
     'ins_gap_ext|i=i',
     'k_param|k=s',
     'lambda|la=s',
+    'q_size=s',
     'extension|e=i',
     'fmindex|fm',
     'force|fo',
@@ -266,7 +270,6 @@ my $sEngineObj;
 if ( $engine eq "crossmatch" )
 {
   $engine = "crossmatch";
-  my $CM_DIR = $RepeatMaskerConfig::configuration->{'CROSSMATCH_DIR'}->{'value'};
   unless ( -d $CM_DIR && -x "$CM_DIR/cross_match") {
     # fall back to path resolution
     my $retVal = `whereis cross_match`;
@@ -370,10 +373,10 @@ my $del_extn_penalty = -5;
 if ( exists $options{'gap_init'} ){
   $gap_open_penalty = $options{'gap_init'};
 }
-if ( exists $options{'gap_ext'} ) 
+if ( exists $options{'extension'} ) 
 {
-  $ins_extn_penalty = $options{'gap_ext'};
-  $del_extn_penalty = $options{'gap_ext'};
+  $ins_extn_penalty = $options{'extension'};
+  $del_extn_penalty = $options{'extension'};
 }elsif ( exists $options{'del_gap_ext'} ) 
 {
   $del_extn_penalty = $options{'del_gap_ext'};
@@ -472,9 +475,15 @@ if ( $engine eq "rmblast" ) {
     }else {
       # Do we need to use blastdb version 4 anymore?
       #      . "-blastdb_version 4 "
-      system(   "$engine_dir/makeblastdb -out $databaseFile "
+      my $cmd = "$engine_dir/makeblastdb -out $databaseFile "
               . "-parse_seqids -dbtype nucl -in $databaseFile > "
-              . "makedb.log 2>&1" );
+              . "makedb.log 2>&1";
+      system( $cmd );
+      if ( $? ) {
+        printf "\n\nERROR building nucleotide database! makeblastdb command ($cmd) exited with value %d\n\n", $? >> 8;
+        system("cat makedb.log");
+        exit(1);
+      }
     }
   }else {
     unless ( ! $options{'quiet'} ) {
@@ -538,8 +547,8 @@ unless ( $options{'quiet'} ) {
           $sEngineObj->getParameters() . "\n"; #if ( $options{'verbose'} );
     print "#  database: $db_seqs sequences, $db_size bp\n";
     print "#  matrix: $resolvedMatrix";
-    if ( exists $options{'k_param'} && exists $options{'lambda'} ) { 
-      print ", K=$options{'k_param'}, lambda=$options{'lambda'}";
+    if ( exists $options{'k_param'} && exists $options{'lambda'} && exists $options{'q_size'} ) { 
+      print ", K=$options{'k_param'}, lambda=$options{'lambda'}, q_size=$options{'q_size'}";
     }
     print "\n";
   }else {
@@ -569,6 +578,10 @@ if ( $status )
   my $matrixObj;
   if ( $resolvedMatrix ne "" ) {
     $matrixObj = Matrix->new( fileName => $resolvedMatrix );
+    # For rescoring purposes we must transpose rmblast-style matrices
+    if ( $engine eq "rmblast" ) {
+      $matrixObj->transposeMatrix();
+    }
   }
   for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
     my $resultRef = $resultCollection->get( $k );
@@ -577,7 +590,8 @@ if ( $status )
     #    $resultRef->calcKimuraDivergence( divCpGMod => 1 );
     #
     if ( $engine eq "nhmmer" && $matrixObj && 1 ) {
-   
+      # NOTE: This must be a matrix in crossmatch format if matrix is
+      #       assymetrical
       my ( $score, $divergence, $cpgsites, $percIns, $percDel,
            $positionScores, $xdrop_fragments, $well_characterized_bases,
            $transisitions, $transversions ) 
@@ -592,29 +606,81 @@ if ( $status )
       $resultRef->setScore($score);
     
     }
-    if ( $engine eq "rmblast" && $options{'k_param'} ) {
-      my ( $raw_score, $divergence, $cpgsites, $percIns, $percDel,
-           $positionScores, $xdrop_fragments, $well_characterized_bases,
-           $transisitions, $transversions )
-                = $resultRef->rescoreAlignment( scoreMatrix => $matrixObj,
-                                gapOpenPenalty => $gap_open_penalty,
-                                insGapExtensionPenalty => $ins_extn_penalty,
-                                delGapExtensionPenalty => $del_extn_penalty 
-                                );
-      my $q_size = $resultRef->getQueryEnd() + $resultRef->getQueryRemaining();
-      my $e_value = 2*$db_size*$q_size*$options{'k_param'}*exp(-$options{'lambda'} * $raw_score);
-      print "e_value = $e_value\n";
+
+    my $bitScore = 0;
+    my $e_value = -1;
+    my $rawScore;
+    if ( ($engine eq "rmblast" || $engine eq "crossmatch") && $options{'k_param'} && $options{'lambda'} && $options{'q_size'} ) {
+      $rawScore = $resultRef->getScore();
+      my $q_size = $options{'q_size'};
+      if ( ! $options{'raw'} ) {
+        ## NOTE: For this to work the matrix must be in the orientation expected
+        #        by crossmatch.  E.g. not the orientation used by rmblast ( see above where matrixObj
+        #        is loaded.
+        my ( $raw_score, $divergence, $cpgsites, $percIns, $percDel,
+             $positionScores, $xdrop_fragments, $well_characterized_bases,
+             $transisitions, $transversions )
+                  = $resultRef->rescoreAlignment( scoreMatrix => $matrixObj,
+                                  gapOpenPenalty => $gap_open_penalty,
+                                  insGapExtensionPenalty => $ins_extn_penalty,
+                                  delGapExtensionPenalty => $del_extn_penalty 
+                                  );
+        $rawScore = $raw_score;
+      }
+      # TODO: $db_size isn't currently pulled from crossmatch output
+      # TODO: We also don't know query size from rmblast
+      #
+      # NOTE: The search space used in this evalue computation assumes that 
+      #       both DNA strands are searched ( ie. search space = 2 * m * n, where
+      #       m/n are the single-strand lengths of the subject and query sequences
+      #       respectively ).  No attempt is made here to adjust for edge effects
+      #       in this calculation. TODO: Consider edge correcting this, however
+      #       we would also need alpha/beta in order to do so.
+      #
+      #       Noteworthy observations: As of NCBI Blast 2.14.1 the evalue calculation
+      #       used in blastn doesn't modify the search space when the strand option is
+      #       used.  It also appears as if the search space is always assumed to be m*n
+      #       , the single stranded search space.  
+      #
+      #       LAST does appear to adjust the search space for stranded searches.
+      #
+      $bitScore = sprintf("%0.2f",($options{'lambda'} * $rawScore - log($options{'k_param'})) / log(2));
+      $e_value = 2 * $db_size * $q_size * $options{'k_param'} * exp(-$options{'lambda'} * $rawScore);
     }
     
     if ( $options{'alignments'} ) {
       print "" . $resultRef->toStringFormatted( SearchResult::AlignWithQuerySeq );
+      if ( $e_value >= 0 ) {
+        print "e_value = $e_value\n\n";
+      }
     }elsif ( $options{'caf'} ) { 
       # TODO: Move this modified CAF to SearchResult.pm
       #my $matrix = basename($resolvedMatrix);
       my $matrix = $resultRef->getMatrixName();
-      print "" . $resultRef->toStringFormatted( SearchResult::CompressedAlignCSV ) . "," . $matrix . "\n";
+      print "" . $resultRef->toStringFormatted( SearchResult::CompressedAlignCSV ) . "," . $matrix;
+      # Special case for threshold study....append raw score and evalue to caf format
+      if ( $options{'lambda'} ) {
+        print "," . sprintf("%0.4e", $e_value) . ",$rawScore,$bitScore";
+      }
+      print "\n";
+    }elsif ( $options{'bed3'} ) {
+      print "" . $resultRef->getQueryName() . "\t" 
+               . ($resultRef->getQueryStart() - 1) . "\t"
+               . $resultRef->getQueryEnd(). "\n";
+    }elsif ( $options{'bed6'} ) {
+      my $orient = "+";
+      $orient = "-" if ( $resultRef->getOrientation() );
+      print "" . $resultRef->getQueryName() . "\t" 
+               . ($resultRef->getQueryStart() - 1) . "\t"
+               . $resultRef->getQueryEnd() . "\t" 
+               . $resultRef->getSubjName() . "\t" 
+               . $resultRef->getScore() . "\t" 
+               . $orient . "\n";
     }else {
       print "" . $resultRef->toStringFormatted( SearchResult::OutFileFormat );
+      if ( $e_value >= 0 ) {
+        print "e_value = $e_value\n";
+      }
     }
   }
 }

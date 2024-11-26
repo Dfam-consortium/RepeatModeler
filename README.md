@@ -53,7 +53,7 @@ Source Distribution Installation
     with version 5.8.8.
 
   RepeatMasker & Libraries
-    Developed and tested with open-4.1.4. The program is available at 
+    Developed and tested with open-4.1.7-p1. The program is available at 
     http://www.repeatmasker.org/RMDownload.html and is distributed with
     Dfam - an open database of transposable element families.
 
@@ -66,9 +66,9 @@ Source Distribution Installation
     The original version is available at http://eddylab.org/software/recon/.
 
   RepeatScout - De Novo Repeat Finder, Price A.L., Jones N.C. and Pevzner P.A.
-    Developed and tested with our multiple sequence version of RepeatScout 
-    ( 1.0.6 ).  This version is available at 
-    http://www.repeatmasker.org/RepeatScout-1.0.6.tar.gz
+    Developed and tested with our extended version of RepeatScout
+    ( 1.0.7 ).  This version is available at 
+    https://github.com/Dfam-consortium/RepeatScout
 
   TRF - Tandem Repeat Finder, G. Benson et al.
     You can obtain a free copy at http://tandem.bu.edu/trf/trf.html
@@ -77,7 +77,7 @@ Source Distribution Installation
   RMBlast - A modified version of NCBI Blast for use with RepeatMasker
     and RepeatModeler.  Precompiled binaries and source can be found at
     http://www.repeatmasker.org/RMBlast.html
-    We highly recommend using 2.13.0 or higher.
+    We highly recommend using 2.14.1 or higher.
 
   UCSC genome browser command-line utilities - Some tools included with
     RepeatModeler work with files in the 'twobit' file format using
@@ -93,12 +93,13 @@ Source Distribution Installation
     NOTE: use the "make threads=yes" build options to enable multi-threaded
           runs.
           
-  Ltr_retriever - A LTR discovery post-processing and filtering tool.  We 
-    recommend using version 2.6 or higher from here: 
+  Ltr_retriever - A LTR discovery post-processing and filtering tool.  We
+    currently **require the 2.9.0** version of LTR retreiver, newer versions
+    of LTR_retriever will not currently work with RepeatModeler.
     https://github.com/oushujun/LTR_retriever/releases
 
   MAFFT - A multiple sequence alignment program.  We developed and tested
-    RepeatModeler using mafft version 7.407.  Please use this verison or
+    RepeatModeler using mafft version 7.505.  Please use this verison or
     higher from here:
     https://mafft.cbrc.jp/alignment/software/
 
@@ -291,7 +292,7 @@ Caveats
     assembly N50.  A histogram of contig size is also displayed.
 
   + RepeatModeler employs symmetric multiprocessing parallelism,
-    therefore should be run on a single machine per-assembly.
+    therefore it should be run on a single machine per-assembly.
 
   + It is not recommended that a genome be run in a batched fashion
     nor the results of multiple RepeatModeler runs on the same 

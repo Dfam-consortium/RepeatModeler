@@ -409,6 +409,7 @@ END
 <button onClick="visualizeMultiple(\'norm\');">Normal Sort</button>
 <button onClick="visualizeMultiple(\'end\');">End Sort</button>
 <button onClick="visualizeMultiple(\'div\');">Divergence Sort</button>
+<button onClick="visualizeMultiple(\'groupById\');">ID Sort</button>
 <br>
 <p>
     <div id="canvasesdiv" style="position:relative">
@@ -1353,10 +1354,13 @@ sub generateJavascriptSummaryAndAlignmentViewer {
   # Begin writing the HTML
   print $OUT "<html>
 <H1>Summary View</H1>
-<button onClick=\"mySummary.render('orient');\">Orientation Sort</button>
-<button onClick=\"mySummary.render('norm');\">Normal Sort</button>
-<button onClick=\"mySummary.render('end');\">End Sort</button>
-<button onClick=\"mySummary.render('div');\">Divergence Sort</button>
+<button onClick=\"mySummary.render('orient',parseInt(document.getElementById('groupdist').value));\">Orientation Sort</button>
+<button onClick=\"mySummary.render('norm',parseInt(document.getElementById('groupdist').value));\">Normal Sort</button>
+<button onClick=\"mySummary.render('end',parseInt(document.getElementById('groupdist').value));\">End Sort</button>
+<button onClick=\"mySummary.render('div',parseInt(document.getElementById('groupdist').value));\">Divergence Sort</button>
+<button onClick=\"mySummary.render('groupById',parseInt(document.getElementById('groupdist').value));\">ID Sort</button>
+<label for=\"groupdist\">Grouping distance:</label>
+<input type=\"text\" id=\"groupdist\" name=\"groupdist\" value='2000'/>
 <p>    
 <div id=\"canvasesdiv\" style=\"position:relative\">
   <canvas id=\"alignment_canvas\" width=\"800\" height=\"1600\" style=\"z-index:1;position:absolute;left:0px;top:0px;\">Canvas not supported</canvas>

@@ -31,6 +31,7 @@ generateSeedAlignments - Generate a seed alignments from RM *.align output
 
  generateSeedAlignments [-families "<id1> <id2> .."] [-consensusRF]
                         [-outSTKFile <*.stk>] [-taxon <ncbi_taxonomy_name>]
+                        [[-consensi <*.fa> [-outTable <*.tsv>] [-outAlign <*.align>]]
                         [-assemblyID <id>] [-minAlignedLength #]
                         [-verbose][-noColor] [-prefixAssembly]
                         -assemblyFile <*.2bit>
@@ -164,6 +165,8 @@ use MultAln;
 use EMBL;
 use SeedAlignment;
 use SeedAlignmentCollection;
+use SequenceSimilarityMatrix;             
+use NeedlemanWunschGotohAlgorithm;
 use File::Temp qw/ tempfile tempdir /;
 use File::Basename;
 use Time::HiRes qw( gettimeofday tv_interval);
@@ -202,6 +205,9 @@ my @getopt_args = (
                     '-families=s',
                     '-assemblyFile=s',
                     '-assemblyID=s',
+                    '-consensi=s',
+                    '-outTable=s',
+                    '-outAlign=s',
                     '-taxon=s',
                     '-consensusRF',
                     '-outSTKFile=s',
@@ -255,11 +261,51 @@ if ( $options{'outSTKFile'} ) {
   }
 }
 
+my %consensi = ();
+if ( $options{'consensi'} ) {
+  open IN,"<$options{'consensi'}" or die "Could not open consensi file $options{'consensi'} for reading!\n";
+  my $seq = "";
+  my $id = "";
+  while (<IN>) {
+    if ( /^>(\S+)/ ) {
+      my $tmpID = $1;
+      if ( $seq ) {
+        $consensi{$id} = $seq;
+      }
+      $id = $tmpID;
+      $seq = "";
+      next;
+    }  
+    s/[\n\r\s]+//g;
+    $seq .= $_;
+  }
+  if ( $seq ) {
+    $consensi{$id} = $seq;
+  }
+  close IN;
+}
+
 my $alignFile = $ARGV[0];
 if ( ! -s $alignFile ) {
   print "\nError: Missing RepeatMasker alignment file!\n\n";
   usage();
 }
+
+if (($options{'outTable'} || $options{'outAlign'}) && ! $options{'consensi'} ) {
+  print "\nError: Options -outTable and -outAlign require the use of the -consensi option!\n\n";
+  usage();
+}
+
+my $tableFH;
+if ( $options{'outTable'} ) {
+  open $tableFH,">$options{'outTable'}" or die "Could not open table file $options{'outTable'} for writing!\n";
+}
+my $alignFH;
+if ( $options{'outAlign'} ) {
+  open $alignFH,">$options{'outAlign'}" or die "Could not open align file $options{'outAlign'} for writing!\n";
+}
+my $NWMatrix = SequenceSimilarityMatrix->new();
+$NWMatrix->parseFromFile( "$FindBin::Bin/../Matrices/linupmatrix" );
 
 # The minimum sequence length to include in the seed alignment ( in bp ).
 my $minAlignedLength = 30;
@@ -851,6 +897,29 @@ foreach my $id ( keys( %alignByID ) )
   my $mAlign = MultAln->new( searchCollection          => $resultCol,
                              searchCollectionReference => MultAln::Subject );
 
+  if ( $options{'outTable'} || $options{'outAlign'} ) {
+    my $s_id = $id;
+    $s_id = $1 if ( $id =~ /(\S+)#.*/ );
+    my $oldCons = $consensi{$s_id};
+    my $newCons = $mAlign->consensus();
+    $newCons =~ s/[- ]//g;
+    #print "OldCons=$oldCons\n";
+    #print "NewCons=$newCons\n";
+    my %opts = ( familyName => "$s_id", oldSeq => uc($oldCons), newSeq => uc($newCons),
+                 SSMatrixObj => $NWMatrix);
+    if ( $alignFH ) {
+      $opts{'alignFH'} = $alignFH;
+    }
+    my ($oldCpGCount, $newCpGCount, $oldNCount, $newNCount, $len_old, $len_new, $nonAmbigSubCount, $pctSub,
+        $pctDel, $pctIns) = compareConsensi( %opts );
+    print "    CpG = $oldCpGCount -> $newCpGCount, N = $oldNCount -> $newNCount,\n";
+    print "    Length = $len_old -> $len_new (" . ($len_new - $len_old) . "), NonAmbig Substititions = $nonAmbigSubCount,\n";                
+    print "    Sub/Del/Ins = $pctSub $pctDel $pctIns\n";                 
+    if ( $tableFH ) {
+      print $tableFH "$s_id\t$oldCpGCount\t$newCpGCount\t$oldNCount\t$newNCount\t$len_old\t$len_new\t$nonAmbigSubCount\t$pctSub\t$pctDel\t$pctIns\n";
+    }
+  }
+
   my $sanitizedID = $id;
   $sanitizedID =~ s/[\(\)]//g; 
   my $class = "Unknown";
@@ -933,6 +1002,63 @@ sub fisherYatesShuffle
     @$array[ $i, $j ] = @$array[ $j, $i ];
   }
 }
+
+
+sub compareConsensi {
+  my %nameValueParams = @_;
+
+  my $familyName = $nameValueParams{'familyName'};
+  my $ss_matrix = $nameValueParams{'SSMatrixObj'};
+  my $matrix = $nameValueParams{'MatrixObj'};
+  my $oldSeq = $nameValueParams{'oldSeq'};
+  my $newSeq = $nameValueParams{'newSeq'};
+
+  my $searchResult = NeedlemanWunschGotohAlgorithm::search(
+                  querySeq   => $oldSeq,
+                  subjectSeq => $newSeq,
+                  matrix         => $ss_matrix,
+                  insOpenPenalty => -25,
+                  insExtPenalty  => -5,
+                  delOpenPenalty => -25,
+                  delExtPenalty  => -5 
+                );
+
+  my $oldCpGCount = 0;
+  ($oldCpGCount) = ($oldSeq =~ s/CG/CG/ig);
+  my $newCpGCount = 0;
+  ($newCpGCount) = ($newSeq =~ s/CG/CG/ig);
+  
+  my $oldNCount = 0;
+  ($oldNCount) = ($oldSeq =~ s/N/N/ig);
+  my $newNCount = 0;
+  ($newNCount) = ($newSeq =~ s/N/N/ig);
+
+  my $qs = $searchResult->getQueryString();
+  my $ss = $searchResult->getSubjString();
+  my $sub = 0;
+  for ( my $i = 0; $i < length($qs); $i++ ) {
+     my $qbase = uc(substr($qs,$i,1));
+     my $sbase = uc(substr($ss,$i,1));
+     next if ( $qbase eq "-" || $sbase eq "-" );
+     $sub++ if ( $qbase =~ /[ACGT]/ && $sbase ne $qbase );
+  }
+
+    if ( $nameValueParams{'alignFH'} ) {
+    if ( ref( $nameValueParams{'alignFH'} ) =~ /GLOB|FileHandle|IO::File/ ) {
+      $searchResult->setQueryName("OLD");
+      $searchResult->setSubjName("NEW");
+      my $FH = $nameValueParams{'alignFH'};
+      print $FH "Global Alignment: $familyName\n";
+      print $FH "" . $searchResult->toStringFormatted( SearchResult::AlignWithQuerySeq );
+      print $FH "\n\n";
+    }
+  }
+
+  return $oldCpGCount, $newCpGCount, $oldNCount, $newNCount, length($oldSeq), length($newSeq), $sub, $searchResult->getPctDiverge(), 
+         $searchResult->getPctDelete(), $searchResult->getPctInsert();
+}
+
+
 
 sub RMClassToDfam {
   my $rmClass = lc(shift);

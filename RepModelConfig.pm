@@ -63,7 +63,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 1,
-                           'value' => '/usr/local/cd-hit-v4.8.1-2019-0228'
+                           'value' => '/usr/local/cd-hit-4.8.1'
                          },
           'GENOMETOOLS_DIR' => {
                                  'command_line_override' => 'genometools_dir',
@@ -74,11 +74,11 @@ BEGIN {
                                                         ],
                                  'param_type' => 'directory',
                                  'required' => 0,
-                                 'value' => '/usr/local/genometools-1.5.10/bin'
+                                 'value' => '/usr/local/genometools-1.6.2/bin'
                                },
           'LTR_RETRIEVER_DIR' => {
                                    'command_line_override' => 'ltr_retriever_dir',
-                                   'description' => 'The path to the installation of the LTR_Retriever (v2.9.0 and higher) structural LTR analysis package.',
+                                   'description' => 'The path to the installation of the LTR_Retriever v2.9.0 structural LTR analysis package.',
                                    'environment_override' => 'LTR_RETRIEVER_DIR',
                                    'expected_binaries' => [
                                                             'LTR_retriever'
@@ -96,7 +96,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/mafft-7.471/bin'
+                           'value' => '/usr/local/mafft/bin'
                          },
           'NINJA_DIR' => {
                            'command_line_override' => 'ninja_dir',
@@ -107,7 +107,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 0,
-                           'value' => '/usr/local/NINJA/NINJA'
+                           'value' => '/usr/local/Ninja-0.98-cluster_only'
                          },
           'RECON_DIR' => {
                            'command_line_override' => 'recon_dir',
@@ -130,7 +130,7 @@ BEGIN {
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/home/rhubley/projects/RepeatMasker'
+                                  'value' => '/usr/local/RepeatMasker'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
@@ -146,11 +146,11 @@ BEGIN {
                                                     ],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/home/rhubley/projects/RMBlast_project/RMBlast/rmblast-2.14.1/bin'
+                             'value' => '/usr/local/rmblast/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
-                            'description' => 'The path to the installation of the RepeatScout ( 1.0.6 or higher ) de-novo repeatfinding program.',
+                            'description' => 'The path to the installation of the RepeatScout ( 1.0.7 or higher ) de-novo repeatfinding program.',
                             'environment_override' => 'RSCOUT_DIR',
                             'expected_binaries' => [
                                                      'RepeatScout',
@@ -158,7 +158,7 @@ BEGIN {
                                                    ],
                             'param_type' => 'directory',
                             'required' => 1,
-                            'value' => '/usr/local/RepeatScout-1.0.6'
+                            'value' => '/home/rhubley/projects/RepeatScout-1.0.7'
                           },
           'TRF_DIR' => {
                          'command_line_override' => 'trf_dir',
@@ -198,7 +198,7 @@ BEGIN {
   #
   # Current version of the software
   #
-  $VERSION = "2.0.5";
+  $VERSION = "2.0.6";
 
   #
   # Set this flag to default to debug mode for the entire package
@@ -604,6 +604,12 @@ BEGIN {
       #RepeatMasker version 4.1.0
       $tmpStr = `$value/RepeatMasker -v 2>&1`;
       $tmpStr =~ /version\s+(\d+\.\d+\.\d+)/;
+      $version = $1;
+    }elsif ( $param eq "REPEATAFTERME_DIR" ) {
+      #ExtendAlign -h
+      #ExtendAlign Version 0.0.4 - build 436 date 20201118
+      $tmpStr = `$value/ExtendAlign -h 2>&1`;
+      $tmpStr =~ /Version\s+(\d+\.\d+\.\d+)/;
       $version = $1;
     }
     return $version;

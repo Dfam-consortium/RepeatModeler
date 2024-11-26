@@ -80,6 +80,9 @@ function AlignmentSummary(align_canvas, guide_canvas, detail_canvas, json, optio
     this.align_context = this.align_canvas.getContext("2d");
     this.detail_context = this.detail_canvas.getContext("2d");
 
+    // 
+    this.maxGroupingDist = 2000;
+
     // Heatmap Colors
     this.qualColor = ["#ff6600", "#ffcc00", "#ccff00", "#66ff00", "#00ff00",
         "#00ff66", "#00ffcc", "#00ccff", "#0066ff", "#0000ff"];
@@ -98,7 +101,7 @@ function AlignmentSummary(align_canvas, guide_canvas, detail_canvas, json, optio
         that.mouseDownHndlr(evt);
     }, false);
 
-    this.render("norm");
+    this.render("norm", this.maxGroupingDist);
 }
 
 
@@ -140,7 +143,7 @@ AlignmentSummary.prototype.mouseDownHndlr = function (evt) {
     if ( alignIdx >= 0 )
     {
       this.drawAlignDetail2(this.alignDetailXPos, this.alignDetailYPos,
-                           this.alignDetailWidth, this.alignDetailHeight, alignIdx);
+                           this.alignDetailWidth, this.alignDetailHeight, alignIdx, this.maxGroupingDist);
     }
 };
 
@@ -148,7 +151,7 @@ AlignmentSummary.prototype.mouseDownHndlr = function (evt) {
 // details a given sequence from the alignment collection. 
 // TODO: Testing variant.  This one displays the whole instance sequence rather than
 //       discrete portions of the instance sequence.
-AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, alignIdx) {
+AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, alignIdx, maxGroupingDist) {
     var popupWidth = width;
     var popupHeight = height;
     var titleHeight = 25;
@@ -163,7 +166,6 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
     var name = this.json.alignments[alignIdx][0];
     var refStart = this.json.alignments[alignIdx][6];
     var refEnd = this.json.alignments[alignIdx][7];
-    var maxGroupingDist = 10;
 
     // Identify the length of the genomic sequence that covers
     // all alignments we will be displaying.
@@ -176,7 +178,7 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
         var instEnd = this.json.alignments[j][7];
         if (this.json.alignments[j][0] === name &&
             ((instStart > (refStart-maxGroupingDist) && instStart < (refEnd+maxGroupingDist))  || 
-             (instEnd > (refStart-maxGroupingDist) && instEnd < (refEnd+maxGroupingDist)))) 
+            (instEnd > (refStart-maxGroupingDist) && instEnd < (refEnd+maxGroupingDist)))) 
         {
             idxs[idxs.length] = this.json.alignments[j];
             if (minAlignPos == -1 || instStart < minAlignPos) minAlignPos = instStart;
@@ -219,7 +221,7 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
     // Write detail header
     this.detail_context.font = "15px Georgia";
     this.detail_context.fillStyle = 'black';
-    this.detail_context.fillText(alignIdx + " : " + this.json.alignments[alignIdx][0], x + margin, y + margin + 5);
+    this.detail_context.fillText(alignIdx + " : " + this.json.alignments[alignIdx][0] + " : " + this.json.alignments[alignIdx][6] + "-" + this.json.alignments[alignIdx][7] , x + margin, y + margin + 5);
 
     // Draw forward strand reference line
     this.detail_context.beginPath();
@@ -237,7 +239,6 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
                 levels[k][0] = idxs[j];
                 break;
             }
-
             var prevEle = levels[k][levels[k].length - 1];
             var prevEnd = prevEle[7];
             var curStart = idxs[j][6];
@@ -247,7 +248,6 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
             }
         }
     }
-
 
     // Draw main instance sequence line [gray]
     this.detail_context.strokeStyle = 'gray';
@@ -270,131 +270,13 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
 
             // Draw alignment line
             this.detail_context.moveTo(start, alignYOffset + (j * alignSpacing));
-            this.detail_context.lineWidth = 2;
-            this.detail_context.lineTo(end, alignYOffset + (j * alignSpacing));
-            if (levels[j][k][4] === "F") this.detail_context.strokeStyle = 'black';
-            else this.detail_context.strokeStyle = 'red';
-            this.detail_context.stroke();
-            // write divergence
-            this.detail_context.font = "8px Georgia";
-            this.detail_context.fillStyle = 'black';
-            this.detail_context.fillText(levels[j][k][5],
-                                         start,alignYOffset + (j * alignSpacing) + 8);
-
-            // Draw start connector
-            this.detail_context.strokeStyle = 'black';
-            this.detail_context.lineWidth = 1;
-            this.detail_context.setLineDash([2, 3]);
-            this.detail_context.beginPath();
-            this.detail_context.moveTo(start, alignYOffset + (j * alignSpacing));
-            this.detail_context.lineTo(parseInt(referenceXOffset + (levels[j][k][1] * xsc)), y + margin + titleHeight);
-            this.detail_context.stroke();
-            // Draw end connector
-            this.detail_context.beginPath();
-            this.detail_context.moveTo(end, alignYOffset + (j * alignSpacing));
-            this.detail_context.lineTo(parseInt(referenceXOffset + ((levels[j][k][1] + levels[j][k][2]) * xsc)), y + margin + titleHeight);
-            this.detail_context.stroke();
-
-            this.detail_context.setLineDash([]);
-        }
-    }
-};
-
-// Draw a popup box on the "detail_canvas" containing the alignment 
-// details a given sequence from the alignment collection. 
-AlignmentSummary.prototype.drawAlignDetail = function (x, y, width, height, alignIdx) {
-    var popupWidth = width;
-    var popupHeight = height;
-    var titleHeight = 25;
-    var margin = 10;
-    var alignViewWidth = popupWidth - (2 * margin);
-    var alignSpacing = 20;
-
-    this.detail_context.clearRect(0, 0, 1200, 2000);
-    this.detail_context.fillStyle = "rgba(255, 255, 255, 1.0)";
-    this.detail_context.fillRect(x, y, width, height);
-    //
-    this.detail_context.beginPath();
-    this.detail_context.rect(x, y, width, height);
-    this.detail_context.lineWidth = 2;
-    this.detail_context.strokeStyle = 'black';
-    this.detail_context.stroke();
-    // Write detail header
-    this.detail_context.font = "15px Georgia";
-    this.detail_context.fillStyle = 'black';
-    this.detail_context.fillText(this.json.alignments[alignIdx][0] + "    [ " + alignIdx + " ]",
-    x + margin, y + margin + 5);
-
-    var name = this.json.alignments[alignIdx][0];
-    var idxs = [];
-    var alignLevels = [];
-    var minAlignPos = 99999999999999999999999999;
-    var maxAlignPos = 0;
-    for (var j = 0; j < this.json.alignments.length; j += 1) {
-        if (this.json.alignments[j][0] === name) {
-            idxs[idxs.length] = this.json.alignments[j];
-            if (parseInt(this.json.alignments[j][6]) < minAlignPos) minAlignPos = this.json.alignments[j][6];
-            if (parseInt(this.json.alignments[j][7]) > maxAlignPos) maxAlignPos = this.json.alignments[j][7];
-        }
-    }
-    idxs.sort(function (a, b) {
-        if (a[6] === b[6]) {
-            return ((b[7] - b[6]) - (a[7] - a[6]));
-        } else {
-            return (a[6] - b[6]);
-        }
-    });
-    var referenceXOffset;
-    var alignedLen = maxAlignPos - minAlignPos + 1;
-    var xsc;
-    if (alignedLen > this.json.length) {
-        xsc = alignViewWidth / alignedLen;
-        referenceXOffset = parseInt(x + margin + (((alignedLen - this.json.length) / 2) * xsc));
-    } else {
-        referenceXOffset = parseInt(x + margin);
-        xsc = alignViewWidth / this.json.length;
-    }
-
-    // Draw forward strand reference line
-    this.detail_context.beginPath();
-    this.detail_context.lineWidth = 2;
-    this.detail_context.strokeStyle = 'green';
-    this.detail_context.moveTo(referenceXOffset, y + margin + titleHeight);
-    this.detail_context.lineTo(referenceXOffset + parseInt(this.json.length * xsc), y + margin + titleHeight);
-    this.detail_context.stroke();
-
-    var offset = parseInt(x + margin + ((alignViewWidth - (alignedLen * xsc)) / 2));
-
-    var levels = [];
-    for (var j = 0; j < idxs.length; j += 1) {
-        for (var k = 0; k <= levels.length; k += 1) {
-            if (k == levels.length) {
-                levels[k] = [];
-                levels[k][0] = idxs[j];
-                break;
+            if ( parseInt(levels[j][k][6]) === refStart &&
+                 parseInt(levels[j][k][7]) === refEnd
+               ) {
+              this.detail_context.lineWidth = 4;
+            }else {
+              this.detail_context.lineWidth = 2;
             }
-
-            var prevEle = levels[k][levels[k].length - 1];
-            var prevEnd = prevEle[7];
-            var curStart = idxs[j][6];
-            if (parseInt(prevEnd) <= parseInt(curStart)) {
-                levels[k][levels[k].length] = idxs[j];
-                break;
-            }
-        }
-    }
-
-    var alignYOffset = y + popupHeight - margin - (levels.length * (alignSpacing + 2));
-    for (var j = 0; j < levels.length; j += 1) {
-        for (var k = 0; k < levels[j].length; k += 1) {
-            this.detail_context.beginPath();
-            this.detail_context.strokeStyle = 'black';
-            var start = offset + ((levels[j][k][6] - minAlignPos) * xsc);
-            var end = start + ((levels[j][k][7] - levels[j][k][6] + 1) * xsc);
-
-            // Draw alignment line
-            this.detail_context.moveTo(start, alignYOffset + (j * alignSpacing));
-            this.detail_context.lineWidth = 2;
             this.detail_context.lineTo(end, alignYOffset + (j * alignSpacing));
             if (levels[j][k][4] === "F") this.detail_context.strokeStyle = 'black';
             else this.detail_context.strokeStyle = 'red';
@@ -487,7 +369,7 @@ AlignmentSummary.prototype.ruler = function (x, y, width, height, minVal, maxVal
 //
 //
 //
-AlignmentSummary.prototype.render = function (order) {
+AlignmentSummary.prototype.render = function (order, maxGroupingDist) {
     // Visual Constants
     var divMargin = 10; // Left margin in div block in pixels
     var alignmentGlyphHeight = 1;
@@ -507,6 +389,9 @@ AlignmentSummary.prototype.render = function (order) {
     this.guide_canvas.height);
     this.detail_context.clearRect(0, 0, this.detail_canvas.width,
     this.detail_canvas.height);
+
+    // Reset the max grouping dist
+    this.maxGroupingDist = maxGroupingDist;
 
     // Select ordering
     if (order == "orient") {
@@ -541,17 +426,18 @@ AlignmentSummary.prototype.render = function (order) {
         alignments.sort(function (a, b) {
             return (a[5] - b[5]);
         });
-        //}else if (order == "groupById") {
-        //    alignments.sort(function (a, b) {
-        //
-        //        if (a[0] < b[0]) {
-        //            return -1;
-        //        } else if (a[0] > b[0]) {
-        //            return 1;
-        //        } else { // nothing to split them
-        //            return 0;
-        //        }
-        //    });
+    }else if (order == "groupById") {
+        alignments.sort(function (a, b) {
+               if (a[0] < b[0]) {
+                  return -1;
+                } else if (a[0] > b[0]) {
+                  return 1;
+                }else if (a[1] === b[1]) {
+                  return (b[2] - a[2]);
+                } else {
+                  return (a[1] - b[1]);
+                }
+            });
     } else {
         alignments.sort(function (a, b) {
             if (a[1] === b[1]) {

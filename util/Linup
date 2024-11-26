@@ -40,9 +40,9 @@ Linup - Display or convert MSA into various formats
 =head1 SYNOPSIS
 
   Linup [-version] [-i] [-matrix <matrix_file>
-                          [-cgParam #] [-taParam # ] [-cgTransParam #]
-                        ]
-                        [[[-trimLeft #] [-trimRight #] [-trimAmbig]] | -revcomp] 
+                          [-cgParam #] [-taParam # ] [-cgTransParam #]]
+                        [[[-trimLeft #] [-trimRight #] [-trimAmbig]
+                          [-subAlign #-#] [-minLen #]] | -revcomp] 
                         [-name familyname]
                         [-normalizeCoord] [-showScore] 
                         [-includeFlanking # -genome <2bit_file>]
@@ -126,6 +126,10 @@ on what is in the -genome file.
 Serialize the state of the MultAln object to file.  May be read
 back in as input at a later time or used to by utilities that 
 support MultAln.
+
+=item -subAlign #-#
+
+Slice the alignment to the provided consensus coordinates.
 
 =item -trimLeft # | -trimRight #
 
@@ -212,6 +216,8 @@ my @getopt_args = (
                     '-trimLeft=s',
                     '-trimRight=s',
                     '-trimAmbig',
+                    '-subAlign=s',
+                    '-minLen=s',
                     '-normalizeCoord',
                     '-matrix=s',
                     '-revcomp',
@@ -264,8 +270,13 @@ $inclTempl = 0 if ( $options{'noTemplate'} );
 
 my $revComp = 0;
 $revComp = 1 if ( $options{'revcomp'} );
-if ( $revComp && ( $options{'trimLeft'} || $options{'trimRight'} )){
-  print "\n\nCannot use -revcomp and -trimLeft/-trimRight at the same time\n\n";
+if ( (($options{'trimLeft'} || $options{'trimRight'}) && ( $options{'trimAmbig'} || $options{'subAlign'})) || 
+     ($options{'trimAmbig'} && $options{'subAlign'}) ) {
+  print "\n\nOptions -trimLeft/-trimRight and -trimAmbig and$ -subAlign are mutually exclusive.\n\n";
+  usage();
+}
+if ( $revComp && ( $options{'trimLeft'} || $options{'trimRight'} || $options{'trimAmbig'} || $options{'subAlign'} )){
+  print "\n\nCannot use -revcomp and -trimLeft/-trimRight/-trimAmbig/-subAlign at the same time\n\n";
   usage();
 }
 if ( $revComp && $options{'includeFlanking'} ){
@@ -320,12 +331,55 @@ if ( $trimLeft || $trimRight )
   print STDERR "Trimming alignment: left = $trimLeft, right = $trimRight\n";
   $mAlign->trimAlignments( left => $trimLeft, right => $trimRight );
 }
+
 if ( exists $options{'trimAmbig'} ) {
   my ($ambigLeft, $ambigRight) = $mAlign->trimAlignments( left => -1, right => -1 );
   if ( $ambigLeft > 0 || $ambigRight > 0 ) {
     print STDERR "Ambiguous edges trimmed: left = $ambigLeft, right = $ambigRight\n";
   }
 }
+
+if ( exists $options{'minLen'} && ! exists $options{'subAlign'} ) {
+    print STDERR "Currently minLen only applies to the subAlign function.\n";
+    usage();
+}
+
+if ( exists $options{'subAlign'} ) {
+  if ( $options{'subAlign'} =~ /(\d+)-(\d+)/ ) {
+     my $start = $1;
+     my $end = $2;
+     if ( $start > $end ) {
+       print STDERR "Option -subAlign should be a valid range.  First number is greater than second.\n\n";
+       usage();
+     }
+
+     my $refSeq = $mAlign->getReferenceSeq();
+     my $tmpCons = $mAlign->consensus( inclRef => $inclRef );
+     my $isOk = 1;
+     if ( $refSeq =~ /^[\s\-\.xX]+$/ ) {
+       # Old Dfam RF format "xxx...xxxx..x" etc..
+       $tmpCons =~ s/[^\-\.\s]/x/g;
+       $isOk = 0 if ( $refSeq ne $tmpCons );
+     }elsif ( $refSeq ne $tmpCons ) {
+       $isOk = 0;
+     }
+     if ( ! $isOk ) {
+       print STDERR "Option -subAlign can only be performed on MSAs with a stable consensus.  Please update the RF line in $inputFile before using -subAlign\n";
+       usage();
+     }
+
+     if ( exists $options{'minLen'} ) {
+       $mAlign->slice( start => $start, end => $end, minLen => $options{'minLen'} );
+     }else {
+       $mAlign->slice( start => $start, end => $end );
+     }
+  }else {
+    print STDERR "Option -subAlign should be in the form #-# where numbers represent coordinates in 1-based, full-closed.\n\n";
+    usage();
+  }
+}
+
+
 if ( defined $options{'normalizeCoord'} ) {
     $mAlign->normalizeSeqRefs();
 }
@@ -348,9 +402,12 @@ if ( $matrixFile eq "" )
 {
   # TODO: Finish implementing
   # open up matrix file and create object
+  die "Not implemented";
 }
 
-my ( $null, $totDiv, $avgDiv ) = $mAlign->kimuraDivergence( $cons );
+# New routine 10/23
+my ( $avgKimura, $avgKimuraMod, $totTransitions, $totTransitionsMod, $totTransversions, $wellCharacterized, $CpGSites, $numHigh ) = 
+     $mAlign->calculateKimuraDivergence( consensus => $cons );
 
 if ( $options{'stockholm'} )
 {
@@ -364,9 +421,9 @@ if ( $options{'stockholm'} )
     $seedAlign->read_stockholm( $IN );
     close $IN;
     my $header = $seedAlign->toString(SeedAlignment::ExportHeadersOnly);
-    $mAlign->toSTK( headerOverride => $header, consRF => 1 );
+    $mAlign->toSTK( headerOverride => $header, consRF => 1, idFormat => 2 );
   }else {
-    $mAlign->toSTK( includeTemplate => $inclTempl, consRF => 1 );
+    $mAlign->toSTK( includeTemplate => $inclTempl, consRF => 1, idFormat => 2 );
   }
 
   # TODO : streamline STK generation.  Perhaps have
@@ -381,8 +438,7 @@ if ( $options{'stockholm'} )
   $mAlign->toMSF( includeReference => 1 );
 } elsif ( $options{'align'} ) {
   $mAlign->toAlign();
-} elsif ( $options{'fasta'} )
-{
+} elsif ( $options{'fasta'} ) {
   $mAlign->toFASTA( seqOnly => 1 );
 } elsif ( $options{'consensus'} ) {
   if ( !$options{'consIncludeGaps'} ) {
@@ -418,30 +474,47 @@ if ( $options{'stockholm'} )
   my $sum_ckimura = 0;
   my $sum_ckimuraMod = 0;
   for ( my $i = 0 ; $i < $mAlign->getNumAlignedSeqs() ; $i++ ) {
-    my $start = $mAlign->getAlignedStart( $i );
-    my $end   = $mAlign->getAlignedEnd( $i );
+    my $start = $mAlign->getAlignedSeqStart( $i );
+    my $end   = $mAlign->getAlignedSeqEnd( $i );
     my $name = $mAlign->getAlignedName( $i );
     my $kdOrig = $mAlign->getAlignedDiv( $i );
+    my $orient = $mAlign->getAlignedOrientation( $i );
  
-    my ( $trans, $transv, $transMod, $kimura, $kimuraMod, $cpgSites, $wcb ) =
-                                            $mAlign->kimuraDivergenceAlt( seqidx => $i );
+    my ( $kimura, $kimuraMod, $trans, $transMod, $transv, $wcb, $cpgSites, $isHigh ) = 
+                  $mAlign->calculateKimuraDivergence( seqidx => $i );
+
     $sum_kimura += $kimura;
     $sum_kimuraMod += $kimuraMod;
     $kimura = sprintf("%0.2f",$kimura);
     $kimuraMod = sprintf("%0.2f",$kimuraMod);
-    my ( $ctrans, $ctransv, $ctransMod, $ckimura, $ckimuraMod, $ccpgSites, $cwcb ) =
-                                            $mAlign->kimuraDivergenceAlt( seqidx => $i, consensus => $cons );
+    my ( $ckimura, $ckimuraMod, $ctrans, $ctransMod, $ctransv, $cwcb, $ccpgSites, $isHigh ) = 
+                  $mAlign->calculateKimuraDivergence( seqidx => $i, consensus => $cons );
+
     $sum_ckimura += $ckimura;
     $sum_ckimuraMod += $ckimuraMod;
     $ckimura = sprintf("%0.2f",$ckimura);
     $ckimuraMod = sprintf("%0.2f",$ckimuraMod);
 
-   print "$name\t$trans\t$transMod\t$transv\t$kimura\t$kimuraMod\t$cpgSites\t$wcb\t\t";
+   my $label = "$name:$start-$end";
+   if ( $orient eq "-" ) {
+     $label = "$name:$end-$start";
+   }
+
+   if ( $isHigh ) {
+     print "**$label\t$trans\t$transMod\t$transv\t$kimura\t$kimuraMod\t$cpgSites\t$wcb\t\t";
+   }else {
+     print "$label\t$trans\t$transMod\t$transv\t$kimura\t$kimuraMod\t$cpgSites\t$wcb\t\t";
+   }
    print "$ctrans\t$ctransv\t$ctransMod\t$ckimura\t$ckimuraMod\t$ccpgSites\t$cwcb\n";
    $count++;
   }
   print "\n\n";
+  if ( $numHigh ) {
+    print "WARNING: There were $numHigh alignments which had > 90% divergenge relative to the consensus!\n\n";
+  }
   print "Total sequences: $count\n";
+  print "Avg Kimura Div: " . sprintf("%0.2f",($avgKimura/100)) . "\n";
+  print "Avg Kimura Div (CpG adjusted): " . sprintf("%0.2f",($avgKimuraMod/100)) . "\n";
   print "Relative to Reference Sequence (if available):\n";
   print "\tKimura Divergence:\t" . sprintf("%0.2f", $sum_kimura / $count) . "\n";
   print "\tKimura Divergence (CpG Mod):\t" . sprintf("%0.2f", $sum_kimuraMod / $count) . "\n\n";
@@ -456,7 +529,34 @@ if ( $options{'stockholm'} )
                             inclRef   => $inclRef,
                             showScore => $options{'showScore'}
   );
-  print "Avg Kimura Div: $avgDiv\n";
+  if ( $numHigh ) {
+    print "WARNING: There were $numHigh alignments which had > 90% divergenge relative to the consensus!  Run with -stats to see further details.\n";
+  }
+  print "Avg Kimura Div: " . sprintf("%0.2f",($avgKimura/100)) . "\n";
+  print "Avg Kimura Div (CpG adjusted): " . sprintf("%0.2f",($avgKimuraMod/100)) . "\n";
+  my $refSeq = $mAlign->getReferenceSeq();
+  if ( $refSeq =~ /^[\s\-\.xX]+$/ ) {
+    # Old Dfam RF format "xxx...xxxx..x" etc..
+    print "WARNING: RF is in the old Dfam occupancy format, needs updating.\n";
+    my $tmpCons = $cons;
+    $tmpCons =~ s/[^\-\.\s]/x/g;
+    if ( $refSeq ne $tmpCons ) {
+        print "WARNING: RF differs from consensus in occupancy. First difference at:";
+        my $bpPos = 0;
+        for ( my $i = 0; $i < length($tmpCons); $i++ ) {
+          $bpPos++ if ( substr($tmpCons,$i,1) eq "x" );
+          if ( substr($refSeq,$i,1) ne substr($tmpCons,$i,1) ) {
+             print "$bpPos";
+             last;
+          }
+        }
+        print "\n";
+    }
+  }else{
+    if ( $refSeq ne $cons ) {
+      print "INFO: Consensus differs from reference sequence.\n";
+    }
+  }
   $cons =~ s/\-//g;
   print "Cons length: " . length($cons) . "\n";
   if ( $options{'name'} ) {
@@ -466,7 +566,6 @@ if ( $options{'stockholm'} )
   }
 
 }
-#print stderr "Avg Kimura Div: $avgDiv\n";
 
 if ( $options{'malignOut'} ) {
   $mAlign->serializeOUT( $options{'malignOut'} );
