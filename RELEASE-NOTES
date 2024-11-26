@@ -1,5 +1,9 @@
 RepeatModeler 2.0.6
 ===================
+  - Updated to RepeatScout 1.0.7 which has the capability of reporting the
+    extended coordinates of the seeds.  This reduces the complexity searching
+    for examplars using the consensus sequence.
+  - Reduced the minimum family instances for RepeatScout families.
   - Fixed a bug that caused RepeatClassifier to run with only one thread in the
     last release.
   - Fixed a bug that caused some RepeatScout derived exemplars to be reported 
@@ -12,7 +16,6 @@ RepeatModeler 2.0.6
             - switch to Smitten V2 for default stk output
             - improvements to the Linup reporting format
   - Refiner reorganization for future extension algorithm
-
 
 RepeatModeler 2.0.5
 ===================

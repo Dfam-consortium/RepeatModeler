@@ -150,7 +150,7 @@ BEGIN {
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
-                            'description' => 'The path to the installation of the RepeatScout ( 1.0.6 or higher ) de-novo repeatfinding program.',
+                            'description' => 'The path to the installation of the RepeatScout ( 1.0.7 or higher ) de-novo repeatfinding program.',
                             'environment_override' => 'RSCOUT_DIR',
                             'expected_binaries' => [
                                                      'RepeatScout',
@@ -158,7 +158,7 @@ BEGIN {
                                                    ],
                             'param_type' => 'directory',
                             'required' => 1,
-                            'value' => '/usr/local/RepeatScout-1.0.6'
+                            'value' => '/home/rhubley/projects/RepeatScout-1.0.7'
                           },
           'TRF_DIR' => {
                          'command_line_override' => 'trf_dir',
@@ -198,7 +198,7 @@ BEGIN {
   #
   # Current version of the software
   #
-  $VERSION = "2.0.5";
+  $VERSION = "2.0.6";
 
   #
   # Set this flag to default to debug mode for the entire package

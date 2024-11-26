@@ -1572,7 +1572,7 @@ sub toString
         $id .= "$start-$end\_+";
       } else
       {
-        $id .= "$end-$start\_-";
+        $id .= "$start-$end\_-";
       }
       $retStr .= "$id    $sequence\n";
     }

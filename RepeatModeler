@@ -392,6 +392,7 @@ my $numAdditionalRounds;           # Number of additional rounds at
                                    #   genomeSampleSizeMax to run.
 my $recommendedFamilySize;         # RECON/RS family size minimum
                                    #   needed to build a family.
+my $rsFamilySize = 5;
 
 if ( $options{'quick'} ) {
   # Pre-RepeatModeler 2.0.4 Sampling Strategy  
@@ -881,6 +882,7 @@ while ( 1 ) {
   my $instFile          = "$tmpDir/instdb.txt";
   my $sampleFastaFile   = "$roundTmpDir/sampleDB-$round.fa";
   my $consensiFile      = "$tmpDir/consensi.fa";
+  my $rangeFile         = "$sampleFastaFile.rscons-ranges.tsv";
   my $combFamiliesFile  = "$tmpDir/families.stk";
   my $roundConsensiFile = "$roundTmpDir/consensi.fa";
   mkdir( $roundTmpDir );
@@ -984,8 +986,9 @@ while ( 1 ) {
                                  workDir          => $roundTmpDir,
                                  consensiFile     => $consensiFile,
                                  combFamiliesFile => $combFamiliesFile,
+                                 rangeFile        => $rangeFile,
                                  round            => $round,
-                                 familyCutoff     => $familyCutoff,
+                                 familyCutoff     => $rsFamilySize,
                                  threads          => $threads,
                                  numContigs => scalar( keys( %sampleContigs ) ),
                                  usedBlockIndex => $usedBlockIndex
@@ -2073,18 +2076,20 @@ sub runRepeatScout {
   # Calculate lmer size
   my $lmerSize = ceil( ( log( $seqSize ) / log( 4 ) ) + 1 );
 
-  print "   - RepeatScout: Running build_lmer_table ( l = $lmerSize )..\n";
+  log_print "   - RepeatScout: Running build_lmer_table ( l = $lmerSize )..\n";
+  # TODO: Add -min 5
   my $cmd =
         "$RSCOUT_DIR/build_lmer_table -l $lmerSize -sequence "
       . "$fastaFile -freq $fastaFile.lfreq 2>&1 > repeatscout.log";
   `$cmd`;
   if ( $? ) { die "build_lmer_table failed. Exit code $?\n"; }
 
-  print "   - RepeatScout: Running RepeatScout..";
+  log_print "   - RepeatScout: Running RepeatScout..";
+  # TODO: add -minthresh 5
   $cmd =
         "$RSCOUT_DIR/RepeatScout -l $lmerSize -sequence $fastaFile"
       . " -tandemdist 500 -output $fastaFile.rscons -freq $fastaFile.lfreq "
-      . "-stopafter 100 2>&1 >> repeatscout.log";
+      . "-stopafter 100 -ranges $fastaFile.rscons-ranges.tsv 2>&1 >> repeatscout.log";
 
   `$cmd`;
   if ( $? || -s "repeatscout.log" ) {
@@ -2100,10 +2105,10 @@ sub runRepeatScout {
       $rawFams++ if ( /^>/ );
     }
     close IN;
-    print " : $rawFams raw families identified\n";
+    log_print " : $rawFams raw families identified\n";
 
     # Run TRF/DUSTMASKER on sequences
-    print "   - RepeatScout: Running filtering stage..";
+    log_print "   - RepeatScout: Running filtering stage..";
     $ENV{'TRF_COMMAND'}        = $TRF_PRGM;
     $ENV{'DUSTMASKER_COMMAND'} = $DUSTMASKER_PRGM;
     $cmd                       =
@@ -2138,10 +2143,10 @@ sub runRepeatScout {
         }
       }
     }
-    print " $finalFams families remaining\n";
+    log_print " $finalFams families remaining\n";
   }
   else {
-    print " : no families identified\n";
+    log_print " : no families identified\n";
   }
 
   chdir( $origDir );
@@ -2149,16 +2154,12 @@ sub runRepeatScout {
   return;
 }
 
-
 ##-------------------------------------------------------------------------##
 #
 # Use: my = buildRSConsensiMT( .. );
 #
-#   RepeatScout produces consensus sequences but does not indicate which
-#   regions from the genome contributed to the overall multiple alignment.
-#   To compensate for this we search the genome with the consensus and
-#   obtain the complete set of matching regions.
-#
+#   Use ranges reported by RepeatScout 1.0.7 to build seed alignments rather
+#   than trying to re-identify them from the sample.
 ##-------------------------------------------------------------------------##
 sub buildRSConsensiMT {
   my %parameters = @_;
@@ -2174,6 +2175,10 @@ sub buildRSConsensiMT {
   die "buildRSConsensiMT(): Missing consensiFile parameter!\n"
       if ( !defined $parameters{'consensiFile'} );
   my $consensiFile = $parameters{'consensiFile'};
+
+  die "buildRSConsensiMT(): Missing rangeFile parameter!\n"
+      if ( !defined $parameters{'rangeFile'} );
+  my $rangeFile = $parameters{'rangeFile'};
 
   die "buildRSConsensiMT(): Missing combFamiliesFile parameter!\n"
       if ( !defined $parameters{'combFamiliesFile'} );
@@ -2198,7 +2203,6 @@ sub buildRSConsensiMT {
   my %families            = ();
   my $numModels           = 0;
   my @indices             = ();
-  my %localizedToSeqNames = ();
 
   ## Get Sequences
   my $searchEngineN = NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
@@ -2252,7 +2256,7 @@ sub buildRSConsensiMT {
     print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
   }
   else {
-    print "   - Large Satellite Filtering.. ";
+    log_print "   - Large Satellite Filtering.. ";
     my %coverage = ();
     for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
       my $resultRef = $resultCollection->get( $k );
@@ -2301,326 +2305,338 @@ sub buildRSConsensiMT {
       unlink("$workDir/consensi.fa.$suffix") if ( -e "$workDir/consensi.fa.$suffix" );
     }
   }
-  print ": " . scalar(keys(%satelliteSeqIDs)) . " found in " . elapsedTime("satellite_filtering") . "\n";
+  log_print ": " . scalar(keys(%satelliteSeqIDs)) . " found in " . elapsedTime("satellite_filtering") . "\n";
 
-  # Refine remaining consensi
-  print "   - Collecting repeat instances...";
-  elapsedTime( "cinstances" );
-
+  my %activeFamilies = ();
+  my $consDB = FastaDB->new( fileName => "$workDir/consensi.fa",
+                             openMode => SeqDBI::ReadOnly );
+  foreach my $seqID ( $consDB->getIDs() ) {
+    $activeFamilies{ $seqID }++
+  }
+  $consDB = undef;
+  
   # Regenerate database for consensi.fa
   system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $workDir/consensi.fa "
                 . "-parse_seqids -dbtype nucl -in $workDir/consensi.fa >> "
                 . "$workDir/makeblastdb.log 2>&1" );
 
-  # New - masklevel + switched query/subj
-  $searchEngineN->setMaskLevel( 80 );
-  $searchEngineN->setQuery( "$workDir/sampleDB-$round.fa" );
-  $searchEngineN->setSubject( "$workDir/consensi.fa" );
+  # Obtain ranges from new version of RepeatScout (1.0.7 or newer)
+  open IN,"<$rangeFile" or die "Could not open $rangeFile for reading!\n";
+  my %families = ();
+  while (<IN>) {
+    if ( /^(\S+)\t(\d+)\t(\d+)/ ) {
+      my @flds = split(/\t/);
 
-  #print "Running: " . $searchEngineN->getParameters() . "\n";
-  my ( $status, $resultCollection ) = $searchEngineN->search();
-  if ( $status ) {
-    print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
+      # Skip if the family was filtered by RepeatScout post-processing and or
+      # large-satellite filtering.
+      next unless ( exists $activeFamilies{ $flds[3] } );
+
+      # Zero based half-open coordinates
+      # seqname start   end    family  orient  kmer_pos  left_ext_bp right_ext_bp
+      # seq3    81      160     R=0     -       107     45      26
+      push @{ $families{ $flds[3] }->{'elements'} },
+            {
+              seqName   => $flds[ 0 ],
+              orient    => $flds[ 4 ],
+              start     => $flds[ 1 ],
+              end       => $flds[ 2 ]
+            };
+
+    }
   }
-  else {
-    print ": " . elapsedTime("cinstances") . "\n";
-    elapsedTime( "family_refinement" );
-    open OUTC, ">$workDir/consensi-refined.fa";
-    open INDX, ">$workDir/index.html";
-    #print "Saving results as $workDir/RSalign.out\n";
-    $resultCollection->write("$workDir/RSalign.out", SearchResult::NoAlign);
+  close IN;
 
-    print "Filtering Results...\n" if ( $DEBUG );
-    for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
-      my $resultRef = $resultCollection->get( $k );
-      my $orient = $resultRef->getOrientation();
+  ## Open the sequence batch file.
+  my $batchName = "sampleDB-1.fa";
+  my $batchDB = FastaDB->new( fileName => "$workDir/$batchName",
+                              openMode => SeqDBI::ReadOnly );
 
-      # Extract the true seq name and keep track of how
-      # many sequences this element is found -- used for
-      # segmental duplication filtering.
-      my $sampleID = $resultRef->getQueryName();
-      my $seqID = "gi|" . ( $k + 1 ) . " ";
-      if ( defined $usedBlockIndex->{$sampleID} ) {
-        my $thisID = $usedBlockIndex->{$sampleID}->{'seqID'};
-        $localizedToSeqNames{$thisID}++;
-        # 1/31/2022 : RMH - Preserve orientation in family sequence file
-        if ( $orient eq "C" || $orient eq "-" ) {
-          $seqID .=
-            $thisID . ":"
-            . ($resultRef->getQueryEnd() + $usedBlockIndex->{$sampleID}->{'start'} - 1)
-            . "-"
-            . ($resultRef->getQueryStart() + $usedBlockIndex->{$sampleID}->{'start'} - 1);
-        }else {
-          $seqID .=
-            $thisID . ":"
-            . ($resultRef->getQueryStart() + $usedBlockIndex->{$sampleID}->{'start'} - 1)
-            . "-"
-            . ($resultRef->getQueryEnd() + $usedBlockIndex->{$sampleID}->{'start'} - 1);
-        }
-      }
-      my $sequence = $resultRef->getQueryString();
-      $sequence =~ s/-//g;
-      # RMH: 11/8/2024 The genomic sequence is in the Query which traditionally is not
-      #      reversed in the alignment output.  Must do that here.  This was placing 
-      #      the coordinates as reversed but keeping the sequence in the forward
-      #      direction.
-      if ( $orient eq "C" || $orient eq "-" ) {
-        $sequence = reverse( $sequence );
-        $sequence =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
-      }
-      push @{ $families{ $resultRef->getSubjName() }->{'elements'} },
-          {
-            'seqID' => $seqID,
-            'seq'   => $sequence,
-            'score' => $resultRef->getScore()
-          };
+  my @indices = ();
+  log_print "   - Collecting repeat instances...";
+  elapsedTime( "cinstances" );
+  my $f_idx = 1;
+  my %localizedToSeqNames = ();
+  foreach my $rsID ( sort keys %families ) {
+    #print "\nProcessing RepeatScout family: $rsID\n";
+    my $numElements = $#{ $families{$rsID}->{'elements'} } + 1;
+    if ( $numElements < $familySizeCutoff ) {
+      delete $families{$rsID};
+      next;
     }
-    undef $resultCollection;
-
-    # Sort keys by most abundant family first
-    # RMH: 9/19/23 : Added secondary sort to ensure deterministic behaviour
-    my @sortedKeys = sort {
-      $#{ $families{$b}->{'elements'} } <=> $#{ $families{$a}->{'elements'} } ||
-          $a cmp $b 
-    } keys( %families );
-
-    my $doRefinement = 1;
-    if ( $doRefinement ) {
-
-      # Create files of instances for refinement
-      my $familyID = 0;
-      my %refinableFamilies = ();
-      # key = "R=#" identifier
-      foreach my $key ( @sortedKeys ) {
-        # Quit if remaining family sizes are below cutoff
-        last if ( ($#{ $families{$key}->{'elements'} }+1) < $familySizeCutoff );
+    $families{$rsID}->{'famNum'} = $f_idx;
+    my $fastaFile = "$workDir/family-$f_idx.fa";
  
-        #print "SORT: $key = family-$familyID\n";
-        $families{$key}->{'roundfam'} = $familyID;
+    ## Create a new family-#.fa file containing the
+    ## sequences for each elemement.
+    open FAM, ">$fastaFile"
+        or die "RepeatModler: Can't open "
+        . "output file $fastaFile\n";
 
-        open FAM, ">$workDir/family-$familyID.fa"
-            or die "RepeatModler: Can't open "
-            . "output file family-$familyID.fa\n";
-
-        # Sort elements in each family by highest scoring first
-        my $numElements = 0;
-        foreach my $ele ( sort { $b->{'score'} <=> $a->{'score'} }
-                          @{ $families{$key}->{'elements'} } )
-        {
-          # Number of elements to keep
-          last if ( $numElements == 100 );
-          # 11/8/2024: RMH - Adding information that links the family back to the RS ID
-          print FAM ">" . $ele->{'seqID'} . " [$key]\n";
-          print FAM "" . $ele->{'seq'} . "\n";
-          $numElements++;
-        }
-        close FAM;
-        $families{$key}->{'numOfEles'} = $numElements;
-        $refinableFamilies{$key}++;
-        $familyID++;
-      }
-
-      my $tsk = ThreadedTaskSimple->new();
-      $tsk->setWorkingDir($workDir);
-      $tsk->setName("refining_job");
-      $tsk->setNumThreads($threads);
-      $tsk->setMaxRetries(1);
-
-      my $jobIdx = 0;
-      foreach my $key ( keys %refinableFamilies ) {
-        my $familyID = $families{$key}->{'roundfam'};
-        #print " -- Refining Family $key / $familyID ( RS Elements: "
-        #    . ( $#{ $families{$key}->{'elements'} } + 1 )
-        #    . ", Using $numElements )\n";
-        $tsk->addJob( name => "refiner-job-$jobIdx",
-                      function => \&refineOneFamily,
-                      parameters => ["$workDir/family-$familyID.fa", $genomeDB, $genomeTwoBit, $workDir, 1, $DEBUG] );
-        $jobIdx++;
-      }
-      elapsedTime(2);
-      $tsk->execute();
-      print "Refinement: " . elapsedTime( 2 ) . "\n" if ( 1 || $DEBUG );
-
-      for my $key ( keys %refinableFamilies ) {
-        my $cons;
-        my $maSize = 1;
-        my $familyID = $families{$key}->{'roundfam'};
-        my $numElements = $families{$key}->{'numOfEles'};
-
-        if ( -s "$workDir/family-$familyID.fa.refiner_cons" ) {
-          open INREF, "<$workDir/family-$familyID.fa.refiner_cons"
-              or die $CLASS
-              . ": Could not open refined model $workDir/family-$familyID.fa."
-              . "refiner_cons!\n";
-          while ( <INREF> ) {
-            if ( /Final Multiple Alignment Size = (\d+)/ ) {
-              $maSize = $1;
-            }
-            else {
-              $cons .= $_;
-            }
-          }
-          close INREF;
-        }else {
-          print "  WARNING: Refiner did not return a consensus for $workDir/family-$familyID.fa.\n";
-        }
-
-        if ( $cons ne "" ) {
-          
-          # Clean up consensi starting/ending with Ns
-          #   - These are sections of the multiple alignment
-          #     where there is no support for a consensus.
-          $cons =~ s/^[Nn]*([^Nn].*[^Nn])[Nn]*$/$1/;
-
-          # Save the consensus
-          $families{$key}->{'consensus'}         = $cons;
-          $families{$key}->{'finalElementCount'} = $maSize;
-
-          # Concatenate individual seed alignments into one file per-round
-          if ( -s "$workDir/family-$familyID.fa.refiner.stk" ) {
-            my $stockholmFile = SeedAlignmentCollection->new();
-            my $IN;
-            open $IN, "<$workDir/family-$familyID.fa.refiner.stk"
-                or die
-                "Could not open family-$familyID.fa.refiner.stk for reading!\n";
-            open OUT, ">> $workDir/families.stk"
-                or die "Could not open $workDir/families.stk for appending!\n";
-            $stockholmFile->read_stockholm( $IN );
-            close $IN;
-
-            # File only contains one family
-            my $seedAlign = $stockholmFile->get( 0 );
-
-            # Add details to DE line
-            $seedAlign->setDescription( "RepeatModeler Generated - rnd-$round"
-              . "_family-$familyID, RepeatScout: [ Index = $key, RS Size = "
-              . ( $#{ $families{$key}->{'elements'} } + 1 )
-              . ", Refiner Input Size = $numElements, Final Multiple Alignment Size = $maSize ]"
-            );
-            print OUT "" . $seedAlign->toString();
-            close OUT;
-          }
-
-          # Save the consensus to the consensi file.
-          print OUTC ">family-$familyID ( RepeatScout Family =  $key, "
-              . " Size = "
-              . ( $#{ $families{$key}->{'elements'} } + 1 )
-              . ", Refiner Input Size = $numElements, Final Multiple Alignment"
-              . " Size = "
-              . $maSize . " )\n";
-          print OUTC "$cons\n";
-
-          my $indexStr =
-                "<a href=\"family-$familyID-cons.html\">family-$familyID"
-              . " ( RepeatScout Family $key, Size = "
-              . ( $#{ $families{$key}->{'elements'} } + 1 )
-              . ", Refiner Input Size = $numElements, "
-              . " Final Multiple Alignment Size = "
-              . $maSize
-              . " )</a><br>\n";
-
-          print INDX $indexStr;
-          push @indices, [ $maSize, $indexStr ];
-
-        }
-      }
-      close INDX;
-
-      # sorted indices
-      open INDX, ">$workDir/index.html"
-          or die "Could not open $workDir/index.html for writing\n";
-
-      foreach my $index ( sort { $b->[ 0 ] <=> $a->[ 0 ] } @indices ) {
-        print INDX $index->[ 1 ];
-      }
-      close INDX;
-      close OUTC;
-    }
-    else    # if ( $doRefinement )
+    ## Loop through the elements for a given family starting
+    ## first with the longest ones.
+    my $giID = 1;
+    my $numElements = 0;
+    my $elementsRef = $families{$rsID}->{'elements'};
+    foreach my $elementRef (
+      sort {
+        ( $b->{'end'} - $b->{'start'} ) <=> ( $a->{'end'} - $a->{'start'} )
+      } @{$elementsRef}
+        )
     {
-      my $familyID = 0;
-      my $consDB = FastaDB->new( fileName => "$workDir/consensi.fa",
-                                 openMode => SeqDBI::ReadOnly );
-      foreach my $key ( @sortedKeys ) {
-        $families{$key}->{'roundfam'}          = $familyID;
-        $families{$key}->{'consensus'}         = $consDB->getSequence( $key );
-        $families{$key}->{'finalElementCount'} =
-            $#{ $families{$key}->{'elements'} } + 1;
-        $familyID++;
-      }
-      undef $consDB;
-    }
 
-    #
-    # Read in seed alignment data so that we can sort it by membership
-    # as we do consensi.
-    #
-    my %seedAlnById = ();
-    if ( -s "$workDir/families.stk" ) {
-      my $stockholmFile = SeedAlignmentCollection->new();
-      my $IN;
-      open $IN, "<$workDir/families.stk"
-          or die "Could not open $workDir/families.stk for reading!\n";
-      $stockholmFile->read_stockholm( $IN );
-      close $IN;
+      my $sampleID = $elementRef->{'seqName'};
+      my $trueSeqID = $usedBlockIndex->{$sampleID}->{'seqID'};
+      $localizedToSeqNames{ $rsID }->{ $trueSeqID }++;
 
-      for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ ) {
-        my $seedAlign = $stockholmFile->get( $i );
-        my $id        = $seedAlign->getId();
-        if ( $id =~ /family-(\d+)/ ) {
-          $seedAlign->setId( "rnd-$round" . "_family-$1" );
-          $seedAlnById{$1} = $seedAlign;
+      if ( $numElements < 100 ) { 
+        #
+        # Parse genomic start/end out of batch seqname:
+        #
+        #   The RM convention is that a batch file is a fragment
+        #   of a genomic (input sequence) sample.  The range of
+        #   the fragment is placed in the sequence name.  The
+        #   general form is SeqID:startPos-endPos.  So in order
+        #   to place this sequence in it's genomic context we
+        #   need to parse out these numbers.
+        #
+        my $seqName = $elementRef->{'seqName'};
+        my $seqDesc = $batchDB->getDescription( $seqName );
+        my $genomicStartPos;
+        my $genomicEndPos;
+        my $genomicSeqID;
+        if ( $seqDesc =~ /(\S+):(\d+)-(\d+)/ ) {
+          $genomicSeqID    = $1;
+          $genomicStartPos = $2;
+          $genomicEndPos   = $3;
         }
         else {
           print
-"Warning: could not decode ID from $workDir/families.stk file: id = $id\n";
+  "ERROR: Sequence reference >$seqName< is not in the correct form!\n";
+        }
+
+        my $startOffset  = $elementRef->{'start'}; # zbho
+        my $endOffset    = $elementRef->{'end'};   # zbho
+        my $actualSeqLen = $batchDB->getSeqLength( $seqName );
+        if ( $endOffset > $actualSeqLen ) {
+          #print "WARNING: Attempt to extract substring outside the range of the sequence\n"
+          #    . "         seqID=$seqName [$actualSeqLen] range=$startOffset-$endOffset!";
+          $endOffset = $actualSeqLen;
+        }
+        # This is a zero-based substr API
+        my $sequence = $batchDB->getSubstr( $seqName, $startOffset, $endOffset-$startOffset );
+
+        ## Determine if we need to reorient the sequence
+        if ( $elementRef->{'orient'} eq "-" ) {
+          $sequence = reverse( $sequence );
+          $sequence =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
+          my $tmpOffset = $startOffset;
+          $startOffset = $endOffset-1;
+          $endOffset   = $tmpOffset-1;
+        }
+
+        ## Save the sequence
+        $elementRef->{'sequence'} = $sequence;
+        print FAM ">gi|$giID $genomicSeqID" . ":"
+            . ( $startOffset + $genomicStartPos ) . "-"
+            . ( $endOffset + $genomicStartPos )
+            . " $rsID\n";
+
+        print FAM "" . $elementRef->{'sequence'} . "\n";
+        $giID++;
+      } # if ( $numElements < 100 )
+      $numElements++;
+    } # foreach my $elementRef
+    close FAM;
+    $f_idx++;
+  } # foreach my $rsID
+  log_print "" . elapsedTime( "cinstances" ) . "\n";
+
+  my $tsk = ThreadedTaskSimple->new();
+  $tsk->setWorkingDir($workDir);
+  $tsk->setName("refining_job");
+  $tsk->setNumThreads($threads);
+  $tsk->setMaxRetries(1);
+
+  my $jobIdx = 0;
+  for my $rsID ( sort keys %families ) {
+    my $familyID = $families{$rsID}->{'famNum'};
+    $tsk->addJob( name => "refiner-job-$jobIdx",
+                function => \&refineOneFamily,
+                parameters => ["$workDir/family-$familyID.fa", $genomeDB, $genomeTwoBit, $workDir, 1, $DEBUG] );
+    $jobIdx++;
+  }
+  
+  # Refine remaining consensi
+  log_print "   - Refining $jobIdx families...";
+  elapsedTime( "family_refinement" );
+  $tsk->execute();
+  log_print " " . elapsedTime( "family_refinement" ) . "\n"; 
+
+  for my $rsID ( sort keys %families ) {
+    my $cons;
+    my $maSize = 1;
+    my $numElements = scalar @{$families{$rsID}->{'elements'}};
+    $numElements = 100 if ( $numElements > 100 );
+    my $famNum = $families{$rsID}->{'famNum'};
+
+    if ( -s "$workDir/family-$famNum.fa.refiner_cons" ) {
+      open INREF, "<$workDir/family-$famNum.fa.refiner_cons"
+          or die $CLASS
+          . ": Could not open refined model $workDir/family-$famNum.fa."
+          . "refiner_cons!\n";
+      while ( <INREF> ) {
+        if ( /Final Multiple Alignment Size = (\d+)/ ) {
+          $maSize = $1;
+        }
+        else {
+          $cons .= $_;
         }
       }
+      close INREF;
+    }else {
+      print "  WARNING: Refiner did not return a consensus for $workDir/family-$famNum.fa.\n";
     }
 
-    #
-    # Write out final trimmed consensi.fa file
-    #
-    open OUTC, ">>$consensiFile"
-        or die "Could not open $consensiFile for appending!\n";
-    open OUTS, ">>$combFamiliesFile"
-        or die "Could not open $combFamiliesFile for appending!\n";
+    if ( $cons ne "" ) {
+      
+      # Clean up consensi starting/ending with Ns
+      #   - These are sections of the multiple alignment
+      #     where there is no support for a consensus.
+      $cons =~ s/^[Nn]*([^Nn].*[^Nn])[Nn]*$/$1/;
 
-    foreach my $familyKey (
-      # RMH: 9/19/23 Added secondary sort to ensure deterministic behaviour
-      sort {
-        $families{$b}{'finalElementCount'} <=> $families{$a}{'finalElementCount'} ||
-	$a cmp $b
+      # Save the consensus
+      $families{$rsID}->{'consensus'}         = $cons;
+      $families{$rsID}->{'finalElementCount'} = $maSize;
+
+      # Concatenate individual seed alignments into one file per-round
+      if ( -s "$workDir/family-$famNum.fa.refiner.stk" ) {
+        my $stockholmFile = SeedAlignmentCollection->new();
+        my $IN;
+        open $IN, "<$workDir/family-$famNum.fa.refiner.stk"
+            or die
+            "Could not open family-$famNum.fa.refiner.stk for reading!\n";
+        open OUT, ">> $workDir/families.stk"
+            or die "Could not open $workDir/families.stk for appending!\n";
+        $stockholmFile->read_stockholm( $IN );
+        close $IN;
+
+        # File only contains one family
+        my $seedAlign = $stockholmFile->get( 0 );
+
+        # Add details to DE line
+        $seedAlign->setDescription( "RepeatModeler Generated - rnd-$round"
+          . "_family-$famNum, RepeatScout: [ $rsID, RS Size = "
+          . ( $#{ $families{$rsID}->{'elements'} } + 1 )
+          . ", Refiner Input Size = $numElements, Final Multiple Alignment Size = $maSize ]"
+        );
+        print OUT "" . $seedAlign->toString();
+        close OUT;
       }
-      keys( %families )
-        )
-    {
-      last
-          if (
-             $families{$familyKey}->{'finalElementCount'} < $familySizeCutoff );
-      print OUTS ""
-          . $seedAlnById{ $families{$familyKey}->{'roundfam'} }->toString();
-      print OUTC ">rnd-$round"
-          . "_family-"
-          . $families{$familyKey}->{'roundfam'}
-          . " ( RepeatScout Family Size = "
-          . ( $#{ $families{$familyKey}->{'elements'} } + 1 ) . ", "
-          . "Final Multiple Alignment Size = "
-          . $families{$familyKey}->{'finalElementCount'} . ", "
-          . "Localized to "
-          . scalar( keys( %localizedToSeqNames ) ) . " out " . "of "
-          . $dbNumContigs
-          . " contigs )\n";
-      print OUTC "$families{ $familyKey }->{'consensus'}\n";
-      $numModels++;
+
+      # Save the consensus to the consensi file.
+      print OUTC ">family-$famNum ( RepeatScout Family =  $rsID, "
+          . " Size = "
+          . ( $#{ $families{$rsID}->{'elements'} } + 1 )
+          . ", Refiner Input Size = $numElements, Final Multiple Alignment"
+          . " Size = "
+          . $maSize . " )\n";
+      print OUTC "$cons\n";
+
+      my $indexStr =
+            "<a href=\"family-$famNum-cons.html\">family-$famNum"
+          . " ( RepeatScout Family $rsID, Size = "
+          . ( $#{ $families{$rsID}->{'elements'} } + 1 )
+          . ", Refiner Input Size = $numElements, "
+          . " Final Multiple Alignment Size = "
+          . $maSize
+          . " )</a><br>\n";
+
+      print INDX $indexStr;
+      push @indices, [ $maSize, $indexStr ];
 
     }
-    close OUTC;
-    close OUTS;
+  }
+  close INDX;
 
-    print "Family Refinement: " . elapsedTime( "family_refinement" ) . "\n";
+  # sorted indices
+  open INDX, ">$workDir/index.html"
+      or die "Could not open $workDir/index.html for writing\n";
+
+  foreach my $index ( sort { $b->[ 0 ] <=> $a->[ 0 ] } @indices ) {
+    print INDX $index->[ 1 ];
+  }
+  close INDX;
+  close OUTC;
+
+  #
+  # Read in seed alignment data so that we can sort it by membership
+  # as we do consensi.
+  #
+  my %seedAlnById = ();
+  if ( -s "$workDir/families.stk" ) {
+    my $stockholmFile = SeedAlignmentCollection->new();
+    my $IN;
+    open $IN, "<$workDir/families.stk"
+        or die "Could not open $workDir/families.stk for reading!\n";
+    $stockholmFile->read_stockholm( $IN );
+    close $IN;
+
+    for ( my $i = 0 ; $i < $stockholmFile->size() ; $i++ ) {
+      my $seedAlign = $stockholmFile->get( $i );
+      my $id        = $seedAlign->getId();
+      if ( $id =~ /family-(\d+)/ ) {
+        $seedAlign->setId( "rnd-$round" . "_family-$1" );
+        $seedAlnById{$1} = $seedAlign;
+      }
+      else {
+        print
+"Warning: could not decode ID from $workDir/families.stk file: id = $id\n";
+      }
+    }
+  }
+
+  #
+  # Write out final trimmed consensi.fa file
+  #
+  open OUTC, ">>$consensiFile"
+      or die "Could not open $consensiFile for appending!\n";
+  open OUTS, ">>$combFamiliesFile"
+      or die "Could not open $combFamiliesFile for appending!\n";
+
+  foreach my $familyKey (
+    # RMH: 9/19/23 Added secondary sort to ensure deterministic behaviour
+    sort {
+      $families{$b}{'finalElementCount'} <=> $families{$a}{'finalElementCount'} ||
+$a cmp $b
+    }
+    keys( %families )
+      )
+  {
+    last
+        if (
+           $families{$familyKey}->{'finalElementCount'} < $familySizeCutoff );
+    print OUTS ""
+        . $seedAlnById{ $families{$familyKey}->{'famNum'} }->toString();
+    print OUTC ">rnd-$round"
+        . "_family-"
+        . $families{$familyKey}->{'famNum'}
+        . " ( RepeatScout Family Size = "
+        . ( $#{ $families{$familyKey}->{'elements'} } + 1 ) . ", "
+        . "Final Multiple Alignment Size = "
+        . $families{$familyKey}->{'finalElementCount'} . ", "
+        . "Seeded from "
+        . scalar( keys( %{$localizedToSeqNames{$familyKey}} ) ) . " out of "
+        . $dbNumContigs
+        . " contigs )\n";
+    print OUTC "$families{ $familyKey }->{'consensus'}\n";
+    $numModels++;
 
   }
+  close OUTC;
+  close OUTS;
+
+  log_print "Family Refinement: " . elapsedTime( "family_refinement" ) . "\n";
+
   undef $searchEngineN;
   #return \%families, $numModels;
   undef %families;

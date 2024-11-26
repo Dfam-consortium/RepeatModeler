@@ -379,6 +379,12 @@ foreach my $file ( @ARGV ) {
   }
 
   my ( $refID, $cons, $numHSPs, $numUnAlignSeqs) = &bootstrapConsensus( "$FindBin::RealBin/Matrices", $srchEngAllVsAll, $file, $alignReportFilename, $tmpDir, $db ); 
+
+  if ( $refID eq "" ) {
+    warn "Refiner: No consensus could be derived from the input sequences in $file\n";
+    next;
+  }
+
   my $round1ConsLen = length( $cons );
   my $round1NumUnAlignSeqs = $numUnAlignSeqs;
 
@@ -1069,6 +1075,12 @@ sub bootstrapConsensus {
     $refID =
         &findHighestScoringAlignmentSet( searchCollection => $familyCollection );
 
+
+    # 11/21/24: RMH: Could not identify a reference sequence
+    if ( $refID eq "" ) {
+      return ( "", "", 0, 0 );
+    }
+
     ##
     ## Prototype
     ##
@@ -1393,7 +1405,7 @@ sub adjustIdentifiers {
       $seqID = $id;
     }
 
-    if ( $seqID && $start && $end ) {
+    if ( $seqID ne "" && $start ne "" && $end ne "" ) {
       if ( $options{'giToID'}
            && exists $genomeDBToSeqID{$seqID} )
       {
@@ -2183,6 +2195,11 @@ sub findHighestScoringAlignmentSet {
             'index' => $l
           };
     }
+  }
+
+  # 11/21/24: RMH - No non-self alignments
+  if ( ! keys %elements ) {
+    return ( "" );
   }
 
   my $maskLevel = 80;
