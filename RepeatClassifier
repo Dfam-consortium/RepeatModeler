@@ -178,6 +178,11 @@ my $config           = $RepModelConfig::configuration;
 my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLASTN_PRGM    = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $NCBIBLASTX_PRGM  = $config->{'RMBLAST_DIR'}->{'value'} . "/blastx";
+my $libdir="$REPEATMASKER_DIR/Libraries";
+my $LIBDIR = $ENV{LIBDIR};
+if ($LIBDIR) {
+  $libdir="${LIBDIR}";
+}
 
 #
 # Setup the search engine
@@ -368,8 +373,8 @@ my $masklevel = 80;
 
 # initialize the search
 my $blastCmd;
-if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib.psq" ) {
-  die "Missing $REPEATMASKER_DIR/Libraries/"
+if ( !-s "${libdir}/RepeatPeps.lib.psq" ) {
+  die "Missing ${libdir}/"
       . "RepeatPeps.lib.psq!\n"
       . "Please rerun the configure program in the RepeatMasker directory\n"
       . "before running this script.\n";
@@ -378,7 +383,7 @@ my $additionalOpts = "";
 $additionalOpts = "-num_threads $options{'threads'} " if ( $options{'threads'} );
 $blastCmd =
       "$NCBIBLASTX_PRGM "
-    . "-db $REPEATMASKER_DIR/Libraries/RepeatPeps.lib "
+    . "-db ${libdir}/RepeatPeps.lib "
     . $additionalOpts
     . "-query tmpConsensi.fa.masked -word_size 2 > tmpBlastXResults.out 2>&1";
 print "      + Running rmblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
@@ -443,13 +448,13 @@ $searchEngineN->setQuery( "tmpConsensi.fa.masked" );
 $searchEngineN->setMatrix(
                        "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
 
-if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib.nsq" ) {
-  die "Missing $REPEATMASKER_DIR/Libraries/"
+if ( !-s "${libdir}/RepeatMasker.lib.nsq" ) {
+  die "Missing ${libdir}/"
       . "RepeatMasker.lib.nsq!\nPlease rerun the configure program "
       . "in the RepeatMasker directory\nbefore running this script.\n";
 }
 
-$searchEngineN->setSubject( "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib" );
+$searchEngineN->setSubject( "${libdir}/RepeatMasker.lib" );
 
 print "    + Running blastn vs RepeatMasker.lib...\n" if ( $DEBUG );
 my ( $status, $searchResultCol ) = $searchEngineN->search();
