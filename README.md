@@ -106,7 +106,7 @@ Source Distribution Installation
   CD-HIT - A sequence clustering package.  We developed and tested
     RepeatModeler using version 4.8.1.  Please use this version or higher
     from:
-    http://weizhongli-lab.org/cd-hit/
+    https://github.com/weizhongli/cdhit
 
   Ninja - A tool for large-scale neighbor-joining phylogeny inference and 
     clustering.  We developed and tested RepeatModeler using Ninja version
