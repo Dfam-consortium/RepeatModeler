@@ -62,7 +62,7 @@ Source Distribution Installation
     The 1.08 version fixes problems with running RECON on 64 bit machines and 
     supplies a workaround to a division by zero bug along with some buffer 
     overrun fixes. The program is available at: 
-       https://www.repeatmasker.org/RECON-1.08.tar.gz. 
+       http://www.repeatmasker.org/RECON-1.08.tar.gz. 
     The original version is available at http://eddylab.org/software/recon/.
 
   RepeatScout - De Novo Repeat Finder, Price A.L., Jones N.C. and Pevzner P.A.
