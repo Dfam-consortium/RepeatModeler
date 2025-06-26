@@ -310,89 +310,21 @@ Caveats
 
 RepeatModeler Statistics
 ------------------------
-Benchmarks and statistics for runs of RepeatModeler on several sample
+Benchmarks and statistics for runs of RepeatModeler on reference
 genomes.
 
-RepeatModeler 2.0 ( RECON + RepeatScout + LTRStruct ):
+RepeatModeler 2.0.6 ( RECON + RepeatScout + LTRStruct ) 48 threads:
 
 Genome          |  Genome DB Size (bp) |   Runtime (hh:mm)*  |  Models Built
 ----------------|----------------------|---------------------|--------------
-D. melanogaster |  164 Mbp             |    12:56            |     734   
-D. rerio        |  1.4 Gbp             |    40:36            |    3851   
-O. sativa       |  375 Mbp             |    37:23            |    2648   
+D. melanogaster |  164 Mbp             |    3:41             |     492   
+H. sapiens      |  3.1 Gbp             |   21:26             |     810
 
-  *  Analysis run on a CentOS 7.6.1810 Linux system with
-     Intel... processors.  D. melanogaster was run using 
-     8 parallel jobs ( -pa 8 ) while D. rerio and O.sativa
-     were run with 16 parallel jobs.
-
-Previous Versions
+  *  Analysis run on a Ubuntu 22.04.3 LTS Linux system with
+     Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz processors.  Both genomes
+     were run with "-threads 48".
 
 ```
-RepeatModeler 1.0.3 ( RECON + RepeatScout ):
-
-            Genome DB    Sample***   Run Time*   Models   Models       % Sample
-Genome      Size (bp)    Size (bp)   (hh:mm)     Built    Classified   Masked**
-----------  -----------  ----------  ----------  -------  -----------  --------
-Marmoset    3.0 Bbp      228 Mbp      55:37        582      564         36.4    
-Zebrafinch  1.2 Bbp      222 Mbp      66:29        178       75          8.6    
-
-
-  *  Analysis run on a 4 processor P4, 2.4Ghz, 3GB RAM, machine
-     running Red Hat Linux.
-
-  ** Includes simple repeats and low complexity DNA. Results
-     obtained with RepeatMasker open-3.2.5, WUBlast and
-     the -lib option.
-
-  *** Sample size does not include 40 Mbp used in the RepeatScout analysis.  
-      This 40 Mbp is randomly chosen and may overlap 0-100% of the 
-      sample used in the RECON analysis.
-
-
-RepeatModeler 1.0.2 ( RECON + RepeatScout ):
-
-            Genome DB    Sample***   Run Time*   Models   Models       % Sample
-Genome      Size (bp)    Size (bp)   (hh:mm)     Built    Classified   Masked**
-----------  -----------  ----------  ----------  -------  -----------  --------
-Human HG18     3.1 Bbp      238 Mbp   46:36        614      611         35.66
-Platypus       1.9 Bbp      220 Mbp   76:02        540      457         
-Zebrafinch     1.3 Bbp      220 Mbp   63:57        233      104          9.41
-Sea Urchin     867 Mbp      220 Mbp   40:03       1830      360         33.85
-diatom       32,930,227  32,930,227    4:41        128       35          2.86
-Rabbit       11,770,949  11,770,949    3:14         83       72         31.30
-
-  *  Analysis run on a 4 processor P4, 2.4Ghz, 3GB RAM, machine
-     running Red Hat Linux.
-
-  ** Includes simple repeats and low complexity DNA. Results
-     obtained with RepeatMasker open-3.1.9, WUBlast and
-     the -lib option.
-
-  *** Sample size does not include 40 Mbp used in the RepeatScout analysis.  
-      This 40 Mbp is randomly chosen and may overlap 0-100% of the 
-      sample used in the RECON analysis.
-
-
-
-RepeatModeler 1.0.0 ( RECON ):
-
-            Genome DB    Sample      Run Time*   Models   Models       % Sample
-Genome      Size (bp)    Size (bp)   (hh:mm)     Built    Classified   Masked**
-----------  -----------  ----------  ----------  -------  -----------  --------
-Opossum     3.5 Billion  319 Mbp     140:52      1137     467          52.55
-Armadillo   47,332,136   47,332,136    6:20      121      92           36.07
-Platypus    14,768,992   14,768,992    3:46      18       13           40.69
-Rabbit      11,770,949   11,770,949    2:17      20       16           28.67
-Elephant    11,550,090   11,550,090    1:21      34       28           37.08
-
-  *  Analysis run on a 4 processor P4, 2.4Ghz, 3GB RAM, machine
-     running Red Hat Linux.
-  ** Includes simple repeats and low complexity DNA. Results
-     obtained with RepeatMasker open-3.0.9, WUBlast and
-     the -lib option.
-```
-
 
 
 Credits

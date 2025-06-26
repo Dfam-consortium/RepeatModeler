@@ -329,7 +329,7 @@ if ( $method eq "ruzzo_tompa" ) {
   my ($ruzzoTompaBlocks,$ruzzoTompaScores) = $mAlign->getLowScoringAlignmentColumns( 'threshold' => $threshold );
 
   # DEBUG:
-  if ( 1 ) {
+  if ( 0 ) {
     my $html = getMultAlnHTML(
       multAln => $mAlign,
       headersAboveMSA => [
@@ -471,8 +471,8 @@ if ( $aggregationMethod eq "tile" ) {
   print "\n";
 }
 
-# DEBUG:
-  if ( 1 ) {
+  # DEBUG:
+  if ( 0 ) {
     my $blocks = [];
     foreach my $range ( @tilingPath ) {
       push @{$blocks}, [ $range->[1], $range->[2] ];

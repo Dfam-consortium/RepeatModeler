@@ -1,3 +1,13 @@
+
+RepeatModeler 2.0.7
+===================
+  - Added the RepeatAfterMe auto-extension step to Refiner.  This is applied to both
+    RepeatScout and RECON generated family models.  
+  - RepeatClassifier now checks for a complete Dfam FamDB database and warns if
+    it's not.
+  - A new redundancy filter is applied to RepeatScout families
+  - Lowered masking score threshold to reduce rediscovery
+
 RepeatModeler 2.0.6
 ===================
   - Updated to RepeatScout 1.0.7 which has the capability of reporting the
