@@ -62,7 +62,7 @@ Source Distribution Installation
     The 1.08 version fixes problems with running RECON on 64 bit machines and 
     supplies a workaround to a division by zero bug along with some buffer 
     overrun fixes. The program is available at: 
-       http://www.repeatmasker.org/RepeatModeler/RECON-1.08.tar.gz. 
+       http://www.repeatmasker.org/RECON-1.08.tar.gz. 
     The original version is available at http://eddylab.org/software/recon/.
 
   RepeatScout - De Novo Repeat Finder, Price A.L., Jones N.C. and Pevzner P.A.
@@ -110,7 +110,7 @@ Source Distribution Installation
   CD-HIT - A sequence clustering package.  We developed and tested
     RepeatModeler using version 4.8.1.  Please use this version or higher
     from:
-    http://weizhongli-lab.org/cd-hit/
+    https://github.com/weizhongli/cdhit
 
   Ninja - A tool for large-scale neighbor-joining phylogeny inference and 
     clustering.  We developed and tested RepeatModeler using Ninja version
