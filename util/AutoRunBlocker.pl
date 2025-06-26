@@ -52,6 +52,38 @@ unstable regions.  These larger regions are then fed to Blocker again
 to identify the new consensus for the entire region.  If these larger
 regions also meet the filter criteria the consensus is updated.
 
+
+    |-------------------------consensus-------------------------|
+    |-----window-----|
+     |-----window-----|
+      |-----window-----|
+       |-----window-----|
+
+    For each window call Blocker( startBlock, startCol, endBlock, endCol ) 
+    Block is a special designation for the stanza in the Linup report
+    format.
+
+    In the Linup report format the above MSA in Linup report format may
+    look like:
+
+      consensus         1 TG----G----AC----T----G 7
+      ref:seq1          1 TG----G----AC----T----G 7
+      seq2             10 TA----G----AC---------G 16
+      seq3             12 TG----G----AC----T----G 18
+      seq4             15       G----AC----TA---G 20 
+
+      consensus         8 --G-G-CGTA-T----GCC---A 18
+      ref:seq1          8 A-G-G-C-TA-T----GCC---A 18
+      seq2             17 --G-G-GGTA-TACGTGCC---A 31
+      seq3             19 --G-G-CGAACT----G-C---A 29
+      seq4             21 --A-G-CGTA-T----GCC---A 31
+
+    So block 8, column 3 refers to the second stanza with the consensus
+    character "G".  For more details see Blocker.pl.
+
+
+
+
 The options are:
 
 =over 4

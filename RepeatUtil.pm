@@ -516,7 +516,10 @@ sub ncbiMaskDatabaseNativeMT {
     die $CLASS . "::$fName(): could not obtain rmblast version!\n";
   }
 
-  $searchEngine->setMinScore( 250 );
+  ## TODO FORMALIZE once evaluated
+  ## 2025-05-19 : Lowering to improve masking performance
+  #$searchEngine->setMinScore( 250 );
+  $searchEngine->setMinScore( 200 );
   # TODO one for each
   $searchEngine->setMinScore($parameters{'minScore'}) 
      if ( exists $parameters{'minScore'} );

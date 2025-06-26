@@ -11,7 +11,7 @@
 ##      them.
 ##
 #******************************************************************************
-#* Copyright (C) Institute for Systems Biology 2005-2024 Developed by
+#* Copyright (C) Institute for Systems Biology 2005-2025 Developed by
 #* Arian Smit and Robert Hubley.
 #*
 #* This work is licensed under the Open Source License v2.1.  To view a copy
@@ -69,7 +69,7 @@ RepeatModeler, RepeatMasker
 
 =head1 COPYRIGHT
 
- Copyright 2005-2024 Institute for Systems Biology
+ Copyright 2005-2025 Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -193,8 +193,7 @@ RepModelConfig::resolveConfiguration( \%options );
 my $config           = $RepModelConfig::configuration;
 my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
 my $RMBLASTN_PRGM    = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
-my $REPEATAFTERME_DIR;
-#my $REPEATAFTERME_DIR = $config->{'REPEATAFTERME_DIR'}->{'value'};
+my $REPEATAFTERME_DIR = $config->{'REPEATAFTERME_DIR'}->{'value'};
 
 # Print the internal POD documentation if something is missing
 if ( $#ARGV == -1 || $options{'help'} ) {
@@ -478,14 +477,20 @@ foreach my $file ( @ARGV ) {
   $cons =~ s/\-//g;
 
   # If the user has supplied a 2bit file we can try to extend the consensus
-  my ( $leftExt, $rightExt, $extCons, $newFamilyFile, $warnings );
-  if ( 0 || $options{'extTwoBit'} ) {
+  my ( $leftExt, $rightExt, $extCons, $newFamilyFile, $warnings, $segmental );
+  my $extraHeader = "";
+  if ( $options{'extTwoBit'} ) {
     if ( $DEBUG ) {
       print " ------------------- Extending consensus ------------------ \n";
     }
-    ( $leftExt, $rightExt, $extCons, $newFamilyFile, $warnings ) = 
+    ( $leftExt, $rightExt, $extCons, $newFamilyFile, $warnings, $segmental ) = 
         &extendAlignment( $malign, $tmpDir, $options{'extTwoBit'}, \%genomeDBToSeqID, $db, $gappedCons, $DEBUG );
     print " Warnings: $warnings\n" if ( $DEBUG && $warnings );
+    $extraHeader = "#=GF ** RAMExtend left=$leftExt bp right=$rightExt bp";
+    if ( $segmental ) {
+      $extraHeader .= " hit extension limits - possible segmental";
+    }
+    $extraHeader .= "\n";
     if ( $extCons ne "" ) {
         $newCons = $extCons;
         $cons = $newCons;
@@ -537,10 +542,7 @@ foreach my $file ( @ARGV ) {
   }
 
   adjustIdentifiers($malign, $db);
-
-  # TODO: Consider providing program stats/warnings in curation notes of *.stk
-  #$malign->toSTK( filename => "$pathToFastaFile.refiner.stk", includeTemplate => 1, nuclRF => 1 );
-  $malign->toSTK( filename => "$inputFileDir/$inputFile.refiner.stk",  consRF => 1, idFormat => 2 );
+  $malign->toSTK( filename => "$inputFileDir/$inputFile.refiner.stk",  consRF => 1, idFormat => 2, header => $extraHeader );
 
   $cons =~ s/-//g;
   # The output file is the full filename + the suffix ".refiner_cons"
@@ -702,16 +704,21 @@ sub extendAlignment {
 
   # Obtain divergence from MultAln
   my ( $null, $tdiv, $avgDiv ) = $mAlign->kimuraDivergence();
+  my $diagAvg = 10;
+  my $diagMin = 9;
   my $div = 14;
-    if ($tdiv >= 16) {
-      $div = 18;
-      if ($tdiv >= 19) {
-        $div = 20;
-        if ($tdiv >= 22.5) {
-          $div = 25;
-        }
+  if ($tdiv >= 16) {
+    $div = 18;
+    if ($tdiv >= 19) {
+      $div = 20;
+      if ($tdiv >= 22.5) {
+        $div = 25;
+        $diagAvg = 9;                 
+        $diagMin = 8;
       }
     }
+  }
+
   print "  MultAln Kimura divergence: $avgDiv (using div=$div)\n" if ($DEBUG);
   
   # 
@@ -728,7 +735,8 @@ sub extendAlignment {
   # have the genomic sequence coordinates in the sequence description line. 
   # E.g. family-2.fa:>gi|621 gi|1:11485846-11485954
   # This means, that RepeatModeler internally corrected the coordinates obtained
-  # from the sampleDB-#.fa file.  These coordinates are one-based, fully closed.
+  # from the sampleDB-#.fa file.  These coordinates are one-based, fully closed
+  # and encode the orientation in the range order (increasing = "+", decreasing = "-").
   #
   my @linupIdxToID = ();
   my @linupIdxToElement = ();
@@ -736,14 +744,50 @@ sub extendAlignment {
     # The instance ID
     my $id     = $mAlign->getAlignedName( $i );                                                
     push @linupIdxToID, $id;
+
+    # Identify where in the instance alignment starts/ends ( and orientation )
+    my $instOrient = "+";
+    $instOrient = "-" if ( $mAlign->getAlignedOrientation( $i ) eq "C" || $mAlign->getAlignedOrientation( $i ) eq "-" );
+    my $instStart = $mAlign->getAlignedSeqStart( $i ); # one based, fully closed
+    my $instEnd   = $mAlign->getAlignedSeqEnd( $i );   # one based, fully closed
+
     # The instance to genomic coordinate translation
     my $genTrans = $db->getDescription( $id );                         
-    #  e.g.  >gi|1 gi|1:964722-964563 element-167
-    if ( $genTrans =~ /(element-\d+)/ ) {
+
+    my ($genSeqID, $genStart, $genEnd, $genOrient);
+    if ( $id =~ /^gi\|\d+$/ && $genTrans =~ /^\s*gi\|\d+:\d+-\d+\s+((element-|R=)\d+)/ ) {
+      # RepeatModeler input file
+      #  e.g.  >gi|1 gi|1:964722-964563 element-167
       push @linupIdxToElement, $1;
-    }else{
-      push @linupIdxToElement, "";
+      # Convert RepeatModeler 
+      ($genSeqID, $genStart, $genEnd, $genOrient) = liftUpOneLevel( $id, $instStart, $instEnd, $instOrient, $genTrans );
+      #print "Converted $id $genTrans to $genSeqID:$genStart-$genEnd $genOrient\n";
+    } elsif ( $id =~ /^(\S+):(\d+)-(\d+)\_?([R\+\-]?)$/ )
+    {                                        
+      # Non-Repeatmodeler input file
+      $genSeqID = $1;
+      $genStart = $2;
+      $genEnd = $3;
+      $genOrient = "+";
+      $genOrient = "-" if ( $4 eq "R" || $4 eq "-" );
+      if ( $2 > $3 ) {
+        # Reverse orientation
+        $genOrient = "-";
+        $genStart = $3;
+        $genEnd   = $2;
+      }
+      push @linupIdxToElement, '';
+    }else {
+      die "Could not parse genomic coordinates for id/desc = $id $genTrans\n";
     }
+
+    #  
+    #  e.g.  >gi|1 gi|1:964722-964563 element-167
+    #if ( $genTrans =~ /(element-\d+)/ ) {
+    #  push @linupIdxToElement, $1;
+    #}else{
+    #  push @linupIdxToElement, "";
+    #}
 
     # Identify how many bp left/right were unaligned to the current consensus
     my $s_unaligned = substr($gappedCons, 0, $mAlign->getAlignedStart( $i ) );
@@ -752,22 +796,8 @@ sub extendAlignment {
     $s_unaligned = substr($gappedCons, $mAlign->getAlignedEnd( $i )+1);
     $s_unaligned =~ s/\-//g;
     my $rightUnaligned = length($s_unaligned);
-
-    # Identify where in the instance alignment starts/ends ( and orientation )
-    my $instOrient = "+";
-    $instOrient = "-" if ( $mAlign->getAlignedOrientation( $i ) eq "C" || $mAlign->getAlignedOrientation( $i ) eq "-" );
-    my $instStart = $mAlign->getAlignedSeqStart( $i ); # one based, fully closed
-    my $instEnd   = $mAlign->getAlignedSeqEnd( $i );   # one based, fully closed
     
-    # The family-#.fa files contain the following sequence identifier format:
-    # >instance_seq_id genomic_seq_id:start-end [one based, fully closed]
-    # Where sample sequence start/end order is used to indicate reverse
-    # complementation of the sequence.
-    # e.g.
-    # >gi|6910 gi|3:53484767-53491827
-    # TODO: NO NO NO not the case anymore..the coordinates are now in Smitten V2
-    warn "WARNING: Not implemented for Smitten V2 yet!\n";
-    my ( $genSeqID, $genStart, $genEnd, $genOrient ) = liftUpOneLevel( $id, $instStart, $instEnd, $instOrient, $genTrans );
+    #my ( $genSeqID, $genStart, $genEnd, $genOrient ) = liftUpOneLevel( $id, $instStart, $instEnd, $instOrient, $genTrans );
     # Convert to zero based, fully closed
     $genStart--;
 
@@ -796,9 +826,10 @@ sub extendAlignment {
   ##
   ## Run RepeatAfterMe ExtendAlign
   ##
-  my $cmd = "$REPEATAFTERME_DIR/RAMExtend -twobit $assemblyTwoBit -bandwidth 20 -matrix $div" . "p43g -ranges $tmpDir/linup.tsv -outtsv $tmpDir/repam-ranges.tsv -outfa $tmpDir/repam-repseq.fa -cons $tmpDir/repam-cons.fa 2>&1 > $tmpDir/repam.log";
-  #print "Running extendalign..\n";
-  #print "Running: $cmd\n";
+  my $min_aligning_seqs = 3;
+  my $minimprovement = $min_aligning_seqs * $diagAvg;
+  my $cmd = "$REPEATAFTERME_DIR/RAMExtend -twobit $assemblyTwoBit -bandwidth 40 -matrix $div" . "p43g -ranges $tmpDir/linup.tsv -minimprovement $minimprovement -outtsv $tmpDir/repam-ranges.tsv -outfa $tmpDir/repam-repseq.fa -cons $tmpDir/repam-cons.fa 2>&1 > $tmpDir/repam.log";
+  print "Running RAMExtend: $cmd\n" if ( $DEBUG );
   system($cmd);
 
   my $newCons = "";
@@ -814,14 +845,6 @@ sub extendAlignment {
   my $t2 = `fgrep "Extended left : 0 bp" $tmpDir/repam.log`;
   if ( $t1 && $t2 ) {
     print "  **Could not extend**\n" if ( $DEBUG );
-    #   my $cnotes = $seedAlign->getCuratorComments();
-    #   $cnotes .= "RAMExtend: left: 0 bp, right: 0bp\n";
-    #   $seedAlign->setCuratorComments( $cnotes );
-    #   print OUTPUT "" . $seedAlign->toString();
-    #   unless($DEBUG) {
-    #     rmtree([ $tdir ]);
-    #   }
-    #   next;
   }elsif ( -e "$tmpDir/repam-cons.fa") {
     open IN,"<$tmpDir/repam-cons.fa" or die;
     my $ttid;
@@ -837,10 +860,9 @@ sub extendAlignment {
     }
     close IN;
     $newCons = $seqs{'left-extension'} . $ungappedCons . $seqs{'right-extension'};
-    #print "newCons = $newCons\n";
   }else {
-    print "Something went wrong with extend align:\n" if ( $DEBUG );
-    $warnings .= "Something went wrong with RAMExtend!\n";
+    print "Something went wrong with extend align -- no repam-cons.fa!\n" if ( $DEBUG );
+    $warnings .= "Something went wrong with RAMExtend -- no repam-cons.fa!\n";
     print "  $cmd\n" if ( $DEBUG );
   } 
 
@@ -855,11 +877,13 @@ sub extendAlignment {
     $leftExt = $2;
   }
   print "  Captured Extensions: left $leftExt bp, right $rightExt bp\n" if ( $DEBUG );
+
+  my $segmental = 0;
   if ( $leftExt > 9990 && $rightExt > 9990 )
   {
     print "Extension hit limits in both directions...probably a segmental duplication...keeping unextended\n" if ( $DEBUG );
     $warnings .= "Extension hit limits in both directions...probably a segmental duplication, keeping unextended\n";
-    #$segmental++;
+    $segmental++;
     #   my $desc = $seedAlign->getDescription();
     #   $desc =~ s/[\n\r]+//g;
     #   $desc .= " [possibly part of segmental duplication]";
@@ -875,6 +899,7 @@ sub extendAlignment {
     #   my $prevCons;
     $newCons = "";
   }elsif ( $leftExt > 2 || $rightExt > 2 ) {
+    #
     # Extension from independent proximal seeds can produce duplicate final instances.
     # different source locations). Report and remove these cases.
     #
@@ -952,7 +977,7 @@ sub extendAlignment {
     # too short of an extension
     $newCons = "";
   }
-  return ( $leftExt, $rightExt, $newCons, "$tmpDir/repam-repseq-nodups.fa", $warnings );
+  return ( $leftExt, $rightExt, $newCons, "$tmpDir/repam-repseq-nodups.fa", $warnings, $segmental );
 }
 
 sub readConsensusFromFile {

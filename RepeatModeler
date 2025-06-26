@@ -105,7 +105,7 @@ RepeatMasker, RMBlast
 
 =head1 COPYRIGHT
 
- Copyright 2005-2022 Institute for Systems Biology
+ Copyright 2005-2025 Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -394,6 +394,19 @@ my $recommendedFamilySize;         # RECON/RS family size minimum
                                    #   needed to build a family.
 my $rsFamilySize = 5;
 
+
+# 20250520: Varying the sample size from small to large and sampling
+# from random regions of the input assembly, allows us to identify
+# abundant repeats with a lower likelihood of bumping into segmental
+# duplications. In addition requiring a minimum family size also
+# helps to avoid SDs which tend to have a lower copy number.  We
+# did experiment with lowering this minimum family size in the final
+# round to allow for the detection of less abundant families, however
+# this simply boosted the number of SD families built for a low return
+# on rare TE families so this isn't currently set lower than the
+# default 'recommendedFamilySize'.
+my $finalFamilySize = 15;
+
 if ( $options{'quick'} ) {
   # Pre-RepeatModeler 2.0.4 Sampling Strategy  
   #   RepeatScout Round 1: 40MB
@@ -443,14 +456,6 @@ $genomeSampleSizeMax = $options{'genomeSampleSizeMax'}
 $fragmentSize = $options{'recon_batch_size'} if ( exists $options{'recon_batch_size'} );
 $reconSampleSizeStart = $options{'recon_sample_size_start'} if ( exists $options{'recon_sample_size_start'} );
 
-# Feature On Hold : We need a system that takes into
-#   account genome size, false positive rate of each
-#   discovery method, and detection target.
-# The absolute minimum RECON/RS family size for which
-#   we will build a model.  Only invoked if there
-#   are only small families returned by RECON/RS.
-#my $minFamilySize = 4;
-
 #
 # Gather details from the database
 #
@@ -475,7 +480,7 @@ my $LOG;
 if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
   $tmpDir =  abs_path($options{'recoverDir'});
   open $LOG, ">>", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing (appending)!\n";
-  #$genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
+  $genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
 }else {
   #
   # Create temp directory
@@ -484,7 +489,7 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
       ( getcwd(), ( File::Spec->splitpath( $options{'database'} ) )[ 1 ] );
 
   if ( -d $options{'dir'} ) {
-    $tmpDir = $options{'dir'};
+    $tmpDir = abs_path($options{'dir'});
   }
   else {
     $tmpDir = createTempDir( \@tmpDirPath );
@@ -492,12 +497,12 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
   open $LOG, ">", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing!\n";
 
   # Build the genome.2bit file
-  #my $cmd = "$NCBIDBCMD_PRGM -entry all -db $genomeDB -outfmt \"%f\" | $FATOTWOBIT stdin $tmpDir/genome.2bit";
-  #system($cmd);
-  #if ( ! -s "$tmpDir/genome.2bit" ) {
-  #  die "ERROR: Failed to create $tmpDir/genome.2bit file using command: $cmd\n";
-  #}
-  #$genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
+  my $cmd = "$NCBIDBCMD_PRGM -entry all -db $genomeDB -outfmt \"%f\" | $FATOTWOBIT stdin $tmpDir/genome.2bit";
+  system($cmd);
+  if ( ! -s "$tmpDir/genome.2bit" ) {
+    die "ERROR: Failed to create $tmpDir/genome.2bit file using command: $cmd\n";
+  }
+  $genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
 }
 
 # print to screen and log
@@ -516,7 +521,7 @@ log_print "=" x length( $title ) . "\n";
 log_print "Using output directory = $tmpDir\n";
 log_print "Search Engine = $engine $engineVersion\n";
 log_print "Threads = " . $options{'threads'} . "\n" if ( $options{'threads'} );
-log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_DIR") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . "\n";
+log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_DIR") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . ", RepeatAfterMe " . RepModelConfig::getDependencyVersion("REPEATAFTERME_DIR") . "\n";
 if ( $options{'LTRStruct'} ) {
   log_print "LTR Structural Analysis: Enabled ( " . 
       "GenomeTools " . RepModelConfig::getDependencyVersion("GENOMETOOLS_DIR") . ", " .
@@ -674,8 +679,7 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
   my $highestGoodRound = 0;
   while ( $i++ < 100 ) {
     if ( -d "$recoverDir/round-$i" ) {
-      if (    ( $i == 1 && -s "$recoverDir/round-1/consensi-refined.fa" )
-           || ( $i > 1 && -s "$recoverDir/round-$i/consensi.fa" ) )
+      if ( -s "$recoverDir/round-$i/consensi.fa" ) 
       {
         $highestGoodRound = $i;
       }
@@ -870,8 +874,10 @@ while ( 1 ) {
 
     # this round will be last
     $inLastRound = 1;
-    #print "   - Last round, lowering family cutoff to $minFamilySize elements.\n";
-    #$familyCutoff = $minFamilySize;
+    if ( $finalFamilySize != $recommendedFamilySize ) {
+      print "   - Last round, lowering family cutoff to $finalFamilySize elements.\n";
+      $familyCutoff = $finalFamilySize;
+    }
     if ( $options{'onlyIns'} ) {
       log_print "   - Last round, lowering family cutoff to $insertMinFamilySize elements.\n";
       $familyCutoff = $insertMinFamilySize;
@@ -971,11 +977,7 @@ while ( 1 ) {
     if ( -s "$sampleFastaFile.rscons.filtered" ) {
       system( "cp $sampleFastaFile.rscons.filtered $roundConsensiFile" );
 
-      # MAKEBLASTDB the database
-      #system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $sampleFastaFile "
-      #        . "-parse_seqids -dbtype nucl -in $sampleFastaFile >> "
-      #        . "$roundTmpDir/makeblastdb.log 2>&1" );
-      # RMH: 8/9/2024
+      # MAKEBLASTDB the database RMH: 8/9/2024
       my ($error, $cmd, $retCode, $messages) = &RepeatUtil::makeBlastDB($NCBIBLASTDB_PRGM, 
                                                 $sampleFastaFile, $sampleFastaFile,1, 4);
       if ( $error ) {
@@ -1030,8 +1032,8 @@ while ( 1 ) {
   if ( -s $consensiFile ) {
     log_print " -- Masking repeats from the previous rounds...\n";
 
+    # Global searchEngineN ( using default masklevel 80 )
     $searchEngineN->setMinScore( 250 );
-    # Changed 10/15/2022 -- shouldn't need alignments for masking
     $searchEngineN->setGenerateAlignments( 0 );
     $searchEngineN->setGapInit( -25 );
     $searchEngineN->setBandwidth( 10 );    # Changes gapW=31
@@ -1201,6 +1203,7 @@ while ( 1 ) {
   #
   # Run all-by-other combinations
   #
+  # Global searchEngineN ( using default masklevel 80 )
   $searchEngineN->setMatrix(
                 "$FindBin::RealBin/Matrices/ncbi/" . "nt/comparison.matrix" );
   $searchEngineN->setGenerateAlignments( 0 );
@@ -1212,7 +1215,8 @@ while ( 1 ) {
   $searchEngineN->setMinMatch( 7 );
   $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
   $searchEngineN->setCores( $threads );
-  # TODO: Make sure this is using MaskLevel 101 here!
+  $searchEngineN->setAdditionalParameters( undef );
+  $searchEngineN->setMaskLevel( undef );
 
   my $numHSPs = 0;    # Number of High Scoring Pairs produced
   # First check to see if this was already run
@@ -1407,25 +1411,25 @@ while ( 1 ) {
 
   log_print "Round Time: " . elapsedTime( 1 ) . " : $roundModels families discovered.\n";
 
-# How do we proceed from here
-#
-#  Case 1 (default): Sample without replacement.  Sample up to $genomeSampleSizeMax (100MB).  Typically
-#                    this isn't anywhere close to the genome size, but if it is, quit when we get
-#                    reach that.  If the last round is reached and there is only a little bit left
-#                    over, add that as well.
-#  Case 2 (onlyIns): Only genome inserts.  Sample (with replacement) up to $genomeSampleSizeMax.  No
-#                    need to quit early.
-#
-#  $genomeSampleSizeMax          : The target sample size for the last round
-#  $sampleSize                   : The current size of the sample requested for this round
-#  $sampleDBLen                  : The true length of the sampleDB-#.fa file
-#  $dbSize                       : The size of the input database
-#  $genomeSampleSizeMultiplier   : The multiplier for sample size between rounds
-#  $totSampledBP                 : The sum of the sampleDB-#.fa files.  The total bases searched thus far
-#  $fragmentSize                 : The size of the batches for all-vs-other comparisons
-#
-# Calculate the new sampleSize for the next round
-# RECON Rounds, check for completion.
+  # How do we proceed from here
+  #
+  #  Case 1 (default): Sample without replacement.  Sample up to $genomeSampleSizeMax (100MB).  Typically
+  #                    this isn't anywhere close to the genome size, but if it is, quit when we get
+  #                    reach that.  If the last round is reached and there is only a little bit left
+  #                    over, add that as well.
+  #  Case 2 (onlyIns): Only genome inserts.  Sample (with replacement) up to $genomeSampleSizeMax.  No
+  #                    need to quit early.
+  #
+  #  $genomeSampleSizeMax          : The target sample size for the last round
+  #  $sampleSize                   : The current size of the sample requested for this round
+  #  $sampleDBLen                  : The true length of the sampleDB-#.fa file
+  #  $dbSize                       : The size of the input database
+  #  $genomeSampleSizeMultiplier   : The multiplier for sample size between rounds
+  #  $totSampledBP                 : The sum of the sampleDB-#.fa files.  The total bases searched thus far
+  #  $fragmentSize                 : The size of the batches for all-vs-other comparisons
+  #
+  # Calculate the new sampleSize for the next round
+  # RECON Rounds, check for completion.
   if ( $options{'onlyIns'} ) {
     if (    $sampleSize >= $genomeSampleSizeMax
          || $sampleSize >= $dbSize )
@@ -1743,9 +1747,9 @@ if ( $numModels > 0 ) {
   chdir( $tmpDir );
   my $addlOpts = "";
   $addlOpts = "-threads $options{'threads'} " if ( $options{'threads'} );
-  system(   "$FindBin::RealBin/RepeatClassifier "
-          . "-consensi consensi.fa $addlOpts -stockholm families.stk" );
+  my $classifierLog = `$FindBin::RealBin/RepeatClassifier -consensi consensi.fa $addlOpts -stockholm families.stk 2>&1`;
   chdir( $origDir );
+  log_print "$classifierLog\n";
   log_print "Classification Time: " . elapsedTime( 1 ) . "\n";
 }
 
@@ -1904,6 +1908,7 @@ sub runAllvsOtherMatrixRow {
   }
   close OUT;
 
+  $searchEngineN->setAdditionalParameters( undef );
   return ($status);
 }
 
@@ -1954,7 +1959,6 @@ sub runRECON {
   chdir( $tmpDir );
 
   # If these two do not exist imagespread will fail
-  # TODO: Make sure they aren't already here.
   system( "mkdir images" );
   system( "mkdir summary" );
 
@@ -2075,21 +2079,21 @@ sub runRepeatScout {
 
   # Calculate lmer size
   my $lmerSize = ceil( ( log( $seqSize ) / log( 4 ) ) + 1 );
+  # 6/25 : Added to minimize the number of segmental duplications reported
+  my $minKmerCount = 10;
 
-  log_print "   - RepeatScout: Running build_lmer_table ( l = $lmerSize )..\n";
-  # TODO: Add -min 5
+  log_print "   - RepeatScout: Running build_lmer_table ( l = $lmerSize, min = $minKmerCount )..\n";
   my $cmd =
-        "$RSCOUT_DIR/build_lmer_table -l $lmerSize -sequence "
+        "$RSCOUT_DIR/build_lmer_table -l $lmerSize -min $minKmerCount -sequence "
       . "$fastaFile -freq $fastaFile.lfreq 2>&1 > repeatscout.log";
   `$cmd`;
   if ( $? ) { die "build_lmer_table failed. Exit code $?\n"; }
 
   log_print "   - RepeatScout: Running RepeatScout..";
-  # TODO: add -minthresh 5
   $cmd =
         "$RSCOUT_DIR/RepeatScout -l $lmerSize -sequence $fastaFile"
       . " -tandemdist 500 -output $fastaFile.rscons -freq $fastaFile.lfreq "
-      . "-stopafter 100 -ranges $fastaFile.rscons-ranges.tsv 2>&1 >> repeatscout.log";
+      . "-stopafter 100 -goodlength 100 -minthresh $minKmerCount -ranges $fastaFile.rscons-ranges.tsv 2>&1 >> repeatscout.log";
 
   `$cmd`;
   if ( $? || -s "repeatscout.log" ) {
@@ -2154,6 +2158,130 @@ sub runRepeatScout {
   return;
 }
 
+
+##-------------------------------------------------------------------------##
+#
+# Use: my = identifySatelliteAndContained( .. );
+#
+#   Search a set of consensus sequences against itself and 
+#   search for satellite sequences (many overlapping off-diagonal matches)
+#   and or sequences contained fully-ish contained inside others.
+#
+##-------------------------------------------------------------------------##
+sub identifySatelliteAndContained {
+  my %parameters = @_;
+
+  die "identifySatelliteAndContained(): Missing workDir parameter!\n"
+      if ( !defined $parameters{'workDir'} );
+  my $workDir = $parameters{'workDir'};
+
+  die "identifySatelliteAndContained(): Missing consFile parameter!\n"
+      if ( !defined $parameters{'consFile'} );
+  my $consFile = $parameters{'consFile'};
+
+  die "identifySatelliteAndContained(): Missing threads parameter!\n"
+      if ( !defined $parameters{'threads'} );
+  my $threads = $parameters{'threads'};
+
+  
+  # 
+  # Setup the search engine
+  # 
+  my $searchEngineN = NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
+  $searchEngineN->setMatrix(
+                       "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
+  $searchEngineN->setTempDir( "$workDir" );
+  $searchEngineN->setMinScore( 250 );
+  $searchEngineN->setGenerateAlignments( 1 );
+  $searchEngineN->setGapInit( -25 );
+  $searchEngineN->setInsGapExt( -5 );
+  $searchEngineN->setDelGapExt( -5 );
+  $searchEngineN->setMinMatch( 7 );
+  $searchEngineN->setCores($threads);
+  $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
+
+  # Large Satellite Detection
+  #    
+  #    1. Build a database from consensi.fa
+  # MAKEBLASTDB the consensi.fa
+  system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $workDir/$consFile "
+              . "-parse_seqids -dbtype nucl -in $workDir/$consFile >> "
+              . "$workDir/makeblastdb.log 2>&1" );
+
+  #    2. Search consensi.fa against itself
+  $searchEngineN->setSubject( "$workDir/$consFile" );
+  $searchEngineN->setQuery( "$workDir/$consFile" );
+
+  #    3. For each family which has a off diagonal match to itself
+  #       calculate the coverage of the off diagonal hits
+  #       Filter out families which are larger than 3kb, 
+  #       are covered by >90% by off diagonal hits.
+  #
+  #  TODO: Note...this identifies models that contain more than one
+  #        copy of the satellite.  It doesn't consider the case where
+  #        you have a single unit. That would require looking at the locations
+  #        of the copies relative to each other.  This can happen if there
+  #        are only a few tandem copies of the satellite and the extending amount
+  #        drops below the minimum count.
+  my %satelliteSeqIDs = ();
+  my %containedSeqIDs = ();
+  my ( $status, $resultCollection ) = $searchEngineN->search();
+  if ( $status ) {
+    print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
+  }
+  else {
+    my %coverage = ();
+    for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
+      my $resultRef = $resultCollection->get( $k );
+      if ( $resultRef->getQueryName() ne $resultRef->getSubjName() ) {
+        # 6/3/25:
+        # Containment analysis only applies to families against other
+        # families.
+        my $subj_start = $resultRef->getSubjStart();
+        my $subj_end = $resultRef->getSubjEnd();
+        my $subj_remaining = $resultRef->getSubjRemaining();
+        my $aligned_length = $subj_end - $subj_start + 1;
+        my $total_subject_length = $subj_end + $subj_remaining;
+        my $coverage = $aligned_length / $total_subject_length;
+        my $divergence = $resultRef->getPctDiverge();
+        # TODO: Consider coverage vs uncovered edges?
+        if ( $subj_start < 80 && $subj_remaining < 80 && 
+             $coverage >= 0.90 &&
+             $divergence <= 15 ) {
+            my $subject_name = $resultRef->getSubjName();
+            $containedSeqIDs{$subject_name} = 1;
+        }
+      }else {
+        # Only consider families against themselves and only off diagonal hits
+        if ( $resultRef->getQueryStart() == 1 &&
+             $resultRef->getQueryRemaining() == 0 &&
+             $resultRef->getSubjStart() == 1 &&
+             $resultRef->getSubjRemaining() == 0 ) {
+          # This is a diagonal hit, skip it.
+          next;
+        }
+        my $ID = $resultRef->getQueryName();
+        my $familyLen = $resultRef->getQueryEnd() + $resultRef->getQueryRemaining();
+        # Do not want to screen out computationally easy satellites
+        next if ( $familyLen < 3000 );
+        $coverage{$ID} += $resultRef->getQueryEnd() - $resultRef->getQueryStart() + 1;
+        if ( $coverage{$ID} > 0.9 * $familyLen ) {
+          $satelliteSeqIDs{$ID} = 1;
+        }
+      }
+    }
+  }
+
+  # Cleanup uncessary DB files
+  unless ( $DEBUG ) {
+    foreach my $suffix ( "nhr", "nin", "nnd", "nni", "nog", "nsq" ) {
+      unlink("$workDir/$consFile" . ".$suffix") if ( -e "$workDir/$consFile" . ".$suffix" );
+    }
+  }
+  return ( \%satelliteSeqIDs, \%containedSeqIDs );
+}
+
+
 ##-------------------------------------------------------------------------##
 #
 # Use: my = buildRSConsensiMT( .. );
@@ -2204,109 +2332,6 @@ sub buildRSConsensiMT {
   my $numModels           = 0;
   my @indices             = ();
 
-  ## Get Sequences
-  my $searchEngineN = NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
-  $searchEngineN->setMatrix(
-                       "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
-
-  # Use seg masking in rmblast?
-  $searchEngineN->setTempDir( "$workDir" );
-  $searchEngineN->setMinScore( 250 );
-  $searchEngineN->setGenerateAlignments( 1 );
-  $searchEngineN->setGapInit( -25 );
-  $searchEngineN->setInsGapExt( -5 );
-  $searchEngineN->setDelGapExt( -5 );
-  $searchEngineN->setMinMatch( 7 );
-  $searchEngineN->setCores($threads);
-  $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
-
-  # Large Satellite Detection
-  #    
-  #    1. Build a database from consensi.fa
-  elapsedTime( "satellite_filtering" );
-  if ( $engine eq "abblast" ) {
-    # XDFORMAT the conseni.fa
-    system(   "$XDFORMAT_PRGM -n -I "
-                . "$workDir/consensi.fa >> "
-                . "$workDir/xdformat.log 2>&1" );
-  }
-  else {
-    # MAKEBLASTDB the consensi.fa
-    system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $workDir/consensi.fa "
-                . "-parse_seqids -dbtype nucl -in $workDir/consensi.fa >> "
-                . "$workDir/makeblastdb.log 2>&1" );
-  }
-  #    2. Search consensi.fa against itself
-  $searchEngineN->setSubject( "$workDir/consensi.fa" );
-  $searchEngineN->setQuery( "$workDir/consensi.fa" );
-  #    3. For each family which has a off diagonal match to itself
-  #       calculate the coverage of the off diagonal hits
-  #       Filter out families which are larger than 3kb, 
-  #       are covered by >90% by off diagonal hits.
-  #
-  #  TODO: Note...this identifies models that contain more than one
-  #        copy of the satellite.  It doesn't consider the case where
-  #        you have a single unit. That would require looking at the locations
-  #        of the copies relative to each other.  This can happen if there
-  #        are only a few tandem copies of the satellite and the extending amount
-  #        drops below the minimum count.
-  my %satelliteSeqIDs = ();
-  my ( $status, $resultCollection ) = $searchEngineN->search();
-  if ( $status ) {
-    print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
-  }
-  else {
-    log_print "   - Large Satellite Filtering.. ";
-    my %coverage = ();
-    for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
-      my $resultRef = $resultCollection->get( $k );
-      # Only consider families against themselves and off diagonal hits
-      next if ( $resultRef->getQueryName() ne $resultRef->getSubjName() ||
-                ( $resultRef->getQueryStart() == 1 && $resultRef->getQueryRemaining() == 0 &&
-                  $resultRef->getSubjStart() == 1 && $resultRef->getSubjRemaining() == 0 ) );
-      my $ID = $resultRef->getQueryName();
-      my $familyLen = $resultRef->getQueryEnd() + $resultRef->getQueryRemaining();
-      # Do not want to screen out computationally easy satellites
-      next if ( $familyLen < 3000 );
-      $coverage{$ID} += $resultRef->getQueryEnd() - $resultRef->getQueryStart() + 1;
-      if ( $coverage{$ID} > 0.9 * $familyLen ) {
-        $satelliteSeqIDs{$ID} = 1;
-      }
-    }
-    if ( keys %satelliteSeqIDs ) {
-      if ( $DEBUG ) {
-        system("cp $workDir/consensi.fa $workDir/consensi.rsorig.fa");
-      }
-      my $consDB = FastaDB->new( fileName => "$workDir/consensi.fa",
-                                 openMode => SeqDBI::ReadOnly );
-      open OUTC, ">$workDir/consensi-filtered.fa" or 
-         die "Could not open $workDir/consensi-filtered.fa for writing!\n";
-
-      foreach my $seqID ( $consDB->getIDs() ) {
-        unless ( exists $satelliteSeqIDs{ $seqID } ) {
-          my $seq  = $consDB->getSequence( $seqID );
-          my $desc = $consDB->getDescription( $seqID );
-          print OUTC ">$seqID\n";
-          $seq =~ s/(.{50})/$1\n/g;
-          print OUTC "$seq\n";
-        }elsif ( $DEBUG ) {
-          print "INFO: Filtering out putative satellite $seqID ( coverage = $coverage{$seqID} bp ).\n";
-        }
-      }
-      close OUTC;
-      undef $consDB;
-
-      system("mv $workDir/consensi-filtered.fa $workDir/consensi.fa");
-    }
-  }
-  # Cleanup uncessary DB files
-  unless ( $DEBUG ) {
-    foreach my $suffix ( "nhr", "nin", "nnd", "nni", "nog", "nsq" ) {
-      unlink("$workDir/consensi.fa.$suffix") if ( -e "$workDir/consensi.fa.$suffix" );
-    }
-  }
-  log_print ": " . scalar(keys(%satelliteSeqIDs)) . " found in " . elapsedTime("satellite_filtering") . "\n";
-
   my %activeFamilies = ();
   my $consDB = FastaDB->new( fileName => "$workDir/consensi.fa",
                              openMode => SeqDBI::ReadOnly );
@@ -2352,8 +2377,7 @@ sub buildRSConsensiMT {
                               openMode => SeqDBI::ReadOnly );
 
   my @indices = ();
-  log_print "   - Collecting repeat instances...";
-  elapsedTime( "cinstances" );
+  log_print "   - Collecting repeat instances...\n";
   my $f_idx = 1;
   my %localizedToSeqNames = ();
   foreach my $rsID ( sort keys %families ) {
@@ -2449,7 +2473,6 @@ sub buildRSConsensiMT {
     close FAM;
     $f_idx++;
   } # foreach my $rsID
-  log_print "" . elapsedTime( "cinstances" ) . "\n";
 
   my $tsk = ThreadedTaskSimple->new();
   $tsk->setWorkingDir($workDir);
@@ -2460,6 +2483,7 @@ sub buildRSConsensiMT {
   my $jobIdx = 0;
   for my $rsID ( sort keys %families ) {
     my $familyID = $families{$rsID}->{'famNum'};
+    # This currently uses the RAMExtend feature of Refiner
     $tsk->addJob( name => "refiner-job-$jobIdx",
                 function => \&refineOneFamily,
                 parameters => ["$workDir/family-$familyID.fa", $genomeDB, $genomeTwoBit, $workDir, 1, $DEBUG] );
@@ -2472,12 +2496,38 @@ sub buildRSConsensiMT {
   $tsk->execute();
   log_print " " . elapsedTime( "family_refinement" ) . "\n"; 
 
+  my %filteredFams = ();
+  # 6/4/25: Filter satellites and contained elements after refinement
+  system("cat $workDir/*refiner_cons > $workDir/refined-cons.fa");
+  log_print "   - Redundant Families and Large Satellite Filtering.. ";
+  elapsedTime( "satellite_filtering" );
+  my ( $satelliteHRef, $containedHRef ) = &identifySatelliteAndContained( workDir => $workDir, consFile => "refined-cons.fa", threads => $threads);
+
+  my $satelliteCount = 0;
+  my $containedCount = 0;
+  foreach my $seqID ( keys %{$satelliteHRef}, keys %{$containedHRef} ) {
+    if ( exists $containedHRef->{ $seqID } ) {
+      $filteredFams{$seqID}++;
+      $containedCount++;
+      print "INFO: Filtering out contained sequence $seqID.\n" if ( $DEBUG );
+      next;
+    }elsif ( exists $satelliteHRef->{ $seqID } ) {
+      $filteredFams{$seqID}++;
+      $satelliteCount++;
+      print "INFO: Filtering out putative satellite $seqID.\n" if ( $DEBUG );
+      next
+    }
+  }
+  log_print "\n      : $satelliteCount satellite(s), $containedCount contained, found in " . elapsedTime("satellite_filtering") . "\n";
+
   for my $rsID ( sort keys %families ) {
     my $cons;
     my $maSize = 1;
     my $numElements = scalar @{$families{$rsID}->{'elements'}};
     $numElements = 100 if ( $numElements > 100 );
     my $famNum = $families{$rsID}->{'famNum'};
+
+    next if ( exists $filteredFams{ "family-$famNum" } );
 
     if ( -s "$workDir/family-$famNum.fa.refiner_cons" ) {
       open INREF, "<$workDir/family-$famNum.fa.refiner_cons"
@@ -2637,8 +2687,6 @@ $a cmp $b
 
   log_print "Family Refinement: " . elapsedTime( "family_refinement" ) . "\n";
 
-  undef $searchEngineN;
-  #return \%families, $numModels;
   undef %families;
   return $numModels;
 
@@ -2819,21 +2867,14 @@ sub buildReconConsensiMT {
         $sequence = reverse( $sequence );
         $sequence =~ tr/ACGTYRMKHBVD/TGCARYKMDVBH/;
         my $tmpOffset = $startOffset;
-        # 2/1/22 : RMH - Bug these should be 1-based, fully closed coordinates
-        #$startOffset = $endOffset;
-        #$endOffset   = $tmpOffset;
+        # 2/1/22 : RMH - bugfix...these are 1-based, fully closed coordinates
         $startOffset = $endOffset-1;
         $endOffset   = $tmpOffset-1;
       }
 
       ## Save the sequence
       $elementRef->{'sequence'} = $sequence;
-      # 2/1/22 : RMH - Bug these should be 1-based, fully closed coordinates
-      #print FAM ">gi|$giID $genomicSeqID" . ":"
-      #    . ( $startOffset + $genomicStartPos - 1 ) . "-"
-      #    . ( $endOffset + $genomicStartPos - 1 )
-      #    . " element-"
-      #    . $elementRef->{'elementID'} . "\n";
+      # 2/1/22 : RMH - bugfix..these are 1-based, fully closed coordinates
       print FAM ">gi|$giID $genomicSeqID" . ":"
           . ( $startOffset + $genomicStartPos ) . "-"
           . ( $endOffset + $genomicStartPos )
@@ -2845,7 +2886,6 @@ sub buildReconConsensiMT {
     }
     close FAM;
     $refinableFamilies{$familyID}++;
-    #print "  - Saving " . ( $#{$elementsRef} + 1 ) . " elements\n";
   }
   print "Instance Gathering: " . elapsedTime( 2 ) . "\n" if ( 1 || $DEBUG );
 
@@ -2870,7 +2910,6 @@ sub buildReconConsensiMT {
   print "Refinement: " . elapsedTime( 2 ) . "\n" if ( $DEBUG );
 
   for my $familyID ( keys %refinableFamilies ) {
-    #print "  - Refining family-$familyID model...\n";
     my $cons;
     my $maSize = 1;
     if ( -s "$workDir/family-$familyID.fa.refiner_cons" ) {
@@ -3036,14 +3075,11 @@ sub refineOneFamily {
   my $threads = shift;
   my $DEBUG = shift;
   
-  my $threadParam = "";
-  $threadParam = " -threads $threads " if ( $threads );
-  # New Refiner
-  #my $cmd = "$FindBin::RealBin/Refiner $threadParam "
-  #        . "-extTwoBit $genomeTwoBit -giToID $genomeDB.translation $instancesFile";
-  my $cmd = "$FindBin::RealBin/Refiner $threadParam "
-          . "-giToID $genomeDB.translation $instancesFile";
+  my $cmd = "$FindBin::RealBin/Refiner -giToID $genomeDB.translation";
+  $cmd .= " -threads $threads " if ( $threads );
+  $cmd .= " -extTwoBit $genomeTwoBit " if ( $genomeTwoBit ne "" );
   $cmd .= " -quiet" unless ( $DEBUG );
+  $cmd .= " $instancesFile";
   #print "CWD: " . `pwd` . "\n";
   #print "Running: $cmd\n";
   system( $cmd );

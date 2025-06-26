@@ -53,7 +53,7 @@ Source Distribution Installation
     with version 5.8.8.
 
   RepeatMasker & Libraries
-    Developed and tested with open-4.1.7-p1. The program is available at 
+    Developed and tested with 4.1.9. The program is available at 
     http://www.repeatmasker.org/RMDownload.html and is distributed with
     Dfam - an open database of transposable element families.
 
@@ -78,6 +78,10 @@ Source Distribution Installation
     and RepeatModeler.  Precompiled binaries and source can be found at
     http://www.repeatmasker.org/RMBlast.html
     We highly recommend using 2.14.1 or higher.
+
+  RepeatAfterMe - An automated MSA extension program for TE families.
+    This is available for download at: https://github.com/Dfam-consortium/RepeatAfterMe.
+    We recommend 0.0.6 or higher.
 
   UCSC genome browser command-line utilities - Some tools included with
     RepeatModeler work with files in the 'twobit' file format using
