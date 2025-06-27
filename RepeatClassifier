@@ -251,7 +251,7 @@ if ( $proteinCount < 17500 ) {
   print "#                      installed.\n";
 }
 # Dfam 3.9 approximate curated TE consensus library size
-if ( $consensiCount < 71000 ) {
+if ( $consensiCount < 26200 ) {
   print "# !!!! WARNING !!!! -- The curated TE consensus library does not appear to be complete.\n";
   print "#                      This may result in poor clasification performance.  Please\n";
   print "#                      ensure that you have the latest version of RepeatMasker\n";

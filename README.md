@@ -313,7 +313,7 @@ RepeatModeler Statistics
 Benchmarks and statistics for runs of RepeatModeler on reference
 genomes.
 
-RepeatModeler 2.0.6 ( RECON + RepeatScout + LTRStruct ) 48 threads:
+RepeatModeler 2.0.7 ( RECON + RepeatScout + LTRStruct ) 48 threads:
 
 Genome          |  Genome DB Size (bp) |   Runtime (hh:mm)*  |  Models Built
 ----------------|----------------------|---------------------|--------------
