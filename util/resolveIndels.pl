@@ -118,6 +118,7 @@ use Data::Dumper;
 use Cwd;
 use File::Spec;
 use File::Basename;
+use Carp;
 
 # RepeatModeler Libraries
 use lib $FindBin::RealBin;
@@ -322,10 +323,30 @@ if ( $method eq "ruzzo_tompa" ) {
     print STDERR "#       length variations.  Therefore, only the ones with length variation passing the ratio\n";
     print STDERR "#       set by the program (marked with '*' will be passed on for cluster/tiling\n";
   }
-  print "Ruzzo-Tompa Ranges\n";
+  print "Ruzzo-Tompa Ranges (by MSA column indices)\n";
   print "  Start\tEnd\tScore\n";
   print "-------------------\n";
   my ($ruzzoTompaBlocks,$ruzzoTompaScores) = $mAlign->getLowScoringAlignmentColumns( 'threshold' => $threshold );
+
+  # DEBUG:
+  if ( 0 ) {
+    my $html = getMultAlnHTML(
+      multAln => $mAlign,
+      headersAboveMSA => [
+         ['lowQualScore', $ruzzoTompaScores]
+      ],
+      coloredBlocks => [
+        ['#CD5C5C', $ruzzoTompaBlocks],
+      ],
+      alignmentBlocks => $ruzzoTompaBlocks,
+      inclRef => 1,
+      DEBUG => 1,
+    );
+    open OUT,">/home/rhubley/public_html/ri.html" or die;
+    print OUT $html;
+    close OUT;
+  }
+
   $ranges = [];
   for ( my $i = 0; $i <= $#{$ruzzoTompaBlocks}; $i++ ) {
     my $block = $ruzzoTompaBlocks->[$i];
@@ -348,6 +369,8 @@ if ( $method eq "ruzzo_tompa" ) {
   }
   # Grab all windows as specified by user
   $ranges = &identifyUnstableBlockerWindows( $mAlign, \@windowSizes, $copymin, $ratio, \%matrix );
+
+
 }
 
 # Sort by ratio position
@@ -447,6 +470,27 @@ if ( $aggregationMethod eq "tile" ) {
   }
   print "\n";
 }
+
+  # DEBUG:
+  if ( 0 ) {
+    my $blocks = [];
+    foreach my $range ( @tilingPath ) {
+      push @{$blocks}, [ $range->[1], $range->[2] ];
+    }
+    my $html = getMultAlnHTML(
+      multAln => $mAlign,
+      coloredBlocks => [
+        ['#CD5C5C', $blocks],
+      ],
+      alignmentBlocks => $blocks,
+      inclRef => 1,
+      DEBUG => 1,
+    );
+    open OUT,">/home/rhubley/public_html/ri.html" or die;
+    print OUT $html;
+    close OUT;
+  }
+
 
 # Alter the consensus
 #   - sort from high to low ranges keep range indexes valid during replacement
@@ -731,7 +775,7 @@ sub evalMSABlock{
     #print "ACCEPT: $start-$end bestcnt = $bestcnt ($copymin) conscnt = $conscnt adjustedratio = $adjustedratio ncount = $ncount  newlength = $newlength\n";
     return ( $bestcnt, $conscnt, $newconsensus, $newlength, $ncount, $secondbestcnt, $secondbestlength);
   }else {
-    print "REJECT: $start-$end bestcnt = $bestcnt ($copymin) conscnt = $conscnt adjustedratio = $adjustedratio ncount = $ncount  newlength = $newlength consLen=$conslen $newconsensus\n";
+    print "REJECT: $start-$end [" . ($#{$subMSA}+1) . " seqs in slice]  most_freq = $bestlength bp [$bestcnt] (must be >= $copymin), cons_len_freq = " . length($consensus) . " bp [$conscnt], most_freq/cons_freq = " . ($bestcnt/$conscnt) . " (must be >= $adjustedratio), ncount = $ncount (must be < 2) or newlength = $newlength (/ncount > $nratiocut),  new:$newconsensus\n";
     return ( 0, 0, "", 0, 0, 0, 0 );
   }
 }
@@ -991,5 +1035,453 @@ print "Second Best Length = $secondbestlength [ $secondbestcnt ]\n";
 }
 
 
- 
-1;
+## New code for visualizing MultAln object in html
+## TODO: return the offset to the first position of the MSA for aligning more information
+## 
+sub getMultAlnHTML {
+    my %parameters = @_;
+
+    my $mAlign  = $parameters{'multAln'}
+      or croak "getMultAlnHTML() missing 'multAln' parameter!\n";
+
+    # If not provided, assume 'inclRef' is false
+    my $inclRef = $parameters{'inclRef'} ? 1 : 0;
+    my $DEBUG   = $parameters{'DEBUG'}   || 0;
+
+    # We'll store all HTML in this scalar and return it
+    my $html = '';
+
+    #-----------------------------------------------------------------------------
+    # 1) Generate HTML header / doctype
+    #-----------------------------------------------------------------------------
+    $html .= <<"END_HEADER";
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+  <title>Alignments</title>
+  <style type="text/css">
+    /* Example CSS classes -- not strictly needed if we do inline styles for color blocks */
+    font.lowQual {
+      background: #CD5C5C;
+    }
+    font.deletion {
+      background: #FF0000;
+    }
+    font.duplication {
+      background: #0000FF;
+    }
+    font.unknown {
+      background: #FFFF00;
+    }
+    font.dupFlank {
+      background: #C0C0C0;
+    }
+  </style>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+</head>
+<body>
+<PRE>
+END_HEADER
+
+    #-----------------------------------------------------------------------------
+    # 2) Compute left/right flank padding for alignment lines
+    #-----------------------------------------------------------------------------
+    my ($maxLeftLen, $maxRightLen) = _compute_flank_padding($mAlign);
+
+    #-----------------------------------------------------------------------------
+    # 3) Print optional MSA column header (the top numeric scale)
+    #    - Often you do this with _build_column_header, or skip if you want none.
+    #-----------------------------------------------------------------------------
+    my $alnLength = length($mAlign->getReferenceSeq());
+    $html .= _build_column_header($alnLength, $maxLeftLen);
+
+    #-----------------------------------------------------------------------------
+    # 4) Print any custom "vertical headers" the user asked for
+    #    e.g. [ ["lowQualScore",[0,0,1.2,...]], ["GCcontent",[0.4,0.7,0.0,...]] ]
+    #-----------------------------------------------------------------------------
+    if (my $headers = $parameters{'headersAboveMSA'}) {
+        $html .= _print_vertical_headers($headers, $maxLeftLen);
+    }
+
+    #-----------------------------------------------------------------------------
+    # 5) Print the CONSENSUS line, optionally including reference in consensus
+    #-----------------------------------------------------------------------------
+    {
+        my $consensus = $inclRef 
+            ? $mAlign->consensus(inclRef => 1)
+            : $mAlign->consensus();
+
+        my $name       = "consensus";
+        my $namePad    = 30 - length($name);
+        my $label      = "<b><i>$name</i></b>" . (' ' x $namePad) . ": ";
+        my $leftSpaces = ' ' x $maxLeftLen;
+
+        # Annotate each base with a hover indicating ungapped position
+        my $annotatedSeq = _annotate_positions_for_hover($consensus, "Cons pos");
+
+        $html .= $label 
+              .  $leftSpaces
+              .  qq(<font color="blue">$annotatedSeq</font>\n);
+    }
+
+    #-----------------------------------------------------------------------------
+    # 6) Print the REFERENCE line, also annotated for hover if desired
+    #-----------------------------------------------------------------------------
+    {
+        my $refName    = "Reference ( " . $mAlign->getReferenceName() . " )";
+        my $pad        = 30 - length($refName);
+        my $label      = "<b><i>$refName</i></b>" . (' ' x $pad) . ": ";
+        my $leftSpaces = ' ' x $maxLeftLen;
+
+        my $refSeq     = $mAlign->getReferenceSeq();
+        my $annotated  = _annotate_positions_for_hover($refSeq, "Ref pos");
+
+        $html .= $label
+              .  $leftSpaces
+              .  qq(<font color="blue">$annotated</font>\n);
+    }
+
+    #-----------------------------------------------------------------------------
+    # 7) Build a color array for each aligned sequence if 'coloredBlocks' is given
+    #    Format:  coloredBlocks => [
+    #       [ '#FF0000', [ [start,end], [start,end], ... ] ],
+    #       [ '#00FF00', [ [start,end] ] ],
+    #       ...
+    #    ]
+    #-----------------------------------------------------------------------------
+    my $coloredBlocksRef = $parameters{'coloredBlocks'} || [];
+    # We'll combine them into a single array of "per-column color" for each sequence on the fly.
+
+    #-----------------------------------------------------------------------------
+    # 8) Print each ALIGNED sequence
+    #-----------------------------------------------------------------------------
+    for (my $i = 0; $i < $mAlign->getNumAlignedSeqs(); $i++) {
+
+        my $seqName = $mAlign->getAlignedName($i);
+        $seqName    = substr($seqName, 0, 30) if length($seqName) > 30;
+        my $pad     = 30 - length($seqName);
+        my $label   = "<b>$seqName</b>" . (' ' x $pad) . ": ";
+
+        my $lfSeq   = $mAlign->getLeftFlankingSequence($i);
+        my $alnSeq  = $mAlign->getAlignedSeq($i);
+        my $rfSeq   = $mAlign->getRightFlankingSequence($i);
+
+        # Spaces for left flank
+        my $lfShift = length($lfSeq) - $mAlign->getAlignedStart($i);
+        my $padding = ' ' x ($maxLeftLen - $lfShift);
+
+        # Possibly highlight left flank in blue
+        my $leftFlank = (defined $parameters{'leftFlankingID'}
+                        && $parameters{'leftFlankingID'} eq ($i - 1))
+                        ? qq(<font color="blue">) . lc($lfSeq) . "</font>"
+                        : lc($lfSeq);
+
+        # Possibly highlight right flank in blue
+        my $rightFlank = (defined $parameters{'rightFlankingID'}
+                         && $parameters{'rightFlankingID'} eq ($i - 1))
+                         ? qq(<font color="blue">) . lc($rfSeq) . "</font>"
+                         : lc($rfSeq);
+
+        # Apply color blocks to the interior alignment
+        my $coloredSeq = _apply_colored_blocks(
+            $alnSeq, 
+            $mAlign->getAlignedStart($i),
+            $coloredBlocksRef
+        );
+
+        # Combine them all into one line
+        my $line = $label
+                 . $padding
+                 . $leftFlank
+                 . $coloredSeq
+                 . $rightFlank
+                 . "\n";
+        $html .= $line;
+    }
+
+    #-----------------------------------------------------------------------------
+    # 9) If we have alignmentBlocks => [ [start,end], [start,end], ... ],
+    #    print them at the bottom. (like your old _print_histogram_info)
+    #-----------------------------------------------------------------------------
+    if (my $blocks = $parameters{'alignmentBlocks'}) {
+        # Only call if we actually have an array of [start,end]
+        if (@$blocks) {
+            $html .= "\n\n";
+            $html .= _print_alignment_blocks($mAlign, $blocks, $maxLeftLen);
+        }
+    }
+
+    #-----------------------------------------------------------------------------
+    # Finish and return
+    #-----------------------------------------------------------------------------
+    $html .= "</PRE>\n</body>\n</html>\n";
+    return $html;
+}
+
+###############################################################################
+# Helper Subroutines
+###############################################################################
+
+#------------------------------------------------------------------------------
+# _compute_flank_padding
+#------------------------------------------------------------------------------
+sub _compute_flank_padding {
+    my ($mAlign) = @_;
+    my $maxLeftLen  = 0;
+    my $maxRightLen = 0;
+
+    my $maxQueryEnd = length($mAlign->getReferenceSeq());
+    for my $seqNum (0 .. $mAlign->getNumAlignedSeqs() - 1) {
+        my $relLeftLen = length($mAlign->getLeftFlankingSequence($seqNum))
+                       - $mAlign->getAlignedStart($seqNum);
+        my $relRightLen = length($mAlign->getRightFlankingSequence($seqNum))
+                        - ($maxQueryEnd - $mAlign->getAlignedEnd($seqNum));
+        $maxLeftLen  = $relLeftLen  if $relLeftLen  > $maxLeftLen;
+        $maxRightLen = $relRightLen if $relRightLen > $maxRightLen;
+    }
+    return ($maxLeftLen, $maxRightLen);
+}
+
+#------------------------------------------------------------------------------
+# _build_column_header
+#------------------------------------------------------------------------------
+# If you still want a column header for 1..N columns, do so vertically here.
+sub _build_column_header {
+    my ($alnLength, $maxLeftLen) = @_;
+    return '' if $alnLength < 1;
+
+    my $html      = '';
+    my $maxDigits = length($alnLength);
+
+    # Pre-build an array of empty strings, one per digit-row
+    my @rows = map { '' } (1..$maxDigits);
+
+    # For each column number, create a right-aligned string of length $maxDigits
+    for my $col (1 .. $alnLength) {
+        my $colStr = sprintf("%*d", $maxDigits, $col);  # e.g. '  42' if maxDigits=3
+        # Distribute each digit into the corresponding row
+        for my $d (0 .. $maxDigits - 1) {
+            $rows[$d] .= substr($colStr, $d, 1);
+        }
+    }
+
+    # Print each row, preceded by 30 spaces for the "label" and $maxLeftLen
+    for my $r (0 .. $maxDigits - 1) {
+        my $namePad = "MSA Column" . ' ' x 20;
+        my $lfPad   = ' ' x $maxLeftLen;
+        $html .= $namePad . ": " . $lfPad . $rows[$r] . "\n";
+    }
+    $html .= "\n";  # Blank line
+    return $html;
+}
+
+#------------------------------------------------------------------------------
+# _annotate_positions_for_hover
+#------------------------------------------------------------------------------
+# For each non-gap character, wrap in <span title="..."> so you can see
+# the ungapped position on mouseover.
+sub _annotate_positions_for_hover {
+    my ($sequence, $labelPrefix) = @_;
+    my $html         = '';
+    my $ungappedPos  = 1;
+
+    for (my $i = 0; $i < length($sequence); $i++) {
+        my $char = substr($sequence, $i, 1);
+        if ($char eq '-') {
+            # Gap: do not increment pos
+            $html .= $char;
+        }
+        else {
+            my $title = qq(title="$labelPrefix: $ungappedPos");
+            $html .= qq(<span $title>$char</span>);
+            $ungappedPos++;
+        }
+    }
+    return $html;
+}
+
+#------------------------------------------------------------------------------
+# _print_vertical_headers
+#------------------------------------------------------------------------------
+# Given an array of:
+#   [ [ $title, [ colVal1, colVal2, ... colValN ] ],
+#     [ $title2, [ colVal1, colVal2, ... colValN ] ], ... ]
+# For each "header," we print a vertical stacking of digits (like your
+# prior "score array" code). Zero values become blank.
+sub _print_vertical_headers {
+    my ($headers, $maxLeftLen) = @_;
+    my $html = '';
+
+    foreach my $header (@$headers) {
+        my ($title, $colVals) = @$header;
+        next if !$colVals || !@$colVals;  # skip empty arrays
+
+        # 1) Convert each val to a string
+        my $maxWidth = 0;
+        my @formatted;
+        for my $val (@$colVals) {
+            # If exactly 0, we make it blank
+            my $str = ($val == 0) ? '' : sprintf("%0.1f", $val);
+            $maxWidth = length($str) if length($str) > $maxWidth;
+            push @formatted, $str;
+        }
+
+        # 2) We'll have $maxWidth rows
+        my @lines = map { '' } (1..$maxWidth);
+
+        for my $str (@formatted) {
+            my $padded = (' ' x ($maxWidth - length($str))) . $str;
+            for (my $i = 0; $i < $maxWidth; $i++) {
+                $lines[$i] .= substr($padded, $i, 1);
+            }
+        }
+
+        # 3) Print them
+        my $paddedLabel = $title . ' ' x (30 - length($title));
+        for my $line (@lines) {
+            $html .= $paddedLabel . ": " . (' ' x $maxLeftLen) . $line . "\n";
+        }
+        $html .= "\n";
+    }
+
+    return $html;
+}
+
+#------------------------------------------------------------------------------
+# _apply_colored_blocks
+#------------------------------------------------------------------------------
+# We build an array @colorForPos that tells us what color each column
+# in $alignedSeq should have (if any). Then we walk the sequence
+# to build an HTML string with <span style="background-color:...">.
+sub _apply_colored_blocks {
+    my ($alignedSeq, $alignedStart, $coloredBlocksRef) = @_;
+
+    my $seqLen = length($alignedSeq);
+    # Initialize no color for each position
+    my @colorForPos = (undef) x $seqLen;
+
+    # For each [ color, [ [start,end], [start,end], ... ] ] tuple
+    # fill colorForPos for the overlapping columns
+    foreach my $blockDef (@$coloredBlocksRef) {
+        my ($color, $ranges) = @$blockDef;
+        next if !$ranges || !@$ranges;
+
+        # For each [start,end]
+        foreach my $range (@$ranges) {
+            my ($start, $end) = @$range;
+            # Convert them to local coords for this aligned sequence
+            my $localStart = $start - $alignedStart;
+            my $localEnd   = $end   - $alignedStart;
+
+            # Skip if out of range
+            next if $localEnd < 0 || $localStart >= $seqLen;
+
+            # Clamp
+            $localStart = 0          if $localStart < 0;
+            $localEnd   = $seqLen-1  if $localEnd   >= $seqLen;
+
+            # Fill in color
+            for my $pos ($localStart .. $localEnd) {
+                $colorForPos[$pos] = $color;
+            }
+        }
+    }
+
+    # Now build the final HTML string
+    my $html  = "<b>";
+    my $pos   = 0;
+
+    while ($pos < $seqLen) {
+        my $currentColor = $colorForPos[$pos];
+        my $char         = substr($alignedSeq, $pos, 1);
+
+        # If there's a color here, we start a <span>; otherwise no color
+        if (defined $currentColor) {
+            # Find how many consecutive columns share this color
+            my $runStart = $pos;
+            while ($pos < $seqLen && defined $colorForPos[$pos] && $colorForPos[$pos] eq $currentColor) {
+                $pos++;
+            }
+            # $pos is now the first position after this color run
+            my $runStr = substr($alignedSeq, $runStart, $pos - $runStart);
+            $html .= qq(<span style="background-color:$currentColor">$runStr</span>);
+        }
+        else {
+            # No color here
+            $html .= $char;
+            $pos++;
+        }
+    }
+
+    $html .= "</b>";
+    return $html;
+}
+
+#------------------------------------------------------------------------------
+# _print_alignment_blocks
+#------------------------------------------------------------------------------
+# If the user wants to list each [start,end] block at the bottom, e.g., to show
+# the alignment sequences that appear in that region, or any summary lines, etc.
+# For demonstration, we'll do something simple. Adapt as needed.
+sub _print_alignment_blocks {
+    my ($mAlign, $blocks, $maxLeftLen) = @_;
+    return '' if !$blocks || !@$blocks;
+
+    # Example: collect sequences from each block and display
+    # (Similar to older "histogram" approach)
+    my $html = '';
+    my $label        = "blockSeqs";
+    my $paddedLabel  = $label . " " x (30 - length($label));
+
+    my $maxRows = 0;
+    my @columnSeqs;
+    foreach my $block (@$blocks) {
+        my ($start, $end) = @$block;
+        my ($cons, $seqsRef) = $mAlign->getAlignmentBlock(
+            start        => $start,
+            end          => $end,
+            rawSequences => 1
+        );
+
+        # Sort them by length descending
+        my @sorted = sort { length($b) <=> length($a) } @$seqsRef;
+        push @columnSeqs, \@sorted;                      
+        $maxRows = @sorted if @sorted > $maxRows;           
+    }
+
+    my $label        = "blockSeqs";                                               
+    my $paddedLabel  = $label . " " x (30 - length($label));                
+    # Build each row                                                                               
+    for my $rowIdx (0 .. $maxRows - 1) {                             
+        my $line = ' ' x $maxLeftLen;                 
+        my $pos  = 0;
+
+        for my $colIdx (0 .. $#$blocks) {
+            my ($start, $end) = @{$blocks->[$colIdx]};
+            my $colWidth = $end - $start + 1;
+
+            # Insert spaces for any gap before this block
+            if (($start - $pos) > 0) {
+                $line .= ' ' x ($start - $pos);
+            }
+
+            # Grab next seq from column
+            my $colSeqArray = $columnSeqs[$colIdx];
+            my $colSeq      = ($rowIdx < @$colSeqArray) ? $colSeqArray->[$rowIdx] : '';
+            $colSeq         = '.' if $colSeq eq '';
+
+            # Pad to fill the block width
+            if (length($colSeq) < $colWidth) {
+                $colSeq .= ' ' x ($colWidth - length($colSeq));
+            }
+            $line .= $colSeq;
+            $pos   = $end + 1;
+        }
+        $html .= "$paddedLabel: $line\n";
+    }
+
+    $html .= "\n\n";
+    return $html;
+}
+

@@ -650,10 +650,12 @@ while ( 1 ) {
      }
   );
 
-  print "#\n";
-  print "# ITERATION " . ( $iterations + 1 ) . "\n";
-  print "#\n";
-  print "#--------------------------------------------------------------------\n";
+  unless ( $options{'quiet'} ) { 
+    print "#\n";
+    print "# ITERATION " . ( $iterations + 1 ) . "\n";
+    print "#\n";
+    print "#--------------------------------------------------------------------\n";
+  }
 
   #
   # pruning
@@ -802,7 +804,7 @@ while ( 1 ) {
   foreach my $consID ( sort { $consRecs->{$a}->{'order'} <=> $consRecs->{$b}->{'order'} } keys(%{$consRecs}) ) {
     next if ( $consRecs->{$consID}->{'stable'} == 1 );
     next if ( $consRecs->{$consID}->{'buffer'} == 1 );
-    print "Working on $consID\n";
+    print "Working on $consID\n" unless ( $options{'quiet'} );
     my $removedMinDiv = 10000;
     my $removedMaxDiv = 0;
     my $removedDivCount = 0;
@@ -1097,9 +1099,11 @@ while ( 1 ) {
     last if ( $changedCnt == 0);
     if ( $iterations >= $maxRefineIterations ) {
       if ( $changedCnt != 0 ) {
-        print "#\n";
-        print "# WARN: Consensus still changing after $maxRefineIterations iterations. May need to continue refinement.\n" unless ( $options{'quiet'} );
-        print "#\n";
+        unless ( $options{'quiet'} ) {
+          print "#\n";
+          print "# WARN: Consensus still changing after $maxRefineIterations iterations. May need to continue refinement.\n";
+          print "#\n";
+        }
       }
       last;
     }

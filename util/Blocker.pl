@@ -77,30 +77,6 @@ the next section of the alignment. For example:
 
 The "startBlock"/"endBlock" parameters refer to the first consensus position
 in a Linup block.  To refer to the second block in the example above one 
-
-=head1 DESCRIPTION
-
-This is a specialized tool for considering regions of a Linup output file 
-( aka "ali" file ).  A typical Linup file is formatted into screen formatted
-portions of a larger alignment.  Each section or "block" looks like:
-
-  consensus         1 TG----G----AC----T----G 7
-  ref:seq1          1 TG----G----AC----T----G 7
-  seq2             10 TA----G----AC---------G 16
-  seq3             12 TG----G----AC----T----G 18
-  seq4             15       G----AC----TA---G 20 
-
-A block is terminated with a blank line and the next "block" continues with 
-the next section of the alignment. For example:
-
-  consensus         8 --G-G-CGTA-T----GCC---A 18
-  ref:seq1          8 A-G-G-C-TA-T----GCC---A 18
-  seq2             17 --G-G-GGTA-TACGTGCC---A 31
-  seq3             19 --G-G-CGAACT----G-C---A 29
-  seq4             21 --A-G-CGTA-T----GCC---A 31
-
-The "startBlock"/"endBlock" parameters refer to the first consensus position
-in a Linup block.  To refer to the second block in the example above one 
 would use "-startBlock 8".  To refer to both the first and second blocks
 one would use "-startBlock 1 -endBlock 8".
 
@@ -112,6 +88,9 @@ in a block and negative columns are counted backwards from the end of a block.
 
 note: script goes awry when not all entries have a unique name, including the 
 name consensus
+
+All slice substrings of the length determined to be best, are used to redevelop
+the consensus of this fixed length.
 
 The options are:
 
@@ -233,24 +212,31 @@ my %mutChar = (
                 "TA" => 'v' );
 
 
-$end = 0 unless $end;
-my $blocktoprint = "";
-my $span = 0;
-my $blockwidth = 0;
-my $take = "";
-my %string = ();
-my $spacelen = 0;
-my %done;
-my %dontdo;
-my $pos;
-my $nextline;
-my $prevline;
+
+
+#
+# Take a slice of the MSA and store the unaligned (sans gaps) substrings in 
+# in the msaSlice hash, including the consensus slice. Also hold the prev
+# consensus (aka. 'ref') sequence identifer (the sequence immediately following
+# the consensus sequence) in the variable 'prevcons'.
+#
+my %msaSlice = ();
 my $prevcons;
+
+# local variables for loop
+my $pos;
+my %done;
+my $span = 0;
+my $take = "";
+my %dontdo;
+my $spacelen = 0;
+my $nextline;
+my $blockwidth = 0;
+$end = 0 unless $end;
 open (IN, $alifile) or die;
 while (<IN>) {
   last if (/^>/);
   if (/^consensus\s+(\d+)(\s+)(\S+)\s+(\d+)/) {
-#    last if /^consensus sequence:/;  Must have been an old format
     my $beg = $1;
     $spacelen = length $2;
     $blockwidth = length $3;
@@ -268,13 +254,13 @@ while (<IN>) {
       $span += $end if $end < 0;
       $span = $end if $end > 0;
       $span = $end - $begin + 1 if ($beginblock == $endblock && $end > 0);
-#only fails in pathological case when someone types a negative beginning and a positive end
-#they deserve it
+      #only fails in pathological case when someone types a negative beginning and a positive end
+      #they deserve it
     }
   }
   if ( $take && /^(\S+)\s+\d+\s{$spacelen}(.{$blockwidth})/ ) {
     my $name = $1;
-    my $string = $2;
+    my $msaSlice = $2;
     my $cnt = 0;
     while ($done{$name}) {
       ++$cnt;
@@ -287,35 +273,38 @@ while (<IN>) {
       $prevcons = $name;
     }	
     $nextline = 1 if $name eq 'consensus';
-    my $sub = substr($string,$pos,$span);
+    my $sub = substr($msaSlice,$pos,$span);
     if ($sub =~ /\s+/) { # alignment starts or ends after block begins or ends
       $dontdo{$name} = 1;
-      $string{$name} = ""; # if alignment started at same spot
+      $msaSlice{$name} = ""; # if alignment started at same spot
       next;
     }
     $sub =~ tr/-//d;
-    $string{$name} .= $sub;
+    $msaSlice{$name} .= $sub;
   }
 }
 
-my $conslen = length $string{'consensus'};
-
+# Create a hash of the slice sequence lengths (msaSliceLens), identify
+# the longest sequence identifier length (maxname) and sequence length
+# (maxsub).
 my $maxname = 0;
 my $maxsub = 0;
-my %length;
-foreach my $key (keys %string) {
-  $length{$key} = (length $string{$key});
-  $maxsub = $length{$key} if $length{$key} > $maxsub;
+my %msaSliceLens = ();
+foreach my $key (keys %msaSlice) {
+  $msaSliceLens{$key} = (length $msaSlice{$key});
+  $maxsub = $msaSliceLens{$key} if $msaSliceLens{$key} > $maxsub;
   $maxname = (length $key) if (length $key) > $maxname;
 }
 
+
+# Calculate the most and second most frequent lengths and their
+# counts
+my $conslen = length $msaSlice{'consensus'};
 my $space = " " x ($maxname - 9) ; # consensus is 9 characters;
-$blocktoprint = "consensus $space $string{'consensus'}\n";
-
+my $blocktoprint = "consensus $space $msaSlice{'consensus'}\n";
 $space = " " x ($maxname - (length $prevcons)) ; 
-$blocktoprint .= "$prevcons $space $string{$prevcons}\n";
-$length{'consensus'} = $length{$prevcons} = 0; 
-
+$blocktoprint .= "$prevcons $space $msaSlice{$prevcons}\n";
+$msaSliceLens{'consensus'} = $msaSliceLens{$prevcons} = 0; 
 my $bestlength = 0;
 my $maxcnt = 0;
 my $conscnt = 0;
@@ -324,11 +313,11 @@ my $secondbestlength = 0;
 my %cnt = ();
 my $totalcnt = 0;
 for (my $i = 1; $i <= $maxsub; $i++) {
-  foreach my $name (keys %length) {
-    if ($length{$name} == $i) {
+  foreach my $name (keys %msaSliceLens) {
+    if ($msaSliceLens{$name} == $i) {
       my $diff = $maxname - (length $name);
       $space = " " x $diff;
-      $blocktoprint .= "$name $space $string{$name}\n";
+      $blocktoprint .= "$name $space $msaSlice{$name}\n";
       ++$cnt{$i};
       ++$totalcnt;
     }
@@ -347,6 +336,7 @@ for (my $i = 1; $i <= $maxsub; $i++) {
   }
 }
 
+
 # to report a cluster of longer sequences; these tend to be off the screen
 my $outlier = "";
 if ($maxsub > $bestlength + 3) {
@@ -362,12 +352,13 @@ if ($maxsub > $bestlength + 3) {
   }
 }
 
+# Place all sequences of the 'bestlength' into a hash ('col').
 my %col;
-foreach my $name (keys %length) {
-  if ($length{$name} == $bestlength) {
-    my @string = split "", $string{$name};
+foreach my $name (keys %msaSliceLens) {
+  if ($msaSliceLens{$name} == $bestlength) {
+    my @tmpStrings = split "", $msaSlice{$name};
     for (my $i = 0; $i < $bestlength; ++$i) {
-      $col{$i} .= $string[$i];
+      $col{$i} .= $tmpStrings[$i];
     }
   }
 }
@@ -392,8 +383,8 @@ while (<IN>) {
 close IN;
 
 my $printalert = "";
-$printalert = "Length difference. " unless $bestlength == (length $string{'consensus'});
-my @oldstring = split "", $string{'consensus'};
+$printalert = "Length difference. " unless $bestlength == (length $msaSlice{'consensus'});
+my @oldstring = split "", $msaSlice{'consensus'};
 my $newstring = "";
 my $maxl;
 my $spacer = "    ";
@@ -427,14 +418,14 @@ for (my $i = 0; $i < $bestlength; ++$i) {
 my $diff = $spacer;
 if ( $options{'cmdiffs'} ) {
   $diff = "    ";
-  my $diffLen = length($string{'consensus'});
+  my $diffLen = length($msaSlice{'consensus'});
   $diffLen = length($newstring) if ( length($newstring) > $diffLen );
   for ( my $i = 0; $i < $diffLen; $i++ )
   {
     my $newB;
     $newB = substr( $newstring, $i, 1 ) if ( $i < length($newstring) );
     my $oldB;
-    $oldB = substr( $string{'consensus'}, $i, 1 ) if ( $i < length($string{'consensus'}));
+    $oldB = substr( $msaSlice{'consensus'}, $i, 1 ) if ( $i < length($msaSlice{'consensus'}));
     if ( ! defined $newB || ! defined $oldB ) {
       $diff .= "-";
     }elsif ( my $mc = $mutChar{ uc( $newB . $oldB ) } )
@@ -453,11 +444,11 @@ if ( $options{'cmdiffs'} ) {
 
 if ($printalert) {
   if ($printalert =~ /^Len/) {
-    print "\n$printalert$maxcnt of $totalcnt for $bestlength bp ($secondbestcnt second best for $secondbestlength bp$outlier, $conscnt for original $conslen bp)\nold $string{'consensus'}\n$diff\nnew $newstring\n";
+    print "\n$printalert$maxcnt of $totalcnt for $bestlength bp ($secondbestcnt second best for $secondbestlength bp$outlier, $conscnt for original $conslen bp)\nold $msaSlice{'consensus'}\n$diff\nnew $newstring\n";
   } else {
-    print "\n$printalert$maxcnt of $totalcnt for $bestlength bp ($secondbestcnt second best for $secondbestlength bp$outlier)\nold $string{'consensus'}\n$diff\nnew $newstring\n";
+    print "\n$printalert$maxcnt of $totalcnt for $bestlength bp ($secondbestcnt second best for $secondbestlength bp$outlier)\nold $msaSlice{'consensus'}\n$diff\nnew $newstring\n";
   }
 } else {
-  print "\n$maxcnt of $totalcnt for $bestlength bp ($secondbestcnt second best for $secondbestlength bp$outlier)\nsame $string{'consensus'}\n";
+  print "\n$maxcnt of $totalcnt for $bestlength bp ($secondbestcnt second best for $secondbestlength bp$outlier)\nsame $msaSlice{'consensus'}\n";
 }
 print "\n$blocktoprint\n";

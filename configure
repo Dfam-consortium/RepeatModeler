@@ -253,6 +253,9 @@ if ( $tmpStr =~ /version\s+(\d+)\.(\d+)\.(\d+)(p\d+)?/ ) {
   }
 }
 
+if ( !$options{'repeatafterme_dir'} ) {
+  RepModelConfig::promptForParam( 'REPEATAFTERME_DIR' );
+}
 if ( !$options{'recon_dir'} ) {
   RepModelConfig::promptForParam( 'RECON_DIR' );
 }

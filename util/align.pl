@@ -264,6 +264,19 @@ if ( $options{'alignments'} || $options{'caf'} ) {
   $gen_alignments = 1;
 }
 
+
+# Get the SHELL environment variable
+my $shell = $ENV{'SHELL'};
+
+my $shell_type = "Unknown";
+if (defined $shell) {
+  if ($shell =~ /csh$/) {
+    $shell_type = "csh";
+  } elsif ($shell =~ /sh$/) {
+    $shell_type = "sh";
+  }
+}
+
 my $engine_dir;
 my $engine_prg;
 my $sEngineObj;
@@ -541,9 +554,11 @@ unless ( $options{'quiet'} ) {
   my $cmdLine = $sEngineObj->getParameters();
   $cmdLine =~ s/(.{50}[^\/\s]+)/$1\n\#                  /g;
   if ( $engine eq "rmblast" ) {
-    print "#  command_line  : export BLASTMAT=" . dirname($resolvedMatrix) . ";\n";
+    my $shell_prefix = "export BLASTMAT=";
+    $shell_prefix = "setenv BLASTMAT " if ( $shell_type eq "csh" );
+    print "#  command_line  : $shell_prefix" . dirname($resolvedMatrix) . ";\n";
     print "#                $cmdLine\n";
-    print "#  copy_paste    : export BLASTMAT=" . dirname($resolvedMatrix) . "; " . 
+    print "#  copy_paste    : $shell_prefix" . dirname($resolvedMatrix) . "; " . 
           $sEngineObj->getParameters() . "\n"; #if ( $options{'verbose'} );
     print "#  database: $db_seqs sequences, $db_size bp\n";
     print "#  matrix: $resolvedMatrix";

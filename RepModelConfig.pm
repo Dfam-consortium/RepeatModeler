@@ -123,7 +123,7 @@ BEGIN {
                          },
           'REPEATMASKER_DIR' => {
                                   'command_line_override' => 'repeatmasker_dir',
-                                  'description' => 'The path to the installation of RepeatMasker (RM 4.1.4 or higher)',
+                                  'description' => 'The path to the installation of RepeatMasker (RM 4.1.5 or higher)',
                                   'environment_override' => 'REPEATMASKER_DIR',
                                   'expected_binaries' => [
                                                            'RepeatMasker'
@@ -134,7 +134,7 @@ BEGIN {
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
-                             'description' => 'The path to the installation of the RMBLAST (2.13.0 or higher)',
+                             'description' => 'The path to the installation of the RMBLAST (2.14.1 or higher)',
                              'environment_override' => 'RMBLAST_DIR',
                              'expected_binaries' => [
                                                       'rmblastn',
@@ -159,6 +159,17 @@ BEGIN {
                             'param_type' => 'directory',
                             'required' => 1,
                             'value' => '/home/rhubley/projects/RepeatScout-1.0.7'
+                          },
+          'REPEATAFTERME_DIR' => {
+                            'command_line_override' => 'repeatafterme_dir',
+                            'description' => 'The path to the installation of the RepeatAfterMe ( 0.0.6 or higher ) extension program.',
+                            'environment_override' => 'REPEATAFTERME_DIR',
+                            'expected_binaries' => [
+                                                     'RAMExtend'
+                                                   ],
+                            'param_type' => 'directory',
+                            'required' => 1,
+                            'value' => '/usr/local/RepeatAfterMe'
                           },
           'TRF_DIR' => {
                          'command_line_override' => 'trf_dir',
@@ -198,7 +209,7 @@ BEGIN {
   #
   # Current version of the software
   #
-  $VERSION = "2.0.6";
+  $VERSION = "2.0.7";
 
   #
   # Set this flag to default to debug mode for the entire package
@@ -608,7 +619,7 @@ BEGIN {
     }elsif ( $param eq "REPEATAFTERME_DIR" ) {
       #ExtendAlign -h
       #ExtendAlign Version 0.0.4 - build 436 date 20201118
-      $tmpStr = `$value/ExtendAlign -h 2>&1`;
+      $tmpStr = `$value/RAMExtend -h 2>&1`;
       $tmpStr =~ /Version\s+(\d+\.\d+\.\d+)/;
       $version = $1;
     }

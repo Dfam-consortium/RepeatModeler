@@ -204,11 +204,11 @@ if ( $seq ) {
     foreach my $result ( @{ $results{$id} } ) {
       my $len = $result->[ 1 ] - $result->[ 0 ] + 1;
       substr( $seq, $result->[ 0 ] - 1, $len ) = "N" x $len;
+      $repeatsMasked++;
     }
   }
   $seq =~ s/(.{50})/$1\n/g;
   print OUT "$fullHDR$seq\n";
-  $repeatsMasked++;
 }
 close IN;
 close OUT;

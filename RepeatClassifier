@@ -11,7 +11,7 @@
 ##      is compatable with the RepeatMasker program.
 ##
 #******************************************************************************
-#* Copyright (C) Institute for Systems Biology 2008-2019 Developed by
+#* Copyright (C) Institute for Systems Biology 2008-2025 Developed by
 #* Arian Smit and Robert Hubley.
 #*
 #* This work is licensed under the Open Source License v2.1.  To view a copy
@@ -19,10 +19,6 @@
 #* see the license.txt file contained in this distribution.
 #*
 ###############################################################################
-#
-# To Do:
-#
-#
 
 =head1 NAME
 
@@ -57,7 +53,7 @@ RepeatModeler
 
 =head1 COPYRIGHT
 
-Copyright 2005-2019 Institute for Systems Biology
+Copyright 2005-2025 Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -84,7 +80,6 @@ use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use RepeatUtil;
 
 # RepeatMasker Libraries
-use WUBlastSearchEngine;
 use NCBIBlastSearchEngine;
 use SearchResult;
 use SearchResultCollection;
@@ -178,6 +173,8 @@ my $config           = $RepModelConfig::configuration;
 my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLASTN_PRGM    = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $NCBIBLASTX_PRGM  = $config->{'RMBLAST_DIR'}->{'value'} . "/blastx";
+my $cmdSuffix = "> /dev/null 2>&1";
+$cmdSuffix = "" if ( $DEBUG );
 
 #
 # Setup the search engine
@@ -193,19 +190,80 @@ if ( not defined $searchEngineN ) {
       . "running the configure script.\n";
 }
 
+# 
+# Assess reference libraries
+#
+my $TE_PROTEIN_LIB = "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib";
+my $TE_CONSENSUS_LIB = "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib";
+
+if ( !-s "$TE_CONSENSUS_LIB" . ".nsq" ) {
+  die "Missing $TE_CONSENSUS_LIB" . ".nsq!\n" 
+      . "Please rerun the configure program "
+      . "in the RepeatMasker directory\nbefore running this script.\n";
+}
+if ( !-s "$TE_PROTEIN_LIB".".psq" ) {
+  die "Missing $TE_PROTEIN_LIB" . ".psq!\n"
+      . "Please rerun the configure program in the RepeatMasker directory\n"
+      . "before running this script.\n";
+}
+
+open IN, "<$TE_PROTEIN_LIB"
+    or die "Could not open $TE_PROTEIN_LIB for reading!\n";
+my $proteinCount = 0;
+while (<IN>) {
+  $proteinCount++ if ( /^>/ );
+}
+close IN;
+
+open IN, "<$TE_CONSENSUS_LIB"
+    or die "Could not open $TE_CONSENSUS_LIB for reading!\n";
+my $consensiCount = 0;
+while (<IN>) {
+  # We could also count the taxa
+  $consensiCount++ if ( /^>/ );
+}
+close IN;
+
+
 #
 # Print greeting
 #
-print "RepeatClassifier Version $version\n";
-print "======================================\n";
+print "#\n"; 
+print "# RepeatClassifier\n";
+print "#\n";
+print "# Version $version\n";
+if ( $options{'threads'} ) {
+  print "# Threads: " . $options{'threads'} . "\n";
+}else {
+  print "# Threads: 1\n";
+}
+print "# Current Working Directory: " . getcwd() . "\n";
+print "# Protein Library: $TE_PROTEIN_LIB\n";
+print "#   - $proteinCount proteins\n";
+print "# Consensi Library: $TE_CONSENSUS_LIB\n";
+print "#   - $consensiCount consensus sequences\n";
+
+# RepeatMasker 4.1.9 approximate protein library size
+if ( $proteinCount < 17500 ) {
+  print "# !!!! WARNING !!!! -- The protein library does not appear to be complete.\n";
+  print "#                      This may result in poor clasification performance.  Please\n";
+  print "#                      ensure that you have the latest version of RepeatMasker\n";
+  print "#                      installed.\n";
+}
+# Dfam 3.9 approximate curated TE consensus library size
+if ( $consensiCount < 26200 ) {
+  print "# !!!! WARNING !!!! -- The curated TE consensus library does not appear to be complete.\n";
+  print "#                      This may result in poor clasification performance.  Please\n";
+  print "#                      ensure that you have the latest version of RepeatMasker\n";
+  print "#                      installed and that you have installed the complete set of Dfam\n";
+  print "#                      partitions.\n";
+}
 
 if ( $DEBUG ) {
-  print "\nRepeatClassifier run as: $0 " . join( @ARGV ) . "\n";
-  print "Current Working Directory: " . getcwd() . "\n";
-  print "Perl Version: $]\n\n";
+  print "# RepeatClassifier run as: $0 " . join( @ARGV ) . "\n";
+  print "# Perl Version: $]\n\n";
 }
-my $cmdSuffix = "> /dev/null 2>&1";
-$cmdSuffix = "" if ( $DEBUG );
+
 
 #-------------------------------------------------------------------------##
 #
@@ -217,7 +275,7 @@ $cmdSuffix = "" if ( $DEBUG );
 # We currently use TRF and RepeatMasker to scan for low_complexity and
 # and tandem repeats.
 #
-print "  - Looking for Simple and Low Complexity sequences..\n";
+print "  - Looking for simple/tandem and low complexity sequences..\n";
 system( "cp $options{'consensi'} tmpConsensi.fa" );
 open IN, "<$options{'consensi'}"
     or die "Could not open $options{'consensi'} for reading!\n";
@@ -311,7 +369,6 @@ my $maskedDB = FastaDB->new( fileName => "tmpConsensi.fa.masked",
                              openMode => SeqDBI::ReadOnly );
 
 my %simpleRepeats = ();
-
 foreach my $seqID ( $maskedDB->getIDs() ) {
   my $seq = $maskedDB->getSequence( $seqID );
   $seq =~ s/[Nn]/\#/g;
@@ -322,7 +379,7 @@ foreach my $seqID ( $maskedDB->getIDs() ) {
           . ( length( $seq ) - $numAmbig )
           . "bp unmasked ).\n"
           if ( $DEBUG );
-      $simpleRepeats{$seqID}++;
+      $simpleRepeats{$seqID} = [ $numAmbig, length($seq) ];
     }
   }
 }
@@ -343,7 +400,7 @@ foreach my $seqID ( $maskedDB->getIDs() ) {
 #
 # Step 2: comparison against database of transposon proteins
 #
-# wublastx the simple-masked consensi vs the transposable element
+# blastx the simple-masked consensi vs the transposable element
 # protein database with the fasta line format
 #      >TWIFBIG#DNA/HAT-Ac
 # This name may be *immediately* followed by #ReverseORF to indicate
@@ -351,7 +408,7 @@ foreach my $seqID ( $maskedDB->getIDs() ) {
 # transposable element. It needs to be right after it, otherwise it
 # may fall on the next line in the blastx output's hit description.
 #
-# WUBLASTX_PRGM parameters default with -W 2
+# BLASTX_PRGM parameters default with -W 2
 # Originally I had: -filter xnu -wordmask seg
 # but the masking of simple repeats and low_complexity at the DNA
 # level seems better (more real matches reported)
@@ -368,22 +425,17 @@ my $masklevel = 80;
 
 # initialize the search
 my $blastCmd;
-if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib.psq" ) {
-  die "Missing $REPEATMASKER_DIR/Libraries/"
-      . "RepeatPeps.lib.psq!\n"
-      . "Please rerun the configure program in the RepeatMasker directory\n"
-      . "before running this script.\n";
-}
 my $additionalOpts = "";
 $additionalOpts = "-num_threads $options{'threads'} " if ( $options{'threads'} );
 $blastCmd =
       "$NCBIBLASTX_PRGM "
-    . "-db $REPEATMASKER_DIR/Libraries/RepeatPeps.lib "
+    . "-db $TE_PROTEIN_LIB "
     . $additionalOpts
     . "-query tmpConsensi.fa.masked -word_size 2 > tmpBlastXResults.out 2>&1";
-print "      + Running rmblastx vs RepeatPeps.lib...\n" if ( $DEBUG );
 
+print "      + Running rmblastx vs TE Protein Database...\n" if ( $DEBUG );
 print "        o Running: $blastCmd\n" if ( $DEBUG );
+
 system( $blastCmd );
 
 if ( !-s "tmpBlastXResults.out" ) {
@@ -393,11 +445,9 @@ if ( !-s "tmpBlastXResults.out" ) {
 
 # Reads in the blastx output
 # creates %pval; rest is written to files
-my $blastXResults = &wublastxanalysis(
+my $blastXResults = &blastxAnalysis(
   fileName     => "tmpBlastXResults.out",
   pValueCutoff => $cutoffP,
-
-  #seqDB        => $consDB,
   masklevel => $masklevel
 );
 
@@ -438,20 +488,12 @@ if ( $options{'threads'} ) {
   $searchEngineN->setCores( 1 );
 }
 $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
+$searchEngineN->setSubject( $TE_CONSENSUS_LIB );
 $searchEngineN->setQuery( "tmpConsensi.fa.masked" );
-
 $searchEngineN->setMatrix(
                        "$FindBin::RealBin/Matrices/ncbi/nt/comparison.matrix" );
 
-if ( !-s "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib.nsq" ) {
-  die "Missing $REPEATMASKER_DIR/Libraries/"
-      . "RepeatMasker.lib.nsq!\nPlease rerun the configure program "
-      . "in the RepeatMasker directory\nbefore running this script.\n";
-}
-
-$searchEngineN->setSubject( "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib" );
-
-print "    + Running blastn vs RepeatMasker.lib...\n" if ( $DEBUG );
+print "    + Running blastn vs TE Consensus Database...\n" if ( $DEBUG );
 my ( $status, $searchResultCol ) = $searchEngineN->search();
 
 if ( $status ) {
@@ -462,7 +504,7 @@ my ( $classref, $oriref ) = &vsRMlibAnalysis( searchResults => $searchResultCol,
                                               blastXResults => $blastXResults );
 
 # 2.0 change. If family originates from the LTR pipeline
-# assume that it's at least an LTR/Unknown rather than Uknown.
+# assume that it's at least an LTR/Unknown rather than Unknown.
 foreach my $id ( keys %{$classref} ) {
   if ( $id =~ /^ltr-/
        && ( $classref->{$id} eq "" || $classref->{$id} =~ /Unknown/ ) )
@@ -531,11 +573,6 @@ if ( $options{'stockholm'} ) {
 #   1) and 4) are true
 #   highest score vs repeatmasker library < 400
 
-## No code yet!
-
-# remember to add:
-# wu-blast of final consensus seqs against reverse, non-complimented
-# random genome batch to catch false positives
 unlink "tmpBlastXResults.out" if ( !$DEBUG && -e "tmpBlastXResults.out" );
 unlink "tmpBlastXResults.out.bxsummary"
     if ( !$DEBUG && -e "tmpBlastXResults.out.bxsummary" );
@@ -545,42 +582,42 @@ unlink "tmpConsensi.fa.masked" if ( !$DEBUG && -e "tmpConsensi.fa.masked" );
 unlink "tmpConsensi.fa.out"    if ( !$DEBUG && -e "tmpConsensi.fa.out" );
 unlink "tmpConsensi.fa.tbl"    if ( !$DEBUG && -e "tmpConsensi.fa.tbl" );
 
-#unlink "tempoutfile"        if ( !$DEBUG && -e "tempoutfile" );
-#unlink "consensi.fa.masked" if ( !$DEBUG && -e "consensi.fa.masked" );
-
 # Cya!
 exit;
+
+
+
 
 #-------------------- S U B R O U T I N E S ------------------------------#
 
 ##---------------------------------------------------------------------##
-## Use: my $pValuesRef = &wublastxanalysis( fileName => "",
+## Use: my $pValuesRef = &blastxAnalysis( fileName => "",
 ##                                          pValueCutoff => #,
 ##                                          seqDB => SeqDBI,
 ##                                          masklevel => # );
 ##
-##      fileName       : Reads in a wublastx results file, interprets
+##      fileName       : Reads in a blastx results file, interprets
 ##                       matches and creates a semi-classified "tempoutfile".
 ##
 ##  Returns
 ##
 ##
 ##---------------------------------------------------------------------##
-sub wublastxanalysis {
+sub blastxAnalysis {
   my %parameters = @_;
 
   # Result file
-  die $CLASS . "::wublastxanalysis(): Bad or missing fileName parameter!"
+  die $CLASS . "::blastxAnalysis(): Bad or missing fileName parameter!"
       if ( !defined $parameters{'fileName'} || !-s $parameters{'fileName'} );
   my $summaryfile = $parameters{'fileName'} . ".bxsummary";
   open BXTP, "<$parameters{'fileName'}"
       || die $CLASS
-      . "::wublastxanalysis(): Could not open file $parameters{'fileName'}!\n";
+      . "::blastxAnalysis(): Could not open file $parameters{'fileName'}!\n";
 
-  die $CLASS . "::wublastxanalysis(): Missing pValueCutoff parameter!"
+  die $CLASS . "::blastxAnalysis(): Missing pValueCutoff parameter!"
       if ( !defined $parameters{'pValueCutoff'} );
 
-  die $CLASS . "::wublastxanalysis(): Missing output parameter!"
+  die $CLASS . "::blastxAnalysis(): Missing output parameter!"
       if ( !defined $parameters{'masklevel'} );
   my $masklevel = $parameters{'masklevel'};
 
@@ -607,7 +644,7 @@ sub wublastxanalysis {
   my $orientation;
   my $sbjct;
 
-  open SUMR, ">$summaryfile";
+  open SUMR, ">$summaryfile" or die "Could not open summary file $summaryfile for writing!\n";
 
   #
   # Read in blastx results and for each queryHitSet call
@@ -767,8 +804,8 @@ sub chooseBestBlastX {
     die "begb $a $b"   unless $queryHits->{$b}->{'beg'};
     die "scorea $a $b" unless $queryHits->{$a}->{'score'};
     die "scoreb $a $b" unless $queryHits->{$b}->{'score'};
-    ( $queryHits->{$a}->{'beg'} <=> $queryHits->{$b}->{'beg'} )
-        || ( $queryHits->{$a}->{'score'} <=> $queryHits->{$b}->{'score'} );
+        ( $queryHits->{$a}->{'beg'} <=> $queryHits->{$b}->{'beg'} )
+     || ( $queryHits->{$a}->{'score'} <=> $queryHits->{$b}->{'score'} );
   } grep { !/query|oppositestrand/ } keys %{$queryHits};
 
   my $nr = 0;
@@ -776,12 +813,14 @@ sub chooseBestBlastX {
   if ( $#sortedmatches >= 0 ) {
 SUBJECTS:
     foreach my $subj ( @sortedmatches ) {
+      # Sorted by beg ascending and then by score ascending
       my $matchlength =
           $queryHits->{$subj}->{'end'} - $queryHits->{$subj}->{'beg'} + 1;
       my $minlength =
           ( $queryHits->{$subj}->{'end'} - $queryHits->{$subj}->{'beg'} + 1 ) *
           ( 100 - $masklevel ) / 100;
       my $i = $nr + 1;
+      ## Compare first rec to other matches that overlap more than masklevel
       while (    $sortedmatches[ $i ]
               && $queryHits->{ $sortedmatches[ $i ] }->{'beg'} -
               $queryHits->{$subj}->{'beg'} < $minlength )
@@ -795,11 +834,24 @@ SUBJECTS:
           $queryHits->{$subj}->{'score'}
             )
         {
-          if ( $queryHits->{$subj}->{'end'} <=
-                  $queryHits->{ $sortedmatches[ $i ] }->{'end'}
-               || $queryHits->{ $sortedmatches[ $i ] }->{'beg'} -
+          # Quality of i is better or equal to subj both in 
+          # p-value and raw score.
+         
+          # Then: 
+          #  -------subj------
+          #         --------i--------
+          # or
+          #  -------subj------
+          #       -----i------
+          # or
+          #  -----subj-------
+          #      ---i---
+          #  ****  +    ***** < minlength
+          if ( ($queryHits->{$subj}->{'end'} <=
+                  $queryHits->{ $sortedmatches[ $i ] }->{'end'})
+               || ($queryHits->{ $sortedmatches[ $i ] }->{'beg'} -
                $queryHits->{$subj}->{'beg'} + $queryHits->{$subj}->{'end'} -
-               $queryHits->{ $sortedmatches[ $i ] }->{'end'} < $minlength )
+               $queryHits->{ $sortedmatches[ $i ] }->{'end'} < $minlength ) )
           {
             ++$nr;
             next SUBJECTS;
@@ -902,7 +954,7 @@ SUBJECTS:
           if (    $mostSigPValue == 0
                || $queryHits->{$subj}->{'p'} < $mostSigPValue );
 
-#print "Most sig pVal = $mostSigPValue, lastclass = $lastclass\n" if ( $DEBUG );
+      #print "Most sig pVal = $mostSigPValue, lastclass = $lastclass\n" if ( $DEBUG );
       ++$nr;
     }
 
@@ -920,7 +972,7 @@ SUBJECTS:
 }
 
 ##---------------------------------------------------------------------##
-## Use: &vsRMLibAnalysis( searchResults => $resultsRef,
+## Use: &vsRMlibAnalysis( searchResults => $resultsRef,
 ##                         pValues => \%pValues );
 ##
 ##  Returns
@@ -936,14 +988,11 @@ sub vsRMlibAnalysis {
   die $CLASS . "::vsRMlibAnalysis(): Missing blastXResults parameter!"
       if ( !defined $parameters{'blastXResults'} );
 
-  my ( %class, %ori ) = ();
   my $blastXResults = $parameters{'blastXResults'};
 
-  # note that this sub is reading in a modified cross_match file
-  # similar to the repeatmasker .out file having "+" for forward strand matches
-  # so that all lines have the same number of columns.
-  # They do not have the query and subject names split on #
-  my ( %combscore, $oriented, @dnaclass, @ori );
+  ## WARNING: Overloaded variable names
+  my ( %class, %ori ) = ();
+  my ( %combscore, @dnaclass, @ori );
 
   # Initialize ds with bx results
   foreach my $bxResultsKey ( keys( %{$blastXResults} ) ) {
@@ -962,13 +1011,11 @@ sub vsRMlibAnalysis {
 
     print "RESULT:" . $result->toStringFormatted() . "\n" if ( $DEBUG );
     if ( $result->getSubjName() =~ /\#buffer/ ) {
-
       # Ignore buffer matches
       next;
     }
 
     if ( $query && $result->getQueryName() ne $query ) {
-
       # see if there were conflicts for the last query
       # either as compared to the protein annotation
       # or within the repeatmasker library comparison
@@ -1017,7 +1064,6 @@ sub vsRMlibAnalysis {
   }
 
   if ( @dnaclass ) {
-
     #print "Running conflict solver on2: " . Dumper( \@dnaclass ) . "\n";
     ( $class{$query}, $ori{$query} ) =
         &conflictsolver( $query, $blastXResults, \@dnaclass, \@ori, \%combscore,
@@ -1044,12 +1090,12 @@ sub conflictsolver {
   my $pickedClass       = "";
   my $pickedClassCompat = undef;
 
-# Choose the higest scoring match at first.  If it's not
-# compatible look for something that is at least 2/3's its
-# score and *is* compatible to replace it.
-#print "conflictsolver: $query\n";
-#print "  - Best protein hit: class=$protClass pVal=$protPVal orient=$protOrient\n";
-#print "  - DNA Matches: " . Dumper($dnaScores) . "\n";
+  # Choose the higest scoring match at first.  If it's not
+  # compatible look for something that is at least 2/3's its
+  # score and *is* compatible to replace it.
+  #print "conflictsolver: $query\n";
+  #print "  - Best protein hit: class=$protClass pVal=$protPVal orient=$protOrient\n";
+  #print "  - DNA Matches: " . Dumper($dnaScores) . "\n";
   foreach my $dnaMatch ( sort { $dnaScores->{$b} <=> $dnaScores->{$a} }
                          keys %{$dnaScores} )
   {
@@ -1058,7 +1104,7 @@ sub conflictsolver {
                                              $dnaScores, $protPVal,   $queryLen
     );
 
-#print "  - Considering $dnaMatch: score = $dnaScores->{$dnaMatch} compatible?: $dnaAndProteinCompatible\n";
+    #print "  - Considering $dnaMatch: score = $dnaScores->{$dnaMatch} compatible?: $dnaAndProteinCompatible\n";
     if (
         $pickedClass eq ""
         || ( !$pickedClassCompat
@@ -1082,9 +1128,6 @@ sub conflictsolver {
 
 }
 
-##------------------------------------------------------------------------------##
-## Arian's code
-##------------------------------------------------------------------------------##
 sub matchprotanddnaclass {
   my ( $protclass, $orient, $comb, $combscoreref, $pval, $queryLen ) = @_;
 
@@ -1258,12 +1301,10 @@ sub matchprotanddnaclass {
     }
   }
 
-#print "matchprotanddnaclass RETURNING class=$class, orient=$ori, noconflict=$noconflict\n" if ( $DEBUG );
+  #print "matchprotanddnaclass RETURNING class=$class, orient=$ori, noconflict=$noconflict\n" if ( $DEBUG );
   return ( $class, $ori, $noconflict );
 }
 
-##--------------------------------------------------------------------------##
-##--------------------------------------------------------------------------##
 sub changeconsensusfastafile {
   my $classref         = shift;
   my $oriref           = shift;

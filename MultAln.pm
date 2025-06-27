@@ -2654,19 +2654,22 @@ sub _alignFromSearchResultCollection {
 
 
   Use: my ( $columns, $valArray) = getLowScoringAlignmentColumns( 
-                                       matrix => MATRIXREF,
-                                       gapInitiationPenalty => SCALAR,
-                                       gapExtensionPenalty => SCALAR,
-                                       threshold => SCALAR 
+                                       [matrix => MATRIXREF],
+                                       [gapInitiationPenalty => SCALAR],
+                                       [gapExtensionPenalty => SCALAR],
+                                       [threshold => SCALAR] 
                                                                 );
 
 
       matrix               : A reference to a SequenceSimilarityMatrix
-                              object.
-      gapInitiationPenalty : The penalty to initiate a gap.
-      gapExtensionPenalty  : The penalty to extend a gap.
+                              object. (Default: comparison.matrix)
+      gapInitiationPenalty : The penalty to initiate a gap. (Default: -40)
+      gapExtensionPenalty  : The penalty to extend a gap. (Default: -15)
       threshold            : The maximum score for which to report
-                              low scoring blocks (DEFAULT: 1).
+                              low scoring blocks (Default: 1).
+                              NOTE: $valArray will be all score values 
+                                    for the msa columns regardless
+                                    of the threshold.
       columns              : A collection of low scoring columns
                               with start/end position:
                               startPosition = 
