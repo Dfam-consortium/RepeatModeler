@@ -3138,6 +3138,10 @@ sub initializeSampleSourceList {
     if ( /^>/ || eof ) {
       my $tmpID = "endoffile";
       $tmpID = $1 if ( /^>(\S+)/ );
+      if ( $tmpID eq "endoffile" ) { #store the last line
+       s/[\n\r\s]+//g;
+       $seq .= uc( $_ );
+      }
       if ( $seq ) {
         my $seqSize = length $seq;
         my $nonAmbigSize = $seqSize - ( $seq =~ tr/XN/XN/ );
@@ -3296,6 +3300,10 @@ sub sampleFromDB {
     if ( /^>/ || eof ) {
       my $tmpID = "endoffile";
       $tmpID = $1 if ( /^>(\S+)/ );
+      if ( $tmpID eq "endoffile" ) { #store the last line
+       s/[\n\r\s]+//g;
+       $seq .= $_;
+      }
       if ( $seq ) {
 
         # Renumber sequences
