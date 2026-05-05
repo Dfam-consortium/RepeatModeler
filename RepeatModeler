@@ -464,9 +464,12 @@ if ( -s $genomeDB ) {
   $genomeDB = File::Spec->rel2abs($genomeDB);
 }elsif ( -s "$genomeDB.nsq" ){
   $genomeDB = File::Spec->rel2abs("$genomeDB.nsq");
+}elsif ( -s "$genomeDB.00.nsq" ) {
+  $genomeDB = File::Spec->rel2abs("$genomeDB.00.nsq");
 }
 my $genomeDBDir = dirname($genomeDB);
-$genomeDB =~ s/(.+)\.n[nihs][rndiq]$/$1/;
+#$genomeDB =~ s/(.+)\.n[nihs][rndiq]$/$1/;
+$genomeDB =~ s/(.+?)(\.00\.nsq|\.nsq)$/$1/;
 my $genomeDBName = basename($genomeDB);
 my $dbIndex;
 $dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
@@ -497,7 +500,7 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
   open $LOG, ">", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing!\n";
 
   # Build the genome.2bit file
-  my $cmd = "$NCBIDBCMD_PRGM -entry all -db $genomeDB -outfmt \"%f\" | $FATOTWOBIT stdin $tmpDir/genome.2bit";
+  my $cmd = "$NCBIDBCMD_PRGM -entry all -db $genomeDB -outfmt \"%f\" | $FATOTWOBIT -long stdin $tmpDir/genome.2bit";
   system($cmd);
   if ( ! -s "$tmpDir/genome.2bit" ) {
     die "ERROR: Failed to create $tmpDir/genome.2bit file using command: $cmd\n";
@@ -975,6 +978,11 @@ while ( 1 ) {
 
     my $roundModels = 0;
     if ( -s "$sampleFastaFile.rscons.filtered" ) {
+
+      if ( ! -s $rangeFile ) {
+        die "Could not find the range file: $rangeFile.  Perhaps you are using a older (pre-1.0.7) version of RepeatScout?\n";
+      }
+
       system( "cp $sampleFastaFile.rscons.filtered $roundConsensiFile" );
 
       # MAKEBLASTDB the database RMH: 8/9/2024
@@ -1812,6 +1820,11 @@ sub runAllvsOtherMatrixRow {
   my $NCBIDBALIAS_PRGM  = shift;
   my $sampleDBSize = shift;
 
+  ## DEBUG
+  #print "runAllvsOtherMatrixRow( batchNum=$batchNum, startGID=$startGID, endGID=$endGID, roundTmpDir=$roundTmpDir, sampleFastaFile=$sampleFastaFile, sampleDBSize=$sampleDBSize )\n"
+  #    if ( $DEBUG );
+  ## DEBUG
+
   # Generate query batch file
   my $sampleID = $startGID;
   while ( $sampleID <= $endGID ) {
@@ -1943,7 +1956,90 @@ sub benchmarkStorage {
   return ( $bytesPerSec / 1000000 );
 }
 
+# For RECON 1.09 and later
 sub runRECON {
+    my %parameters = @_;
+
+    elapsedTime( 2 );
+    die $CLASS . "::runRECON() missing reconPath parameter!\n"
+        if ( !defined $parameters{'reconPath'} );
+    my $RECON_DIR = $parameters{'reconPath'};
+
+    die $CLASS . "::runRECON() missing workDir parameter!\n"
+        if ( !defined $parameters{'workDir'} );
+
+    my $tmpDir  = $parameters{'workDir'};
+    my $origDir = getcwd();
+    chdir( $tmpDir );
+
+    # Create all working directories up front.
+    # ele_store/ holds the flat-file element database (new in v1.09).
+    foreach my $dir ( qw( summary ele_def_res ele_store ele_redef_res edge_redef_res ) ) {
+      system( "rm -rf $dir" );
+      system( "mkdir $dir" );
+    }
+
+    # Stage 1: eledef -- reads MSPs directly and sorts images in-memory.
+    # imagespread is no longer a separate step (merged into eledef in v1.09).
+    print "  - RECON: Running initial definition of elements ( eledef )..\n";
+    `$RECON_DIR/eledef seqnames msps.out single`;
+    `mv gmon.out eledef-gmon.out` if ( -f "gmon.out" );
+    if ( $? ) { die "eledef failed. Exit code $?\n"; }
+    print "RECON Elapsed: " . elapsedTime( 2 ) . "\n";
+
+    # Stage 2: eleredef -- element redefinition / dissection.
+    # tmp  -> ele_def_res   (reads element database and size_list)
+    # tmp2 -> ele_redef_res (writes redef_stat and log)
+    `rm -f tmp tmp2`;
+    `ln -s ele_def_res tmp`;
+    `ln -s ele_redef_res tmp2`;
+
+    print "  - RECON: Running re-definition of elements ( eleredef )..\n";
+    `$RECON_DIR/eleredef seqnames`;
+    `mv gmon.out eleredef-gmon.out` if ( -f "gmon.out" );
+    if ( $? ) { die "eleredef failed. Exit code $?\n"; }
+    print "RECON Elapsed: " . elapsedTime( 2 ) . "\n";
+
+    `rm -f tmp tmp2`;
+
+    # Stage 3: edgeredef -- edge graph filtering (PPS).
+    # tmp  -> ele_redef_res  (reads redef_stat and element database)
+    # tmp2 -> edge_redef_res (writes redef_stat and log)
+    `rm -f tmp tmp2`;
+    `ln -s ele_redef_res tmp`;
+    `ln -s edge_redef_res tmp2`;
+
+    print "  - RECON: Running re-definition of edges ( edgeredef )..\n";
+    `$RECON_DIR/edgeredef seqnames`;
+    `mv gmon.out edgeredef-gmon.out` if ( -f "gmon.out" );
+    if ( $? ) { die "edgeredef failed. Exit code $?\n"; }
+    print "RECON Elapsed: " . elapsedTime( 2 ) . "\n";
+
+    `rm -f tmp tmp2`;
+
+    # Stage 4: famdef -- BFS family assignment; compacts element database.
+    # tmp -> edge_redef_res (reads redef_stat)
+    `rm -f tmp`;
+    `ln -s edge_redef_res tmp`;
+
+    print "  - RECON: Running family definition ( famdef )..\n";
+    `$RECON_DIR/famdef seqnames`;
+    `mv gmon.out famdef-gmon.out` if ( -f "gmon.out" );
+    if ( $? ) { die "famdef failed. Exit code $?\n"; }
+    print "RECON Elapsed: " . elapsedTime( 2 ) . "\n";
+
+    `rm -f tmp`;
+
+    unless ( $DEBUG ) {
+      `rm -rf ele_def_res ele_store ele_redef_res edge_redef_res`;
+    }
+
+    chdir( $origDir );
+
+    return;
+}
+
+sub runRECONOLD {
   my %parameters = @_;
 
   elapsedTime( 2 );

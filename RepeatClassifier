@@ -39,6 +39,10 @@ The options are:
 
 Detailed help
 
+=item -threads #
+
+Number of threads to use in the search.
+
 =back
 
 =head1 CONFIGURATION OVERRIDES

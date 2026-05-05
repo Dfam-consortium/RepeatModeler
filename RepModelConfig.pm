@@ -119,7 +119,7 @@ BEGIN {
                                                   ],
                            'param_type' => 'directory',
                            'required' => 1,
-                           'value' => '/usr/local/RECON-1.08'
+                           'value' => '/usr/local/RECON'
                          },
           'REPEATMASKER_DIR' => {
                                   'command_line_override' => 'repeatmasker_dir',
@@ -130,7 +130,7 @@ BEGIN {
                                                          ],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/usr/local/RepeatMasker'
+                                  'value' => '/usr/local/RepeatMasker-4.2.0-Dfam_3.9'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
@@ -549,6 +549,10 @@ BEGIN {
           }
         }
         close IN;
+      }else {
+        $tmpStr = `$value/eledef -v 2>&1`;
+        $tmpStr =~ /RECON version\s+(\d\S+)/;
+        $version = $1;
       }
     }elsif ( $param eq "TRF_DIR" ) { 
       # trf -V

@@ -937,19 +937,38 @@ sub extendAlignment {
       my @mergedRanges;
       foreach my $range ( @{$seqRanges{$seqID}} ) {
         #print "Range: $seqID:$range->[0]-$range->[1] $range->[2] n=$range->[3]\n";
+        if ( $range->[2] eq "-" ) {
+          #print "   -- Correcting to positive strand sequence and changing range->[2] to '+'\n";
+          my $s = reverse($range->[4]);
+          $s =~ tr/ACGTRYWSKMNXBDHVacgtrywskmnxbdhv/TGCAYRSWMKNXVHDBtgcayrswmknxvhdb/;
+          $range->[4] = $s;
+          $range->[2] = "+";
+        }
         my $last_merged = $mergedRanges[-1];
+        #if ( @mergedRanges && $range->[0] <= $last_merged->[1] ) {
+        #  # Overlapping ranges
+        #  print "overlapping with $last_merged->[0]-$last_merged->[1]\n";
+        #  if ( $range->[1] > $last_merged->[1] ) {
+        #    # Overlapping + extending
+        #    # update end position
+        #    $last_merged->[1] = $range->[1];
+        #    # merge sequence
+        #    $last_merged->[4] .= substr($range->[4], $last_merged->[1] - $range->[0]);
+        #  }
+        #  # add linupIdx to merged range
+        #  $last_merged->[3] .= ",$range->[3]";
         if ( @mergedRanges && $range->[0] <= $last_merged->[1] ) {
-          # Overlapping ranges
-          #print "overlapping with $last_merged->[0]-$last_merged->[1]\n";
-          if ( $range->[1] > $last_merged->[1] ) {
-            # Overlapping + extending
-            # update end position
+          my $old_end = $last_merged->[1];
+
+          if ( $range->[1] > $old_end ) {
             $last_merged->[1] = $range->[1];
-            # merge sequence
-            $last_merged->[4] .= substr($range->[4], $last_merged->[1] - $range->[0]);
+
+            my $append_offset = $old_end - $range->[0]+1;
+            $last_merged->[4] .= substr($range->[4], $append_offset);
           }
-          # add linupIdx to merged range
+
           $last_merged->[3] .= ",$range->[3]";
+
         }else{
           # Singleton range, thus far
           push @mergedRanges, [ @{$range} ];
@@ -962,11 +981,11 @@ sub extendAlignment {
           $desc .= ",n$linupIdx:$linupIdxToID[$linupIdx]:$linupIdxToElement[$linupIdx]";
         }
         $desc =~ s/^,//;
-        if ( $range->[2] eq "-" ) {
-          my $t = $range->[0];
-          $range->[0] = $range->[1];
-          $range->[1] = $t;
-        }
+        #if ( $range->[2] eq "-" ) {
+        #  my $t = $range->[0];
+        #  $range->[0] = $range->[1];
+        #  $range->[1] = $t;
+        #}
         print $nodups_out ">gi|$newIdx $seqID:$range->[0]-$range->[1] src=$desc\n$range->[4]\n";
         $newIdx++;
       }

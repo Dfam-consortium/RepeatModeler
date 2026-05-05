@@ -1,4 +1,15 @@
 
+RepeatModeler 2.0.8
+===================
+  - RepeatModeler/Refiner was not processing consensus extensions                                                                                      
+    properly in 2.0.7 and in some cases was concatenating forward    
+    and reverse strand sequences together. This added noise to the        
+    seed alignments and consensus calls.                             
+  - Added support for makeblastdb partitioning of large genomes ( e.g *.00.nsq )
+  - Added long format in 2bit files, for large genomes.                                
+  - Added catch for older versions of RepeatScout                                                                                     
+  - Added support for RECON 1.10
+
 RepeatModeler 2.0.7
 ===================
   - Added the RepeatAfterMe auto-extension step to Refiner.  This is applied to both

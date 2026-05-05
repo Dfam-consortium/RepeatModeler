@@ -168,6 +168,7 @@ use lib $FindBin::RealBin;
 use lib "$FindBin::RealBin/..";
 use RepModelConfig;
 use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
+use lib "/u3/local/RepeatMasker";
 use MultAln;
 use SeedAlignment;
 
