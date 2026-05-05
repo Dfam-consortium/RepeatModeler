@@ -262,6 +262,19 @@ if ( !$options{'recon_dir'} ) {
 if ( !$options{'rscout_dir'} ) {
   RepModelConfig::promptForParam( 'RSCOUT_DIR' );
 }
+
+my $rsVersion = RepModelConfig::getDependencyVersion("RSCOUT_DIR");
+if ( $rsVersion =~ /(\d+)\.(\d+)\.(\d+).*/ ) {
+  # Not semantic versioning, but we can still name it that way
+  my $major = $1;
+  my $minor = $2;
+  my $patch = $3;
+  unless ( $major > 1 || $minor > 0 || ( $major == 1 && $minor == 0 && $patch >= 7 ) ) {
+    die "RepeatScout version is not compatible with RepeatModeler, please use 1.0.7 or higher.\n";
+  }
+}
+
+
 if ( !$options{'dustmasker_prgm'} ) {
   RepModelConfig::promptForParam( 'DUSTMASKER_PRGM' );
 }

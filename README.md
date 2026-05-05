@@ -308,25 +308,6 @@ Caveats
   Please see the RELEASE-NOTES file for more details.
 
 
-RepeatModeler Statistics
-------------------------
-Benchmarks and statistics for runs of RepeatModeler on reference
-genomes.
-
-RepeatModeler 2.0.7 ( RECON + RepeatScout + LTRStruct ) 48 threads:
-
-Genome          |  Genome DB Size (bp) |   Runtime (hh:mm)*  |  Models Built
-----------------|----------------------|---------------------|--------------
-D. melanogaster |  164 Mbp             |    3:41             |     492   
-H. sapiens      |  3.1 Gbp             |   21:26             |     810
-
-  *  Analysis run on a Ubuntu 22.04.3 LTS Linux system with
-     Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz processors.  Both genomes
-     were run with "-threads 48".
-
-```
-
-
 Credits
 -------
 

@@ -33,7 +33,7 @@ generateSeedAlignments - Generate a seed alignments from RM *.align output
                         [-outSTKFile <*.stk>] [-taxon <ncbi_taxonomy_name>]
                         [[-consensi <*.fa> [-outTable <*.tsv>] [-outAlign <*.align>]]
                         [-assemblyID <id>] [-minAlignedLength #]
-                        [-verbose][-noColor] [-prefixAssembly]
+                        [-verbose][-noColor] [-prefixAssembly][-filterDFDecoys]
                         -assemblyFile <*.2bit>
                         <RepeatMasker *.align File>
 
@@ -119,6 +119,13 @@ A two bit file containing the assembly that was RepeatMasked.
 
 The minimum size a repeat instance must be to include in a seed alignment.
 [Default = 30]
+
+=item -filterDFDecoys
+
+In some cases it is desirable to include Dfam families in the search in order to
+screen out matches to the existing family.  This option filters out alignemnts
+to these families and doesn't generate seed alignments for anything with the
+ID like "DF####..."
 
 =item -noColor
 
@@ -212,6 +219,7 @@ my @getopt_args = (
                     '-consensusRF',
                     '-outSTKFile=s',
                     '-prefixAssembly',
+                    '-filterDFDecoys',
                     '-noColor',
                     '-minAlignedLength=s'
 );
@@ -363,7 +371,7 @@ for ( my $i = 0 ; $i < $resultCollection->size() ; $i++ ) {
   }
 
   # Filter out previous Dfam families ( added to screen out already present families )
-  if ( $familyName =~ /^DF\d\d\d\d\d.*/ ) {
+  if ( $options{'filterDFDecoys'} && $familyName =~ /^DF\d\d\d\d\d.*/ ) {
     $invalid{$i} = 1;
     next;
   }
@@ -928,6 +936,8 @@ foreach my $id ( keys( %alignByID ) )
     $sanitizedID = $1;
     $class = $2;
   }
+  # handle names that have "/" in them
+  $sanitizedID =~ s/\//_/g;
   
   $totalBuilt++;
   if ( $options{'consensusRF'} ) {

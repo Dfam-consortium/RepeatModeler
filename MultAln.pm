@@ -4923,6 +4923,255 @@ sub toMSF {
 
 ##---------------------------------------------------------------------##
 
+=head2 printAlignmentsNew()
+
+  Use: $obj->printAlignments();
+
+  Print the multiple alignment data to the screen breaking it up
+  into 50 bp chunks.
+
+=cut
+
+##---------------------------------------------------------------------##
+sub printAlignmentsNew {
+  my $object     = shift;
+  my %parameters = @_;
+
+  my $blockSize = 50;
+  if ( $parameters{'blockSize'} ) {
+    $blockSize = $parameters{'blockSize'};
+  }
+
+  my $inclRef = 0;
+  $inclRef = 1 if ( $parameters{'inclRef'} );
+
+  my $showScore = 0;
+  $showScore = 1 if ( $parameters{'showScore'} );
+
+  my $consensus = "";
+  my $maxIDLen    = 0;
+  if ( $parameters{'showCons'} ) {
+    $maxIDLen  = length("consensus");
+    $consensus = $object->consensus_new( inclRef => $inclRef );
+  }
+
+  my @sortedIndexes = ( 0 .. ( $object->getNumAlignedSeqs() - 1 ) );
+  if ( !$parameters{'origOrder'} ) {
+    @sortedIndexes = sort {
+      $object->getAlignedStart( $a ) <=> $object->getAlignedStart( $b )
+    } ( 0 .. ( $object->getNumAlignedSeqs() - 1 ) );
+  }
+  
+  # For new LINUP format
+  my @lineIDs = ();
+  my $idx = 1; # starting from 1
+  foreach my $sidx ( @sortedIndexes ) {
+     $lineIDs[$sidx] = $idx++;
+  }
+
+  $maxIDLen    = length( $object->getReferenceName() )
+    if ( $maxIDLen < length( $object->getReferenceName() ) );
+  my $maxCoordLen = 0;
+  my @seqCoordIdx = ();
+  foreach my $i ( @sortedIndexes ) {
+    my $start = $object->getAlignedSeqStart( $i );
+    my $end   = $object->getAlignedSeqEnd( $i );
+    $maxCoordLen = length( $start ) if ( length( $start ) > $maxCoordLen );
+    $maxCoordLen = length( $end )   if ( length( $end ) > $maxCoordLen );
+    my $tLen = length( $object->getAlignedName( $i ) );
+    $maxIDLen = $tLen if ( $tLen > $maxIDLen );
+    # Initialize the sequence coordinate start positions ( cognizant of orientation )
+    my $orient = $object->getAlignedOrientation( $i );
+    $seqCoordIdx[$i] = $start;
+    if ( $orient eq "-" ) {
+      $seqCoordIdx[$i] = $end;
+    }
+  }
+
+  # Generate the scores if requested
+  my $columns;
+  my $scoreArray;
+  my $maxScoreLen = 0;
+  if ( $showScore ) {
+
+    # Use default matrix
+    ( $columns, $scoreArray ) = $object->getLowScoringAlignmentColumns();
+
+    # Find the largest score
+    for ( my $j = 0 ; $j <= $#{$scoreArray} ; $j++ ) {
+      my $num = sprintf( "%0.1f", $scoreArray->[ $j ] );
+      $maxScoreLen = length( $num ) if ( $maxScoreLen < length( $num ) );
+      $scoreArray->[ $j ] = $num;
+    }
+
+  }
+
+  # absolute positions in the reference string ( not base position )
+  my $lineStart        = 0;
+  my $lineEnd          = $blockSize - 1;
+  my $refBaseStartPos  = $object->getReferenceSeqStart();
+  my $consBaseStartPos = 1;
+  while ( $lineStart < $object->getGappedReferenceLength() ) {
+
+    # Show the score if requested
+    if ( $showScore ) {
+      for ( my $rows = 0 ; $rows < $maxScoreLen ; $rows++ ) {
+        print " " x ( $maxIDLen + 6 + 2 );
+        for ( my $cols = 0 ; $cols < $blockSize ; $cols++ ) {
+          my $thisDigits =
+              " " x
+              ( $maxScoreLen - length( $scoreArray->[ $cols + $lineStart ] ) )
+              . $scoreArray->[ $cols + $lineStart ];
+          print "" . substr( $thisDigits, $rows, 1 );
+        }
+        print "\n";
+      }
+    }
+
+    my $rseq = substr( $object->getReferenceSeq(), $lineStart, $blockSize );
+    my %trans = ( "CT" => 1, "TC" => 1, "AG" => 1, "GA" => 1 );
+    my %transv = ( "GT" => 1, "TG" => 1, "GC" => 1, "CG" => 1,
+                   "CA" => 1, "AC" => 1, "AT" => 1, "TA" => 1 );
+
+
+    # Print out the consensus if requested
+    my $cseq = "";
+    if ( $consensus ne "" ) {
+      $cseq        = substr( $consensus, $lineStart, $blockSize );
+      my $name       = "consensus";
+      my $numLetters = ( $cseq =~ tr/A-Za-z/A-Za-z/ );
+      my $end        = $consBaseStartPos + $numLetters - 1;
+      my $outStr     = $name
+          . " " x ( $maxIDLen - length( $name ) ) . " "
+          . " " x ( $maxCoordLen - length( $consBaseStartPos ) )
+          . $consBaseStartPos . " "
+          . $cseq
+          . " " x ( $blockSize - length($cseq) ) . "    "
+          . $end . "\n";
+      print "$outStr";
+      $consBaseStartPos = $end + 1;
+
+      my $diffStr = "";
+      for ( my $i = 0; $i < length($cseq); $i++ ) {
+        my $c = substr($cseq,$i,1);
+        my $r = substr($rseq,$i,1);
+        if ( $c eq $r ) {
+          $diffStr .= " ";
+        }elsif ( $c eq "-" || $r eq "-" ) {
+          $diffStr .= "-";
+        }elsif ( exists $trans{$c.$r} ) {
+          $diffStr .= "i";
+        }elsif ( exists $transv{$c.$r} ) {
+          $diffStr .= "v";
+        }else {
+          $diffStr .= "?";
+        }
+      }
+      my $outStr     =
+          " " x ( $maxIDLen + $maxCoordLen + 2) 
+          . $diffStr . "\n";
+      print "$outStr";
+    }
+
+    # Print out the reference
+    my $name = substr( "ref:" . $object->getReferenceName(), 0, $maxIDLen );
+
+    my $numLetters = ( $rseq =~ tr/A-Za-z/A-Za-z/ );
+    my $end        = $refBaseStartPos + $numLetters - 1;
+    my $outStr     = $name
+        . " " x ( $maxIDLen - length( $name ) ) . " "
+        . " " x ( $maxCoordLen - length( $refBaseStartPos ) )
+        . $refBaseStartPos . " "
+        . $rseq
+        . " " x ( $blockSize - length( $rseq ) ) . "    "
+        . $end . "\n";
+    print "$outStr";
+    print "~"x( $maxIDLen + 2 + $maxCoordLen + 1 + $blockSize + 1 + $maxCoordLen + 1 + 7) . "\n";
+
+    $refBaseStartPos = $end + 1;
+
+    # Now print out the aligned sequences
+    my $seq;
+    foreach my $i ( @sortedIndexes ) {
+      # These are the positions within the gapped multiple alignment ( not sequence positions )
+      my $start = $object->getAlignedStart( $i );
+      my $end   = $object->getAlignedEnd( $i );
+
+      # Is this sequence even in the alignment window are printing at the moment?
+      next if ( $start >= $lineEnd );
+      next if ( $end <= $lineStart );
+  
+      # Pad sequence if it starts later than the first position
+      $seq = '';
+      if ( $start > $lineStart ) {
+        $seq = ' ' x ( $start - $lineStart );
+      }
+
+      # now figure out the string range for the aligned sequence to grab for this window
+      my $seqStart = $lineStart - $start;
+      $seqStart = 0 if ( $seqStart < 0 );
+      my $seqEnd = $lineEnd - $start;
+      $seqEnd = $end if ( $seqEnd > $end );
+      $seq .= substr( $object->getAlignedSeq( $i ),
+                      $seqStart, $seqEnd - $seqStart + 1 );
+
+      # and our name is...
+      $name = $object->getAlignedName( $i );
+ 
+      #if ( $seqStart == 0 ) {
+      #  $start = $object->getAlignedSeqStart( $i );
+      #}
+      #else {
+      #  my $priorSeq = substr( $object->getAlignedSeq( $i ), 0, $seqStart );
+      #  $numLetters = ( $priorSeq =~ tr/A-Z/A-Z/ );
+      #  $start = $object->getAlignedSeqStart( $i ) + $numLetters;
+      #}
+      $numLetters = ( $seq =~ tr/A-Z/A-Z/ );
+      my $endAdj = $numLetters == 0 ? 0 : ($numLetters - 1);
+      #$end        = $start + $numLetters - 1;
+
+      my $seqCoordStart = $seqCoordIdx[$i];
+      $seqCoordStart-- if ( $numLetters == 0 );
+      my $orient = $object->getAlignedOrientation( $i );
+      my $seqCoordEnd;
+      if ( $orient eq "+" ) {
+        #$seqCoordEnd = $seqCoordStart + $numLetters - 1;
+        $seqCoordEnd = $seqCoordStart + $endAdj;
+        $seqCoordIdx[$i] += $numLetters;
+      }else {
+        #$seqCoordEnd = $seqCoordStart - $numLetters + 1;
+        $seqCoordEnd = $seqCoordStart - $endAdj;
+        $seqCoordIdx[$i] -= $numLetters;
+      }
+       
+      my $outStr = $name
+          . " " x ( $maxIDLen - length( $name ) ) . " "
+          . " " x ( $maxCoordLen - length( $seqCoordStart ) )
+          . $seqCoordStart . " "
+          . $seq
+          . " " x ( $blockSize - length( $seq ) ) . "    "
+          . $seqCoordEnd . " [" . $lineIDs[$i] . "]\n";
+      
+
+      #my $outStr = $name
+      #    . " " x ( $maxIDLen - length( $name ) ) . " "
+      #    . " " x ( $maxCoordLen - length( $start ) )
+      #    . $start . " "
+      #    . $seq
+      #    . " " x ( $blockSize - length( $seq ) ) . "    "
+      #    . $end . "\n";
+     
+      print "$outStr";
+
+    }
+    print "\n\n";
+    $lineStart = $lineEnd + 1;
+    $lineEnd   = $lineStart + $blockSize - 1;
+  }
+}
+
+##---------------------------------------------------------------------##
+
 =head2 printAlignments()
 
   Use: $obj->printAlignments();
@@ -5819,6 +6068,586 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
   return $consensus;
 }
 
+sub buildConsensusFromArrayNew {
+  my %parameters = @_;
+
+  my $sequences = $parameters{'sequences'};
+  croak "Missing sequences" unless $sequences && ref($sequences) eq 'ARRAY';
+
+  # ------------------ Model parameters ------------------
+
+  # Substitution model (TS/TV + match) for A/C/G/T vs evidence
+  my $MATCH = exists $parameters{MatchScore} ? $parameters{MatchScore} : 10;
+  my $TS    = exists $parameters{TransitionPenalty} ? $parameters{TransitionPenalty} : 8;
+  my $TV    = exists $parameters{TransversionPenalty} ? $parameters{TransversionPenalty} : 15;
+
+  # Gap scoring
+  my $GAP_PEN = exists $parameters{GapPenalty} ? $parameters{GapPenalty} : 6;
+  my $GAPGAP  = exists $parameters{GapGapScore} ? $parameters{GapGapScore} : 3;
+
+  # Allow '-' to be emitted as consensus if it wins (only meaningful if explicit gaps exist)
+  my $ALLOW_GAP_CALL = exists $parameters{AllowGapCall} ? $parameters{AllowGapCall} : 1;
+
+  # Treat N like the legacy matrix: a mild fixed penalty against any non-gap evidence
+  # (This is the knob that makes N competitive like the original lineup matrix.)
+  my $NObsScore = exists $parameters{NObsScore} ? $parameters{NObsScore} : -2;
+
+  # Legacy tie behavior: if N ties (or nearly ties) best, prefer N
+  my $N_EPS = exists $parameters{NEps} ? $parameters{NEps} : 0.0;
+
+  # ---- OPTIONAL: background base priors (AT-bias etc.) ----
+  # If PriorScale == 0 (default), priors are disabled and behavior matches current code.
+  # If PriorScale > 0, bases with higher Bg* get a boost per observed symbol.
+  my $BG_A = exists $parameters{BgA} ? $parameters{BgA} : 0.4;
+  my $BG_C = exists $parameters{BgC} ? $parameters{BgC} : 0.1;
+  my $BG_G = exists $parameters{BgG} ? $parameters{BgG} : 0.1;
+  my $BG_T = exists $parameters{BgT} ? $parameters{BgT} : 0.4;
+  my $PriorScale = exists $parameters{PriorScale} ? $parameters{PriorScale} : 0.0;
+
+  # Normalize Bg defensively
+  my $bg_sum = $BG_A + $BG_C + $BG_G + $BG_T;
+  if ($bg_sum <= 0) {
+    ($BG_A,$BG_C,$BG_G,$BG_T) = (0.25,0.25,0.25,0.25);
+    $bg_sum = 1.0;
+  } else {
+    $BG_A /= $bg_sum; $BG_C /= $bg_sum; $BG_G /= $bg_sum; $BG_T /= $bg_sum;
+  }
+  my %logBg = ( A => log($BG_A), C => log($BG_C), G => log($BG_G), T => log($BG_T) );
+
+  # CpG rescue (legacy-ish)
+  my $CGparam      = exists $parameters{CGParam} ? $parameters{CGParam} : 12;
+  my $TAparam      = exists $parameters{TAParam} ? $parameters{TAParam} : -5;
+  my $CGTransParam = exists $parameters{CGTransParam} ? $parameters{CGTransParam} : 2;
+
+  my $CG_DELTA      = exists $parameters{CGDelta} ? $parameters{CGDelta} : 0.0;
+  my $MIN_DINUC_OBS = exists $parameters{MinDinucObs} ? $parameters{MinDinucObs} : 3;
+
+  my $ENABLE_CG = 1;
+  if (defined $parameters{preset} && $parameters{preset} =~ /off|none/i) {
+    $ENABLE_CG = 0;
+  }
+
+  # ------------------ IUPAC probabilities (for evidence only) ------------------
+
+  my %IUPAC = (
+    'A'=>[1,0,0,0], 'C'=>[0,1,0,0], 'G'=>[0,0,1,0], 'T'=>[0,0,0,1],
+    'R'=>[0.5,0,0.5,0], 'Y'=>[0,0.5,0,0.5], 'S'=>[0,0.5,0.5,0], 'W'=>[0.5,0,0,0.5],
+    'K'=>[0,0,0.5,0.5], 'M'=>[0.5,0.5,0,0],
+    'B'=>[0,1/3,1/3,1/3], 'D'=>[1/3,0,1/3,1/3],
+    'H'=>[1/3,1/3,0,1/3], 'V'=>[1/3,1/3,1/3,0],
+    'N'=>[0.25,0.25,0.25,0.25], 'X'=>[0.25,0.25,0.25,0.25],
+  );
+
+  my %isTS;
+  $isTS{'AG'} = 1; $isTS{'GA'} = 1; $isTS{'CT'} = 1; $isTS{'TC'} = 1;
+
+  # ------------------ helpers ------------------
+
+  my $score_base = sub {
+    my ($a,$b)=@_;
+    $a = uc($a); $b = uc($b);
+    return $MATCH if $a eq $b;
+    return -$TS if $isTS{"$a$b"};
+    return -$TV;
+  };
+
+  # Expected TS/TV score between concrete candidate base (A/C/G/T) and an observed distribution pObs
+  my $exp_score_base_vs_dist = sub {
+    my ($base, $pObs) = @_;
+    my @B = ('A','C','G','T');
+
+    my $s = 0.0;
+    for (my $j=0; $j<4; $j++) {
+      next if $pObs->[$j] == 0;
+      $s += $pObs->[$j] * $score_base->($base, $B[$j]);
+    }
+    return $s;
+  };
+
+  # Candidate X (A/C/G/T/N) vs observed symbol obs (may be IUPAC or N or '-')
+  # Returns an *alignment score component*.
+  #
+  # Key point: N is a fixed mild penalty vs any non-gap evidence (legacy-like),
+  # not an "average TS/TV score".
+  my $score_candidate_vs_obs = sub {
+    my ($cand, $obs) = @_;
+    $cand = uc($cand);
+    $obs  = defined($obs) ? uc($obs) : '';
+
+    return 0 if ($obs eq '' || $obs =~ /\s/);
+
+    # gap evidence scored separately / as mismatch for non-gap candidates
+    if ($obs eq '-') {
+      return -$GAP_PEN;
+    }
+
+    # Legacy-like N scoring: constant vs any non-gap observed symbol
+    if ($cand eq 'N') {
+      return $NObsScore;
+    }
+
+    # Map observed to distribution
+    my $pObs = $IUPAC{$obs};
+    $pObs = $IUPAC{'N'} if (!defined $pObs);
+
+    return $exp_score_base_vs_dist->($cand, $pObs);
+  };
+
+  # Candidate '-' vs observed symbol obs
+  my $score_gap_vs_obs = sub {
+    my ($obs) = @_;
+    $obs = defined($obs) ? uc($obs) : '';
+    return 0 if ($obs eq '' || $obs =~ /\s/);
+    return $GAPGAP if $obs eq '-';
+    return -$GAP_PEN;
+  };
+
+  # ------------------ Build profile (no implied gaps) ------------------
+
+  my @profile;
+
+  foreach my $seq (@$sequences) {
+    my @c = split('', uc($seq));
+    for (my $i=0; $i<@c; $i++) {
+      my $sym = $c[$i];
+      next if $sym =~ /\s/;
+
+      # Store raw symbol counts for scoring stage (including IUPAC and '-')
+      $profile[$i]{sym}{$sym}++;
+      $profile[$i]{_obs}++;
+    }
+  }
+
+  # ------------------ First pass consensus: A/C/G/T/N/- compete by score ------------------
+
+  my $consensus = '';
+
+  for (my $i=0; $i<@profile; $i++) {
+
+    my $symH  = $profile[$i]{sym} || {};
+    my $obs_n = $profile[$i]{_obs} || 0;
+
+    # If no observations, emit N
+    if ($obs_n == 0) {
+      $consensus .= 'N';
+      next;
+    }
+
+    my %S;
+    foreach my $cand (qw(A C G T N)) {
+      my $s = 0.0;
+      foreach my $obs (keys %$symH) {
+        my $cnt = $symH->{$obs};
+        $s += $cnt * $score_candidate_vs_obs->($cand, $obs);
+      }
+
+      # OPTIONAL prior (AT-bias etc.) applied per observation in this column
+      if ($PriorScale != 0.0 && $cand ne 'N') {
+        $s += $PriorScale * $obs_n * $logBg{$cand};
+      }
+
+      $S{$cand} = $s;
+    }
+
+    # gap candidate score (only meaningful if explicit gaps exist)
+    my $has_gap = exists $symH->{'-'} ? 1 : 0;
+    if ($ALLOW_GAP_CALL && $has_gap) {
+      my $sg = 0.0;
+      foreach my $obs (keys %$symH) {
+        my $cnt = $symH->{$obs};
+        $sg += $cnt * $score_gap_vs_obs->($obs);
+      }
+      $S{'-'} = $sg;
+    }
+
+    # choose best by score
+    my @cands = ($ALLOW_GAP_CALL && $has_gap) ? qw(A C G T N -) : qw(A C G T N);
+    my $best = $cands[0];
+    for (my $ci=1; $ci<@cands; $ci++) {
+      my $cand = $cands[$ci];
+      $best = $cand if $S{$cand} > $S{$best};
+    }
+
+    # legacy-like behavior: if N ties (or nearly ties) the best, prefer N
+    if ($best ne 'N' && exists $S{'N'}) {
+      if ($S{'N'} >= $S{$best} - $N_EPS) {
+        $best = 'N';
+      }
+    }
+
+    $consensus .= $best;
+  }
+
+  # ------------------ CpG rescue (legacy-ish) ------------------
+
+  if ($ENABLE_CG) {
+    my $L = length($consensus);
+
+  FLOOP:
+    for (my $i=0; $i<$L-1; $i++) {
+
+      next if substr($consensus,$i,1) eq '-';
+
+      my $k = $i + 1;
+      while ($k < $L && substr($consensus,$k,1) eq '-') { $k++; }
+      next FLOOP if $k >= $L;
+
+      my $cl = substr($consensus,$i,1);
+      my $cr = substr($consensus,$k,1);
+      next if $cr eq '-';
+
+      my ($dn,$cg,$nobs) = (0.0, 0.0, 0);
+
+      foreach my $seq (@$sequences) {
+        my $s = uc($seq);
+
+        # ragged edges: no implied '-'
+        next if ($i >= length($s) || $k >= length($s));
+
+        my $l = substr($s,$i,1);
+        my $r = substr($s,$k,1);
+        next if $l =~ /\s/ || $r =~ /\s/;
+
+        $nobs++;
+
+        # Null score: current consensus letters vs observed evidence
+        my $dn_l = ($cl eq '-') ? $score_gap_vs_obs->($l) : $score_candidate_vs_obs->($cl, $l);
+        my $dn_r = ($cr eq '-') ? $score_gap_vs_obs->($r) : $score_candidate_vs_obs->($cr, $r);
+        $dn += $dn_l + $dn_r;
+
+        # CpG hypothesis score: legacy dinuc table when concrete; otherwise expected C/G vs evidence
+        my $xy = uc($l.$r);
+
+        if ($l eq '-' || $r eq '-') {
+          $cg += $score_candidate_vs_obs->('C',$l) + $score_candidate_vs_obs->('G',$r);
+        }
+        elsif ($xy =~ /^[ACGT]{2}$/) {
+          if ($xy eq 'CA' || $xy eq 'TG') {
+            $cg += $CGparam;
+          }
+          elsif ($xy eq 'TA') {
+            $cg += $TAparam;
+          }
+          elsif ($xy eq 'TC' || $xy eq 'TT') {
+            $cg += $CGTransParam + $score_base->('G', $r);
+          }
+          elsif ($xy eq 'AA' || $xy eq 'GA') {
+            $cg += $CGTransParam + $score_base->('C', $l);
+          }
+          else {
+            $cg += $score_base->('C', $l) + $score_base->('G', $r);
+          }
+        }
+        else {
+          $cg += $score_candidate_vs_obs->('C',$l);
+          $cg += $score_candidate_vs_obs->('G',$r);
+        }
+      }
+
+      next if $nobs < $MIN_DINUC_OBS;
+
+      my $LLR = $cg - $dn;
+      if ($LLR > $CG_DELTA) {
+        substr($consensus,$i,1) = 'C';
+        substr($consensus,$k,1) = 'G';
+      }
+    }
+  }
+
+  return $consensus;
+}
+
+
+
+
+sub buildConsensusFromArrayNewOld {
+  my %parameters = @_;
+
+  croak $CLASS . "::buildConsensusFromArray: Missing sequences parameter!\n"
+      if ( !defined $parameters{'sequences'} || ref($parameters{'sequences'}) ne 'ARRAY' );
+
+  my $sequences = $parameters{'sequences'};
+
+  # -----------------------------
+  # Reduced scoring knobs (defaults chosen to roughly match legacy behavior)
+  # -----------------------------
+  my $MATCH = exists $parameters{'MatchScore'} ? $parameters{'MatchScore'} : 10;
+  my $TS    = exists $parameters{'TransitionPenalty'} ? $parameters{'TransitionPenalty'} : 8;
+  my $TV    = exists $parameters{'TransversionPenalty'} ? $parameters{'TransversionPenalty'} : 15;
+
+  # Gap penalty (legacy uses -6 for base-gap)
+  my $GAP   = exists $parameters{'GapPenalty'} ? $parameters{'GapPenalty'} : 6;
+
+  # IMPORTANT: gap calling is OFF by default to match typical legacy output
+  my $ALLOW_GAP_CALL = exists $parameters{'AllowGapCall'} ? $parameters{'AllowGapCall'} : 1;
+
+  # CpG rescue knobs (legacy defaults)
+  my $CGparam      = exists $parameters{'CGParam'}      ? $parameters{'CGParam'}      : 12;
+  my $TAparam      = exists $parameters{'TAParam'}      ? $parameters{'TAParam'}      : -5;
+  my $CGTransParam = exists $parameters{'CGTransParam'} ? $parameters{'CGTransParam'} : 2;
+
+  my $CG_DELTA     = exists $parameters{'CGDelta'} ? $parameters{'CGDelta'} : 0;
+
+  # Only attempt CG-rescue if at least this many sequences have BOTH positions observed
+  my $MIN_DINUC_OBS = exists $parameters{'MinDinucObs'} ? $parameters{'MinDinucObs'} : 3;
+
+  # Preset control (currently just enables/disables CG rescue)
+  my $PRESET = exists $parameters{'preset'} ? lc($parameters{'preset'}) : 'vertebrate';
+  my $ENABLE_CG_RESCUE = ($PRESET eq 'none' || $PRESET eq 'off') ? 0 : 1;
+
+  # -----------------------------
+  # IUPAC expansion to A/C/G/T probabilities (used as evidence only; never emitted)
+  # -----------------------------
+  my %IUPAC = (
+    'A' => [1,0,0,0],  'C' => [0,1,0,0],  'G' => [0,0,1,0],  'T' => [0,0,0,1],
+    'R' => [0.5,0,0.5,0],
+    'Y' => [0,0.5,0,0.5],
+    'S' => [0,0.5,0.5,0],
+    'W' => [0.5,0,0,0.5],
+    'K' => [0,0,0.5,0.5],
+    'M' => [0.5,0.5,0,0],
+    'B' => [0,1/3,1/3,1/3],
+    'D' => [1/3,0,1/3,1/3],
+    'H' => [1/3,1/3,0,1/3],
+    'V' => [1/3,1/3,1/3,0],
+    'N' => [0.25,0.25,0.25,0.25],
+    'X' => [0.25,0.25,0.25,0.25],
+  );
+
+  my %is_transition = (
+    'AG' => 1, 'GA' => 1,
+    'CT' => 1, 'TC' => 1,
+  );
+
+  my %idx = ( A => 0, C => 1, G => 2, T => 3 );
+
+  my $score_base_to_symbol = sub {
+    my ($a, $b) = @_;
+    return -$GAP if ($b eq '-');
+    return $MATCH if ($a eq $b);
+    return -$TS if $is_transition{"$a$b"};
+    return -$TV;
+  };
+
+  my $sym_to_probs = sub {
+    my ($sym) = @_;
+    $sym = uc($sym);
+
+    # IMPORTANT: treat " " as missing (legacy sometimes uses this); skip by caller
+    return undef if ($sym eq ' ' || $sym eq "\t" || $sym eq '');
+
+    return [0,0,0,0,1] if ($sym eq '-');
+
+    my $p = $IUPAC{$sym};
+    $p = $IUPAC{'N'} if (!defined $p);
+    return [ $p->[0], $p->[1], $p->[2], $p->[3], 0 ];
+  };
+
+  my $expected_score_base_vs_obs = sub {
+    my ($a, $obs) = @_;
+    $obs = uc($obs);
+    return -$GAP if ($obs eq '-');
+
+    my $p = $IUPAC{$obs};
+    $p = $IUPAC{'N'} if (!defined $p);
+
+    my $s = 0;
+    $s += $p->[0] * $score_base_to_symbol->($a, 'A');
+    $s += $p->[1] * $score_base_to_symbol->($a, 'C');
+    $s += $p->[2] * $score_base_to_symbol->($a, 'G');
+    $s += $p->[3] * $score_base_to_symbol->($a, 'T');
+    return $s;
+  };
+
+  my $cg_hyp_score_for_xy = sub {
+    my ($x, $y) = @_;
+    my $xy = $x . $y;
+
+    if ( $xy eq 'CA' || $xy eq 'TG' ) {
+      return $CGparam;
+    }
+    elsif ( $xy eq 'TA' ) {
+      return $TAparam;
+    }
+    elsif ( $xy eq "TC" || $xy eq "TT" ) {
+      return $CGTransParam + $score_base_to_symbol->('G', $y);
+    }
+    elsif ( $xy eq "AA" || $xy eq "GA" ) {
+      return $CGTransParam + $score_base_to_symbol->('C', $x);
+    }
+    else {
+      return $score_base_to_symbol->('C', $x) + $score_base_to_symbol->('G', $y);
+    }
+  };
+
+  # -----------------------------
+  # Build per-column fractional profile WITHOUT assuming '-' for missing sequences.
+  # profile[i]{A,C,G,T,'-'} are fractional masses; profile[i]{_obs} is count of sequences contributing any symbol
+  # -----------------------------
+  my @profile = ();
+
+  foreach my $seq (@{$sequences}) {
+    my $s = uc($seq);
+    my @chars = split('', $s);
+
+    for (my $i = 0; $i < @chars; $i++) {
+      my $sym = $chars[$i];
+
+      # If MultAln uses " " internally to mean missing, ignore it here
+      next if ($sym eq ' ' || $sym eq "\t");
+
+      my $p = $sym_to_probs->($sym);
+      next if (!defined $p); # missing
+
+      $profile[$i]{A}   += $p->[0];
+      $profile[$i]{C}   += $p->[1];
+      $profile[$i]{G}   += $p->[2];
+      $profile[$i]{T}   += $p->[3];
+      $profile[$i]{'-'} += $p->[4];
+      $profile[$i]{_obs} += 1;
+    }
+  }
+
+  # -----------------------------
+  # First pass consensus: candidates A/C/G/T (and optionally '-') + N only on a legacy-like tie with N
+  # -----------------------------
+  my $consensus = '';
+
+  for (my $i = 0; $i < @profile; $i++) {
+    my $cA   = $profile[$i]{A}   || 0;
+    my $cC   = $profile[$i]{C}   || 0;
+    my $cG   = $profile[$i]{G}   || 0;
+    my $cT   = $profile[$i]{T}   || 0;
+    my $cGap = $profile[$i]{'-'} || 0;
+
+    my %score = ();
+
+    foreach my $a (qw(A C G T)) {
+      my $s = 0;
+      $s += $cA   * $score_base_to_symbol->($a,'A');
+      $s += $cC   * $score_base_to_symbol->($a,'C');
+      $s += $cG   * $score_base_to_symbol->($a,'G');
+      $s += $cT   * $score_base_to_symbol->($a,'T');
+      $s += $cGap * (-$GAP);
+      $score{$a} = $s;
+    }
+
+    # N is a real candidate, but we never output other IUPAC codes.
+    $score{'N'} = 0.25*$score{'A'} + 0.25*$score{'C'} + 0.25*$score{'G'} + 0.25*$score{'T'};
+
+    # Optional conservative bias against calling N
+    # my $N_PENALTY = exists $parameters{'NPenalty'} ? $parameters{'NPenalty'} : 0.5;
+     my $N_PENALTY = exists $parameters{'NPenalty'} ? $parameters{'NPenalty'} : 0;
+    $score{'N'} -= $N_PENALTY if ($N_PENALTY);
+
+    # '-' is a candidate only if explicitly observed gaps exist in this column
+    if ($ALLOW_GAP_CALL && $cGap > 0) {
+      my $s = 0;
+      $s += $cGap * 3;  # legacy '-' vs '-' score
+      $s += ($cA + $cC + $cG + $cT) * (-$GAP);
+      $score{'-'} = $s;
+    }
+
+    # Choose best among A,C,G,T,N,(optional '-')
+    my @cand = sort { $score{$b} <=> $score{$a} } keys %score;
+    my $best = $cand[0];
+    print "cand = @cand\n";
+    print "score = " . Dumper(\%score) . "\n";
+
+    $consensus .= $best;
+
+  }
+
+  # -----------------------------
+  # Second pass: CpG rescue using expected dinucleotide evidence
+  # -----------------------------
+  if ($ENABLE_CG_RESCUE) {
+    my $L = length($consensus);
+
+  FLOOP: for (my $i = 0; $i < $L - 1; $i++) {
+      my $left = substr($consensus, $i, 1);
+      next if ($left eq '-');
+
+      # find next non-gap position k
+      my $k = $i + 1;
+      while ($k < $L && substr($consensus, $k, 1) eq '-') { $k++; }
+      next FLOOP if ($k >= $L);
+
+      my $right = substr($consensus, $k, 1);
+      next if ($right eq '-');
+
+      my $dnScore = 0.0;
+      my $CGscore = 0.0;
+      my $dinuc_obs = 0;
+
+      foreach my $seq (@{$sequences}) {
+        my $s = uc($seq);
+
+        # Critical: if sequence doesn't extend to i or k, it contributes NOTHING (no implied '-')
+        next if ($i >= length($s) || $k >= length($s));
+
+        my $obsL = substr($s, $i, 1);
+        my $obsR = substr($s, $k, 1);
+
+        next if ($obsL eq ' ' || $obsL eq "\t" || $obsR eq ' ' || $obsR eq "\t");
+
+        $dinuc_obs++;
+
+        # score current consensus dinuc vs observed symbols
+        $dnScore += ($left  eq 'N')
+          ? 0.25 * $expected_score_base_vs_obs->('A',$obsL)
+          + 0.25 * $expected_score_base_vs_obs->('C',$obsL)
+          + 0.25 * $expected_score_base_vs_obs->('G',$obsL)
+          + 0.25 * $expected_score_base_vs_obs->('T',$obsL)
+          : $expected_score_base_vs_obs->($left,$obsL);
+
+        $dnScore += ($right eq 'N')
+          ? 0.25 * $expected_score_base_vs_obs->('A',$obsR)
+          + 0.25 * $expected_score_base_vs_obs->('C',$obsR)
+          + 0.25 * $expected_score_base_vs_obs->('G',$obsR)
+          + 0.25 * $expected_score_base_vs_obs->('T',$obsR)
+          : $expected_score_base_vs_obs->($right,$obsR);
+
+        # expected CpG hypothesis score
+        my $pL = $sym_to_probs->($obsL);
+        my $pR = $sym_to_probs->($obsR);
+
+        # if either is missing (shouldn't happen here) skip
+        next if (!defined $pL || !defined $pR);
+
+        # if explicit gap observed, fall back to base expected scores
+        if ($pL->[4] > 0 || $pR->[4] > 0) {
+          $CGscore += $expected_score_base_vs_obs->('C', $obsL);
+          $CGscore += $expected_score_base_vs_obs->('G', $obsR);
+          next;
+        }
+
+        my $e = 0.0;
+        foreach my $x (qw(A C G T)) {
+          foreach my $y (qw(A C G T)) {
+            my $px = $pL->[$idx{$x}];
+            my $py = $pR->[$idx{$y}];
+            next if ($px <= 0 || $py <= 0);
+            $e += ($px * $py) * $cg_hyp_score_for_xy->($x, $y);
+          }
+        }
+        $CGscore += $e;
+      }
+
+      # Require minimum support at both positions before overriding
+      next if ($dinuc_obs < $MIN_DINUC_OBS);
+
+      if ($CGscore > ($dnScore + $CG_DELTA)) {
+        substr($consensus, $i, 1) = 'C';
+        substr($consensus, $k, 1) = 'G';
+      }
+    }
+  }
+
+  return $consensus;
+}
+
+
 ##---------------------------------------------------------------------##
 
 =head getCoverage()
@@ -5878,6 +6707,40 @@ sub consensus {
     push @seqs, " " x ( $numShifted ) . $object->getAlignedSeq( $i );
   }
   my $consensus = buildConsensusFromArray( sequences => \@seqs );
+
+  return $consensus;
+}
+
+##---------------------------------------------------------------------##
+
+=head2 consensus_new()
+
+  Use: my $consSeq = $obj->consensus( [inclRef => 1] );
+
+  Refine the consensus sequence given the multiple alignment data.
+  Correct for missed CpG calls.  Note: The correction currently 
+  assumes a AT bias in the genome ( good for mammals ) in the
+  hardcoded lineup matrix.  
+
+=cut
+
+##---------------------------------------------------------------------##
+sub consensus_new {
+  my $object     = shift;
+  my %parameters = @_;
+
+  my $inclRef = 0;
+  $inclRef = 1 if ( $parameters{'inclRef'} );
+
+  my @seqs = ();
+  if ( $inclRef ) {
+    push @seqs, $object->getReferenceSeq();
+  }
+  for ( my $i = 0 ; $i < $object->getNumAlignedSeqs() ; $i++ ) {
+    my $numShifted = $object->getAlignedStart( $i );
+    push @seqs, " " x ( $numShifted ) . $object->getAlignedSeq( $i );
+  }
+  my $consensus = buildConsensusFromArrayNew( sequences => \@seqs );
 
   return $consensus;
 }

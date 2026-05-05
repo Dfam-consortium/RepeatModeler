@@ -481,10 +481,16 @@ if ( $engine eq "rmblast" ) {
               . "-outfmt maskinfo_asn1_bin -out $databaseFile.asnb" );
       # Do we need to use blastdb version 4 anymore?
       #      . "-blastdb_version 4 "
-      system(   "$engine_dir/makeblastdb -out $databaseFile "
+      my $cmd = "$engine_dir/makeblastdb -out $databaseFile "
               . "-mask_data $databaseFile.asnb "
               . "-parse_seqids -dbtype nucl -in $databaseFile > "
-              . "makedb.log 2>&1" );
+              . "makedb.log 2>&1";
+      system( $cmd );
+      if ( $? ) {
+        printf "\n\nERROR building nucleotide database! makeblastdb command ($cmd) exited with value %d\n\n", $? >> 8;
+        system("cat makedb.log");
+        exit(1);
+      }
     }else {
       # Do we need to use blastdb version 4 anymore?
       #      . "-blastdb_version 4 "
@@ -498,6 +504,7 @@ if ( $engine eq "rmblast" ) {
         exit(1);
       }
     }
+    unlink("makedb.log") if ( -e "makedb.log" );
   }else {
     unless ( ! $options{'quiet'} ) {
       print "# WARNING: RMBlast database exists for $databaseFile.  Use -force to force rebuilding of the database\n";

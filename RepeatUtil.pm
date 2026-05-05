@@ -569,6 +569,9 @@ sub ncbiMaskDatabaseNativeMT {
   my $repeatsMasked = 0;
   my $totalMasked = 0;
 
+  ## DEBUG
+  ##print "Running: " . $searchEngine->getParameters() . "\n";
+  ## DEBUG
   my ( $status, $resultCollection ) = $searchEngine->search();
   if ( $status ) {
     print STDERR "\nERROR from search engine (", $? >> 8, ") \n";
