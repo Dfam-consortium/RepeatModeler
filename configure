@@ -90,6 +90,13 @@ Path to the MAFFT bin directory (optional, for LTR pipeline).
 
 Path to the Ninja installation directory (optional, for LTR pipeline).
 
+=item -no_prompt
+
+Non-interactive mode. Never prompts for input. Succeeds silently when all
+required values are supplied via command-line options or already configured.
+Dies with an error message if any required value is missing or invalid, or
+if a partial LTR pipeline specification is supplied.
+
 =back
 
 =head1 SEE ALSO
@@ -127,12 +134,14 @@ my $INSTALL_DIR = $FindBin::RealBin;
 ##
 ## Command-line option processing
 ##
-my @getopt_args = ( 'version', 'perlbin=s' );
+my @getopt_args = ( 'version', 'perlbin=s', 'no_prompt' );
 push @getopt_args, RepModelConfig::getCommandLineOptions();
 
 my %opts;
 Getopt::Long::config( "noignorecase", "bundling_override" );
 GetOptions( \%opts, @getopt_args ) or usage();
+
+my $no_prompt = $opts{no_prompt} ? 1 : 0;
 
 if ( $opts{version} ) {
   print "RepeatModeler $version\n";
@@ -239,6 +248,9 @@ sub prompt {
 sub prompt_yn {
   my ( $message, $default ) = @_;
   $default //= "n";
+  if ( $no_prompt ) {
+    return lc($default) eq "y" ? 1 : 0;
+  }
   my $hint = ( lc($default) eq "y" ) ? "[Y/n]" : "[y/N]";
   my $answer;
   do {
@@ -399,6 +411,10 @@ sub _configure_dir {
       $args{version_check}->() if $args{version_check};
       return;
     }
+    if ( $no_prompt ) {
+      die "\n  ERROR: $label path '$opts{$opt_key}' is not valid.\n"
+        . "         Could not find required binaries.\n\n";
+    }
     status_warn("Specified $label path is not valid: $opts{$opt_key}");
     print "\n";
   }
@@ -428,6 +444,10 @@ sub _configure_dir {
       @{ $config->{$key}->{'expected_binaries'} // [] } );
 
   while (1) {
+    if ( $no_prompt ) {
+      die "\n  ERROR: $label is not configured and no -$opt_key was supplied.\n"
+        . "         Please specify -$opt_key on the command line.\n\n";
+    }
     my $dir = prompt( "Path to $label directory", $current );
     $config->{$key}->{'value'} = $dir;
     if ( RepModelConfig::validateParam($key) ) {
@@ -486,6 +506,10 @@ sub configure_famdb {
       status_ok( "FamDB: " . $config->{$key}->{'value'} );
       return;
     }
+    if ( $no_prompt ) {
+      die "\n  ERROR: FamDB path '$opts{$opt_key}' is not valid.\n"
+        . "         famdb.py must exist and be executable in that directory.\n\n";
+    }
     status_warn("Specified FamDB path is not valid: $opts{$opt_key}");
     print "  famdb.py must exist and be executable in that directory.\n\n";
   }
@@ -503,6 +527,10 @@ sub configure_famdb {
   }
 
   while (1) {
+    if ( $no_prompt ) {
+      die "\n  ERROR: FamDB is not configured and no -famdb_dir was supplied.\n"
+        . "         Please specify -famdb_dir on the command line.\n\n";
+    }
     my $dir = prompt(
         "Path to FamDB installation (directory containing famdb.py)",
         $current );
@@ -634,16 +662,45 @@ sub configure_ucsctools {
 ##
 sub configure_ltr_pipeline {
   section_header("LTR Structural Identification Pipeline  (optional)");
+
+  my @ltr_keys   = qw( GENOMETOOLS_DIR LTR_RETRIEVER_DIR MAFFT_DIR NINJA_DIR );
+  my @ltr_opts   = qw( genometools_dir ltr_retriever_dir mafft_dir ninja_dir );
+  my @ltr_labels = ( 'GenomeTools', 'LTR_Retriever', 'MAFFT', 'NINJA' );
+
+  my $n_provided = grep { $opts{$_} } @ltr_opts;
+
+  # Partial specification is always an error
+  if ( $n_provided > 0 && $n_provided < 4 ) {
+    my @missing = map { "-$ltr_opts[$_]" }
+                  grep { !$opts{$ltr_opts[$_]} } 0..$#ltr_opts;
+    die "\n  ERROR: Partial LTR pipeline specification. "
+      . "Supply all four options or none.\n"
+      . "  Missing: " . join(", ", @missing) . "\n\n";
+  }
+
+  # All four CLI opts provided: validate and configure non-interactively
+  if ( $n_provided == 4 ) {
+    my @invalid;
+    for my $i ( 0..$#ltr_keys ) {
+      push @invalid, "  $ltr_labels[$i] (-$ltr_opts[$i]): $opts{$ltr_opts[$i]}"
+        unless RepModelConfig::validateParam($ltr_keys[$i]);
+    }
+    if ( @invalid ) {
+      die "\n  ERROR: The following LTR pipeline paths are not valid:\n"
+        . join("\n", @invalid) . "\n\n";
+    }
+    for my $k ( @ltr_keys ) {
+      status_ok( "$k: " . $config->{$k}->{'value'} );
+    }
+    return;
+  }
+
+  # None provided: fall back to interactive (or no_prompt auto-default) flow
   print "\n  RepeatModeler can use an LTR structural pipeline to identify\n";
   print "  LTR retrotransposons with greater sensitivity. Requires:\n";
   print "  GenomeTools, LTR_Retriever (v2.9.0), MAFFT, and NINJA.\n\n";
 
-  # If all four are already configured and valid, offer to keep them
-  my @ltr_keys = qw( GENOMETOOLS_DIR LTR_RETRIEVER_DIR MAFFT_DIR NINJA_DIR );
-  my $all_valid = 1;
-  for my $k ( @ltr_keys ) {
-    $all_valid = 0 unless RepModelConfig::validateParam($k);
-  }
+  my $all_valid = !grep { !RepModelConfig::validateParam($_) } @ltr_keys;
 
   if ( $all_valid ) {
     print "  LTR pipeline currently configured:\n";
