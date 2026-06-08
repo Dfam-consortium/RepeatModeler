@@ -174,6 +174,7 @@ my $DEBUG = 0;
 my $CM_DIR = $RepeatMaskerConfig::configuration->{'CROSSMATCH_DIR'}->{'value'};
 my $RMSK_DIR = $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLAST_DIR = $RepModelConfig::configuration->{'RMBLAST_DIR'}->{'value'};
+#my $RMBLAST_DIR = "/home/rhubley/projects/Claude/rmblast-port/rmblast/wrappers";
 my $defaultEngine = "rmblast";
 
 #
