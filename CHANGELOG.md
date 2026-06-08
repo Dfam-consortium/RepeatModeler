@@ -4,19 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [2.0.8]
+## [2.0.9]
 
 ### Added
 - FamDB is now a dependency of RepeatModeler and has been updated to support Dfam 4.0
-- Support for makeblastdb partitioning of large genomes (e.g. `*.00.nsq`).
-- Long format support in 2bit files for large genomes.
-- Catch for older versions of RepeatScout.
-- Support for RECON 1.10.
 
 ### Changed
 - Configure now logs without screen clearing making it easier to debug problems.
 - RepeatClassifier is now responsible for querying and caching reference 
   libraries from FamDB.
+
+## [2.0.8]
+
+### Added
+- Support for makeblastdb partitioning of large genomes (e.g. `*.00.nsq`).
+- Long format support in 2bit files for large genomes.
+- Catch for older versions of RepeatScout.
+- Support for RECON 1.10.
 
 ### Fixed
 - RepeatModeler/Refiner was not processing consensus extensions properly in 2.0.7
