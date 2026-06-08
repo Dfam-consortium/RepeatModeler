@@ -61,9 +61,22 @@ BEGIN {
                            'expected_binaries' => [
                                                     'cd-hit'
                                                   ],
+                           'expected_files' => [],
                            'param_type' => 'directory',
                            'required' => 1,
                            'value' => '/usr/local/cd-hit-4.8.1'
+                         },
+          'FAMDB_DIR' => {
+                           'command_line_override' => 'famdb_dir',
+                           'description' => 'The path to the installation of the FamDB program (V3.0.0) or higher.',
+                           'environment_override' => 'FAMDB_DIR',
+                           'expected_binaries' => [
+                                                    'famdb.py'
+                                                  ],
+                           'expected_files' => [],
+                           'param_type' => 'directory',
+                           'required' => 1,
+                           'value' => '/usr/local/FamDB-Dfam-4.0_RB'
                          },
           'GENOMETOOLS_DIR' => {
                                  'command_line_override' => 'genometools_dir',
@@ -72,6 +85,7 @@ BEGIN {
                                  'expected_binaries' => [
                                                           'gt'
                                                         ],
+                                 'expected_files' => [],
                                  'param_type' => 'directory',
                                  'required' => 0,
                                  'value' => '/usr/local/genometools-1.6.2/bin'
@@ -83,6 +97,7 @@ BEGIN {
                                    'expected_binaries' => [
                                                             'LTR_retriever'
                                                           ],
+                                   'expected_files' => [],
                                    'param_type' => 'directory',
                                    'required' => 0,
                                    'value' => '/usr/local/LTR_retriever-2.9.0'
@@ -94,6 +109,7 @@ BEGIN {
                            'expected_binaries' => [
                                                     'mafft'
                                                   ],
+                           'expected_files' => [],
                            'param_type' => 'directory',
                            'required' => 0,
                            'value' => '/usr/local/mafft/bin'
@@ -105,6 +121,7 @@ BEGIN {
                            'expected_binaries' => [
                                                     'Ninja'
                                                   ],
+                           'expected_files' => [],
                            'param_type' => 'directory',
                            'required' => 0,
                            'value' => '/usr/local/Ninja-0.98-cluster_only'
@@ -117,24 +134,38 @@ BEGIN {
                                                     'eledef',
                                                     'eleredef'
                                                   ],
+                           'expected_files' => [],
                            'param_type' => 'directory',
                            'required' => 1,
                            'value' => '/usr/local/RECON'
                          },
+          'REPEATAFTERME_DIR' => {
+                                   'command_line_override' => 'repeatafterme_dir',
+                                   'description' => 'The path to the installation of the RepeatAfterMe ( 0.0.7 or higher ) extension program.',
+                                   'environment_override' => 'REPEATAFTERME_DIR',
+                                   'expected_binaries' => [
+                                                            'RAMExtend'
+                                                          ],
+                                   'expected_files' => [],
+                                   'param_type' => 'directory',
+                                   'required' => 1,
+                                   'value' => '/usr/local/RepeatAfterMe'
+                                 },
           'REPEATMASKER_DIR' => {
                                   'command_line_override' => 'repeatmasker_dir',
-                                  'description' => 'The path to the installation of RepeatMasker (RM 4.1.5 or higher)',
+                                  'description' => 'The path to the installation of RepeatMasker (4.2.4 or higher).',
                                   'environment_override' => 'REPEATMASKER_DIR',
                                   'expected_binaries' => [
                                                            'RepeatMasker'
                                                          ],
+                                  'expected_files' => [],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/usr/local/RepeatMasker-4.2.0-Dfam_3.9'
+                                  'value' => '/usr/local/RepeatMasker-4.2.4-Dfam-4.0_RB'
                                 },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
-                             'description' => 'The path to the installation of the RMBLAST (2.14.1 or higher)',
+                             'description' => 'The path to the installation of RMBlast (2.17.1 or higher).',
                              'environment_override' => 'RMBLAST_DIR',
                              'expected_binaries' => [
                                                       'rmblastn',
@@ -144,6 +175,7 @@ BEGIN {
                                                       'blastdb_aliastool',
                                                       'blastn'
                                                     ],
+                             'expected_files' => [],
                              'param_type' => 'directory',
                              'required' => 1,
                              'value' => '/usr/local/rmblast/bin'
@@ -156,20 +188,10 @@ BEGIN {
                                                      'RepeatScout',
                                                      'build_lmer_table'
                                                    ],
+                            'expected_files' => [],
                             'param_type' => 'directory',
                             'required' => 1,
                             'value' => '/home/rhubley/projects/RepeatScout-1.0.7'
-                          },
-          'REPEATAFTERME_DIR' => {
-                            'command_line_override' => 'repeatafterme_dir',
-                            'description' => 'The path to the installation of the RepeatAfterMe ( 0.0.6 or higher ) extension program.',
-                            'environment_override' => 'REPEATAFTERME_DIR',
-                            'expected_binaries' => [
-                                                     'RAMExtend'
-                                                   ],
-                            'param_type' => 'directory',
-                            'required' => 1,
-                            'value' => '/usr/local/RepeatAfterMe'
                           },
           'TRF_DIR' => {
                          'command_line_override' => 'trf_dir',
@@ -178,6 +200,7 @@ BEGIN {
                          'expected_binaries' => [
                                                   'trf'
                                                 ],
+                         'expected_files' => [],
                          'param_type' => 'directory',
                          'required' => 1,
                          'value' => '/usr/local/bin'
@@ -191,6 +214,7 @@ BEGIN {
                                                         'faToTwoBit',
                                                         'twoBitInfo'
                                                       ],
+                               'expected_files' => [],
                                'param_type' => 'directory',
                                'required' => 1,
                                'value' => '/usr/local/ucscTools'
@@ -298,8 +322,18 @@ BEGIN {
 
       if ( $configuration->{$param}->{'param_type'} eq "directory" ) {
         if ( -d $value ) {
+          foreach my $file (
+                          @{ $configuration->{$param}->{'expected_files'} // [] } )
+          {
+            if ( !-s "$value/$file" ) {
+              print "\nCould not find the required file \"$file\" inside\n"
+                  . "the directory \"$value\"!\n\n";
+              $validParam = 0;
+              last;
+            }
+          }
           foreach my $binary (
-                          @{ $configuration->{$param}->{'expected_binaries'} } )
+                          @{ $configuration->{$param}->{'expected_binaries'} // [] } )
           {
             if ( !-x "$value/$binary" ) {
               print "\nCould not find the required program \"$binary\" inside\n"
@@ -364,8 +398,16 @@ BEGIN {
     my $validParam = 1;
     if ( $configuration->{$param}->{'param_type'} eq "directory" ) {
       if ( -d $value ) {
-        foreach
-            my $binary ( @{ $configuration->{$param}->{'expected_binaries'} } )
+        foreach my $file (
+                     @{ $configuration->{$param}->{'expected_files'} // [] } )
+        {
+          if ( !-s "$value/$file" ) {
+            $validParam = 0;
+            last;
+          }
+        }
+        foreach my $binary (
+                     @{ $configuration->{$param}->{'expected_binaries'} // [] } )
         {
           if ( !-x "$value/$binary" ) {
             $validParam = 0;

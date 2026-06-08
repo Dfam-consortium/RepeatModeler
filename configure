@@ -1,14 +1,14 @@
-#!/usr/local/bin/perl
+#!/usr/bin/env perl
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) configure
 ##  Author:
 ##      Robert Hubley <rhubley@systemsbiology.org>
 ##  Description:
-##      A configuration utility for the RepeatModeler distribution.
+##      Configuration utility for the RepeatModeler package.
 ##
 #******************************************************************************
-#* Copyright (C) Institute for Systems Biology 2003-2019 Developed by
+#* Copyright (C) Institute for Systems Biology 2003-2025 Developed by
 #* Arian Smit and Robert Hubley.
 #*
 #* This work is licensed under the Open Source License v2.1.  To view a copy
@@ -19,29 +19,86 @@
 
 =head1 NAME
 
-configure - Configure the RepeatModeler distribution
+configure - Configure the RepeatModeler package
 
 =head1 SYNOPSIS
 
-  perl ./configure 
+  perl ./configure [options]
 
 =head1 DESCRIPTION
 
-  An installation script for the RepeatModeler distribution
+  Interactive configuration script for RepeatModeler.
+  Run from inside the RepeatModeler installation directory.
 
-=head1 CONFIGURATION OVERRIDES
-
-=head1 SEE ALSO
+=head1 OPTIONS
 
 =over 4
 
-RepeatModeler
+=item -perlbin <path>
+
+Path to the perl interpreter to embed in script headers.
+
+=item -repeatmasker_dir <path>
+
+Path to the RepeatMasker installation directory.
+
+=item -famdb_dir <path>
+
+Path to the FamDB installation directory (containing famdb.py).
+
+=item -rmblast_dir <path>
+
+Path to the RMBlast bin directory.
+
+=item -rscout_dir <path>
+
+Path to the RepeatScout installation directory.
+
+=item -recon_dir <path>
+
+Path to the RECON installation directory.
+
+=item -repeatafterme_dir <path>
+
+Path to the RepeatAfterMe installation directory.
+
+=item -trf_dir <path>
+
+Path to the directory containing the trf executable.
+
+=item -cdhit_dir <path>
+
+Path to the CD-HIT installation directory.
+
+=item -ucsctools_dir <path>
+
+Path to the UCSC TwoBit tools directory.
+
+=item -genometools_dir <path>
+
+Path to the GenomeTools bin directory (optional, for LTR pipeline).
+
+=item -ltr_retriever_dir <path>
+
+Path to the LTR_Retriever installation directory (optional, for LTR pipeline).
+
+=item -mafft_dir <path>
+
+Path to the MAFFT bin directory (optional, for LTR pipeline).
+
+=item -ninja_dir <path>
+
+Path to the Ninja installation directory (optional, for LTR pipeline).
 
 =back
 
+=head1 SEE ALSO
+
+RepeatModeler
+
 =head1 COPYRIGHT
 
-Copyright 2005-2019 Robert Hubley, Institute for Systems Biology
+Copyright 2003-2025 Robert Hubley, Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -49,459 +106,699 @@ Robert Hubley <rhubley@systemsbiology.org>
 
 =cut
 
-#
-# Module Dependence
-#
 use strict;
+use warnings;
+use Config;
 use Cwd;
 use FindBin;
+use File::Basename;
+use File::Path qw(make_path rmtree);
+use File::Spec;
 use Getopt::Long;
 use Pod::Text;
 use lib $FindBin::Bin;
 use RepModelConfig;
 
-##
-## Release Version
-##
-my $version = $RepModelConfig::VERSION;
+$| = 1;
+
+my $version     = $RepModelConfig::VERSION;
+my $INSTALL_DIR = $FindBin::RealBin;
 
 ##
-## First...make sure we are running in the same directory
-## as the script is located.  This avoids problems where
-## this script ends up in someones path and they run it
-## unqualified from another installation directory.
+## Command-line option processing
 ##
-if ( cwd() ne $FindBin::RealBin ) {
-  print "\n    The RepeatModeler configure script must be run from\n"
-      . "    inside the RepeatModeler installation directory:\n\n"
-      . "       $FindBin::RealBin\n\n"
-      . "    Perhaps this is not the \"configure\" you are looking for?\n\n";
-  exit;
-}
-
-#
-# Option processing
-#  e.g.
-#   -t: Single letter binary option
-#   -t=s: String parameters
-#   -t=i: Number parameters
-#
-my @getopt_args = (
-                    '-version',    # print out the version and exit
-                    '-perlbin=s',
-                    '-a'
-);
-
-# Add configuration parameters as additional command-line options
+my @getopt_args = ( 'version', 'perlbin=s' );
 push @getopt_args, RepModelConfig::getCommandLineOptions();
 
-#
-# Get the supplied command line options, and set flags
-#
-my %options = ();
+my %opts;
 Getopt::Long::config( "noignorecase", "bundling_override" );
-unless ( GetOptions( \%options, @getopt_args ) ) {
-  usage();
+GetOptions( \%opts, @getopt_args ) or usage();
+
+if ( $opts{version} ) {
+  print "RepeatModeler $version\n";
+  exit 0;
 }
 
-#
-# Provide the POD text from this file and
-# from the config file by merging them
-# together.  The heading "CONFIGURATION
-# OVERRIDES" provides the insertion point
-# for the configuration POD.
-#
-sub usage {
-  my $p = Pod::Text->new();
-  $p->output_fh( *STDOUT );
-  my $pod_str;
-  open IN, "<$0"
-      or die "Could not open self ($0) for generating documentation!";
-  while ( <IN> ) {
-    if ( /^=head1\s+CONFIGURATION OVERRIDES\s*$/ ) {
-      my $c_pod = RepModelConfig::getPOD();
-      if ( $c_pod ) {
-        $pod_str .= $_ . $c_pod;
-      }
-    }
-    else {
-      $pod_str .= $_;
-    }
-  }
-  close IN;
-  print "$0 - $version\n";
-  $p->parse_string_document( $pod_str );
-  exit( 1 );
+##
+## Must be run from the installation directory
+##
+if ( getcwd() ne $INSTALL_DIR ) {
+  die "\n  ERROR: configure must be run from inside the RepeatModeler\n"
+    . "         installation directory:\n\n"
+    . "           cd $INSTALL_DIR\n"
+    . "           ./configure\n\n";
 }
 
-#
-# Resolve configuration settings using the following precedence:
-# command line first, then environment, followed by config
-# file.
-#
-RepModelConfig::resolveConfiguration( \%options );
+## Apply command-line overrides before any validation
+RepModelConfig::resolveConfiguration( \%opts );
 my $config = $RepModelConfig::configuration;
 
 ##
-## Perl interpreter location
+## Phase 1: Dependency checks (non-interactive)
 ##
-my $perlLocation = $^X;
-if ( $options{'perlbin'} ) {
-  my $tbin = "";
-  if ( -d $options{'perlbin'} ) {
-    if ( -x ( $options{'perlbin'} . "/perl" ) ) {
-      $tbin = $options{'perlbin'} . "/perl";
-    }
-    elsif ( -x ( $options{'perlbin'} . "/bin/perl" ) ) {
-      $tbin = $options{'perlbin'} . "/bin/perl";
-    }
-    else {
-      die "Could not find perl using supplied -perlbin parameter $options{'perlbin'}\n"
-          . "as $options{'perlbin'}/perl or $options{'perlbin'}/bin/perl.  Please fix\n"
-          . "and rerun configure.\n";
-    }
-  }
-  elsif ( -x $options{'perlbin'} ) {
-    $tbin = $options{'perlbin'};
-  }
-  if ( $tbin ne $perlLocation ) {
-    my $optStr;
-    foreach my $key ( keys %options ) {
-      if ( $key ne "perlbin" ) {
-        $optStr .= " -$key " . $options{$key};
-      }
-    }
-
-    # Rerun with intended version of perl
-    exec( "$tbin $FindBin::RealBin/configure $optStr" );
-  }
-}
+check_dependencies();
 
 ##
-## Check for perl version
+## Phase 2: Fix perl shebang lines in all RepeatModeler scripts
 ##
-if ( $] && $] < 5.008 ) {
-  system( "clear" );
-  print "RepeatModeler should be used with perl 5.008 or higher.\n"
-      . "Perl $] is being used to run configure.";
-  print "\n\n\n<PRESS ENTER TO CONTINUE>\n";
-  my $answer = <STDIN>;
-}
+my $perl = resolve_perl( $opts{perlbin} );
+update_shebangs( $perl );
 
 ##
-## Check for RepeatModeler dependencies
+## Phase 3: Interactive configuration
 ##
-BEGIN {
-  my @modDependencies = (
-                          "Tie::File",   "Getopt::Long",
-                          "POSIX",       "File::Copy",
-                          "File::Path",  "Data::Dumper",
-                          "Cwd",         "JSON", "JSON::PP",
-                          "File::Which", "URI", "Devel::Size",
-                          "LWP::UserAgent", "Storable"
-  );
+print_banner();
 
-  my @missingModules = ();
-  foreach my $module ( @modDependencies ) {
-    unless ( eval "require " . $module . ";" ) {
-      push @missingModules, $module;
-    }
-  }
-  if ( @missingModules ) {
-    print "\nThe following perl modules required by RepeatModeler "
-        . "are missing from\nyour system.  Please install these "
-        . "first:\n    "
-        . join( "\n    ", @missingModules ) . "\n";
-    exit;
-  }
-}
-
+configure_repeatmasker();
+configure_famdb();
+configure_rmblast();
+configure_repeatscout();
+configure_recon();
+configure_repeatafterme();
+configure_trf();
+configure_cdhit();
+configure_ucsctools();
+configure_ltr_pipeline();
 
 ##
-## Introduce ourselves
+## Phase 4: Save configuration and summarise
 ##
-system( "clear" );
-print "\n\n\nRepeatModeler Configuration Program\n\n";
-unless( $options{'a'} ) {
-  print "This program assists with the configuration of the\n";
-  print "RepeatModeler program.  The next set of screens will ask\n";
-  print "you to enter information pertaining to your system\n";
-  print "configuration.  At the end of the program your RepeatModeler\n";
-  print "installation will be ready to use.\n";
-  print "\n\n\n<PRESS ENTER TO CONTINUE>\n";
-  my $answer = <STDIN>;
-}
-
-
-my $goodParam;
-## RepeatMasker
-if ( !$options{'repeatmasker_dir'} ) {
-  $goodParam = 1;
-  do {
-    RepModelConfig::promptForParam( 'REPEATMASKER_DIR' );
-  } while ( $goodParam != 1 );
-}
-my $repMaskLocation = $config->{'REPEATMASKER_DIR'}->{'value'};
-my $tmpStr = `$repMaskLocation/RepeatMasker -v 2>&1`;
-if ( $tmpStr =~ /version\s+(\d+)\.(\d+)\.(\d+)(p\d+)?/ ) {
-  my $major = $1;
-  my $minor = $2;
-  my $rev = $3;
-  unless ( $major > 4 || ($major == 4 && $minor > 1) ||
-          ( $major == 4 && $minor == 1 && $rev >= 4) ) {
-    die "RepeatMasker version is not compatible with RepeatModeler, please use 4.1.4 or higher.\n";
-  }
-}
-
-if ( !$options{'repeatafterme_dir'} ) {
-  RepModelConfig::promptForParam( 'REPEATAFTERME_DIR' );
-}
-if ( !$options{'recon_dir'} ) {
-  RepModelConfig::promptForParam( 'RECON_DIR' );
-}
-if ( !$options{'rscout_dir'} ) {
-  RepModelConfig::promptForParam( 'RSCOUT_DIR' );
-}
-
-my $rsVersion = RepModelConfig::getDependencyVersion("RSCOUT_DIR");
-if ( $rsVersion =~ /(\d+)\.(\d+)\.(\d+).*/ ) {
-  # Not semantic versioning, but we can still name it that way
-  my $major = $1;
-  my $minor = $2;
-  my $patch = $3;
-  unless ( $major > 1 || $minor > 0 || ( $major == 1 && $minor == 0 && $patch >= 7 ) ) {
-    die "RepeatScout version is not compatible with RepeatModeler, please use 1.0.7 or higher.\n";
-  }
-}
-
-
-if ( !$options{'dustmasker_prgm'} ) {
-  RepModelConfig::promptForParam( 'DUSTMASKER_PRGM' );
-}
-if ( !$options{'trf_dir'} ) {
-  RepModelConfig::promptForParam( 'TRF_DIR' );
-}
-if ( !$options{'cdhit_dir'} ) {
-  RepModelConfig::promptForParam( 'CDHIT_DIR' );
-}
-if ( !$options{'ucsctools_dir'} ) {
-  RepModelConfig::promptForParam( 'UCSCTOOLS_DIR' );
-}
-
-if ( !$options{'rmblast_dir'}  ) {
-  RepModelConfig::promptForParam( 'RMBLAST_DIR' );
-}
-
-my $engineVersion = RepModelConfig::getDependencyVersion("RMBLAST_DIR");
-if ( $engineVersion =~ /(\d+)\.(\d+)\.(\d+).*/ ) {
-  my $major = $1;
-  my $minor = $2;
-  unless ( $major > 2 || ( $major == 2 && $minor >= 13 ) ) {
-    die "RMBlast version is not compatible with RepeatModeler, please use 2.13.0 or higher.\n";
-  }
-}
-
-my $answer;
-unless ( $options{'a'} ) {
-  ##
-  ## LTRPipeline Configuration
-  ##
-  system( "clear" );
-  print "\n\n\n";
-  print "LTR Structural Identication Pipeline [optional]\n\n";
-  print "In addition to RECON/RepeatScout this version of RepeatModeler\n";
-  print "has the option of running an additional analysis to identify\n";
-  print "structural features of LTR sequences.\n\n";
-  print "Do you wish to configure RepeatModeler for this type\n";
-  print "of analysis [y] or n?: ";
-  $answer = <STDIN>;
-  $answer =~ s/[\n\r]+//g;
-  
-  if ( $answer =~ /y|yes/i || $answer eq "" ) {
-
-    #if ( ! $options{'ltr_detector_dir'} ) {
-    #  RepModelConfig::promptForParam('LTR_DETECTOR_DIR');
-    #}
-    if ( !$options{'genometools_dir'} ) {
-      RepModelConfig::promptForParam( 'GENOMETOOLS_DIR' );
-    }
-    if ( !$options{'ltr_retriever_dir'} ) {
-      RepModelConfig::promptForParam( 'LTR_RETRIEVER_DIR' );
-
-      my $ltrRetVersion = RepModelConfig::getDependencyVersion("LTR_RETRIEVER_DIR");
-      unless ( $ltrRetVersion eq "v2.9.0" ) {
-        die "LTR_retriever version ($ltrRetVersion) is not compatible with RepeatModeler, please use v2.9.0.\n";
-      }
-    }
-    if ( !$options{'mafft_dir'} ) {
-      RepModelConfig::promptForParam( 'MAFFT_DIR' );
-    }
-    if ( !$options{'ninja_dir'} ) {
-      RepModelConfig::promptForParam( 'NINJA_DIR' );
-    }
-  }
-}
-
-# Save settings
 RepModelConfig::updateConfigFile();
+print_summary();
 
-##
-## Alter perl invocation headers
-##
-print " -- Setting perl interpreter and version...\n";
-## Excluded modules: EdgeExtension, SegregationAnalysis
-my @progFiles = (
-                  "BuildDatabase",     "Refiner",
-                  "RepeatClassifier",  "RepeatModeler",
-                  "TRFMask",           "LTRPipeline",
-                  "util/align.pl",
-                  "util/Linup",
-                  "util/CntSubst",
-                  "util/alignAndCallConsensus.pl",
-                  "util/AutoRunBlocker.pl",
-                  "util/bestwindow.pl",
-                  "util/Blocker.pl",
-                  "util/ClusterPartialMatchingSubs.pl",
-                  "util/extendFlankingSeqs.pl",
-                  "util/extend-stk.pl",
-                  "util/fasta-trf-filter.pl",
-                  "util/generateSeedAlignments.pl",
-                  "util/renameIds.pl",
-                  "util/rmblast.pl",
-                  "util/TSD.pl",
-                  "util/viewMSA.pl",
-                  "util/viewMultipleMSA.pl",
-                  "util/visualizeAlignPNG.pl",
-);
-my $perlLocEsc = $perlLocation;
-$perlLocEsc =~ s/\//\\\//g;
+exit 0;
 
-foreach my $file ( @progFiles ) {
-  if ( -s $file ) {
-    system(
-         "$perlLocation -i -0pe \'s/^#\\!.*perl.*/#\\!$perlLocEsc/g\;' $file" );
-  }
+###########################################################################
+## Subroutines
+###########################################################################
+
+sub usage {
+  my $p = Pod::Text->new( sentence => 0, width => 78 );
+  $p->output_fh(*STDOUT);
+  $p->parse_file($0);
+  exit 1;
 }
 
-print "\nCongratulations!  RepeatModeler is now ready to use.\n";
-
-####################### S U B R O U T I N E S ##############################
-
-sub searchEngineMenu {
-  my @searchEngines = (
-                  {
-                    name => "RMBLAST_DIR",
-                    desc => "RMBlast - NCBI Blast with RepeatMasker extensions (recommended 2.13+)",
-                    status => 0,
-                  },
-                  #{
-                  #  name   => "ABBLAST_DIR",
-                  #  desc   => "WUBlast/ABBlast",
-                  #  status => 0,
-                  #}
-  );
-
-  my $done          = 0;
-  my $defaultEngine = "";
-  do {
-    system( "clear" );
-    print "\n\n\n";
-    print "Add a Search Engine:\n";
-    my $i;
-    for ( $i = 0 ; $i <= $#searchEngines ; $i++ ) {
-      print "   " . ( $i + 1 ) . ". $searchEngines[$i]->{'desc'}: [ ";
-      if ( $searchEngines[ $i ]->{'status'} == 0 ) {
-        print "Un-configured ]\n";
-      }
-      elsif ( $searchEngines[ $i ]->{'status'} == 1 ) {
-        print "Configured ]\n";
-      }
-      else {
-        print "Configured, Default ]\n";
-      }
-    }
-    print "\n";
-    print "   " . ( $i + 1 ) . ". Done\n";
-
-    print "\n\nEnter Selection: ";
-    $answer = <STDIN>;
-    $answer =~ s/[\n\r]+//g;
-
-    if ( $answer =~ /\d+/ && $answer > 0 && $answer <= ( $#searchEngines + 2 ) )
-    {
-      if ( $answer == ( $#searchEngines + 2 ) ) {
-        if ( $defaultEngine eq "" ) {
-          print "You must configure at least one search engine!\n";
-          print "<PRESS ENTER TO CONTINUE - CTRL-C to QUIT>\n";
-          $answer = <STDIN>;
-        }
-        else {
-          $done = 1;
-        }
-      }
-      else {
-        RepModelConfig::promptForParam(
-                                      $searchEngines[ $answer - 1 ]->{'name'} );
-        $searchEngines[ $answer - 1 ]->{'status'} = 1;
-        $defaultEngine = 0;
-      }
-    }
-    else {
-      print "Invalid selection!\n";
-      print "<PRESS ENTER TO CONTINUE>\n";
-      $answer = <STDIN>;
-    }
-  } while ( $done == 0 );
+sub print_banner {
+  my $w = 62;
+  print "=" x $w . "\n";
+  printf " %-*s\n", $w - 2, " RepeatModeler v$version  --  Configuration";
+  print "=" x $w . "\n\n";
 }
 
-##-------------------------------------------------------------------------##
+sub section_header {
+  my ($title) = @_;
+  print "\n" . "-" x 62 . "\n";
+  print "  $title\n";
+  print "-" x 62 . "\n";
+}
 
-=over 4
+sub status_ok   { printf "  [ OK ]  %s\n", $_[0] }
+sub status_info { printf "  [    ]  %s\n", $_[0] }
+sub status_warn { printf "  [WARN]  %s\n", $_[0] }
 
-=item Use: my $retVal =  &promptScreen( $screenText, $promptText, 
-                                        $defaultAnswer, [$validResponses] );
-
-Clear the screen and prompt the user for input
-
-=back
-
-=cut
-
-##-------------------------------------------------------------------------##
-sub promptScreen {
-  my $screenText     = shift;
-  my $promptText     = shift;
-  my $defaultAnswer  = shift;
-  my $validResponses = shift;
-
-  my $answer = undef;
-
-  # Clear the screen
-  system( "clear" );
-
-  print "\n\n\n";
-  print $screenText;
-  my $numLines = ( $screenText =~ s/(\n)/$1/g );
-  for ( my $i = 0 ; $i < 15 - $numLines ; $i++ ) {
-    print "\n";
-  }
-  if ( defined $validResponses ) {
-    $promptText .= " ( " . $validResponses . " )";
-  }
-  if ( defined $defaultAnswer ) {
-    $promptText .= " [ " . $defaultAnswer . " ]: ";
-  }
-  print $promptText;
-  $answer = <STDIN>;
-
-  if ( $answer =~ /^\s*$/ ) {
-    $answer = $defaultAnswer;
+##
+## Read a line from STDIN, strip newline, return $default if blank.
+##
+sub prompt {
+  my ( $message, $default ) = @_;
+  if ( defined $default && $default ne "" ) {
+    print "  $message [$default]: ";
   }
   else {
-    $answer =~ s/[\n\r]+//g;
+    print "  $message: ";
+  }
+  my $answer = <STDIN> // "";
+  $answer =~ s/[\r\n]+$//;
+  return ( $answer eq "" && defined $default ) ? $default : $answer;
+}
+
+##
+## Prompt for Y/N. Returns 1 for yes, 0 for no.
+##
+sub prompt_yn {
+  my ( $message, $default ) = @_;
+  $default //= "n";
+  my $hint = ( lc($default) eq "y" ) ? "[Y/n]" : "[y/N]";
+  my $answer;
+  do {
+    print "  $message $hint: ";
+    $answer = <STDIN> // "";
+    $answer =~ s/[\r\n]+$//;
+    $answer = $default if $answer eq "";
+  } while ( $answer !~ /^[YyNn]$/i );
+  return $answer =~ /^[Yy]$/i ? 1 : 0;
+}
+
+##
+## Search PATH for an executable. Returns full path or "".
+##
+sub find_in_path {
+  my ($name) = @_;
+  for my $dir ( split /:/, ( $ENV{PATH} // "" ) ) {
+    my $full = "$dir/$name";
+    return $full if -f $full && -x $full;
+  }
+  return "";
+}
+
+##
+## Resolve the perl interpreter to use for shebang lines.
+##
+sub resolve_perl {
+  my ($perlbin) = @_;
+
+  my $perl = $^X;
+
+  if ( $perlbin ) {
+    if ( -d $perlbin ) {
+      for my $candidate ( "$perlbin/perl", "$perlbin/bin/perl" ) {
+        if ( -f $candidate && -x $candidate ) {
+          $perl = $candidate;
+          last;
+        }
+      }
+    }
+    elsif ( -f $perlbin && -x $perlbin ) {
+      $perl = $perlbin;
+    }
+    else {
+      die "\n  ERROR: -perlbin '$perlbin' does not point to a perl executable.\n\n";
+    }
   }
 
-  return ( $answer );
+  unless ( File::Spec->file_name_is_absolute($perl) ) {
+    $perl = $Config{perlpath} . ( $Config{_exe} // "" );
+  }
+
+  die "\n  ERROR: Cannot determine an absolute path for the perl interpreter.\n"
+    . "         Try: ./configure -perlbin /path/to/perl\n\n"
+    unless File::Spec->file_name_is_absolute($perl) && -x $perl;
+
+  return $perl;
+}
+
+##
+## Check required Perl modules.
+##
+sub check_dependencies {
+  section_header("Checking Dependencies");
+
+  if ( $] < 5.008 ) {
+    printf "  [FAIL]  Perl %s -- version 5.8 or higher is required.\n\n", $];
+    exit 1;
+  }
+  status_ok( "Perl " . sprintf( "%vd", $^V ) );
+
+  my @required = qw( Tie::File Getopt::Long POSIX File::Copy File::Path
+                     Data::Dumper Cwd Storable JSON );
+  my @missing;
+  for my $mod ( @required ) {
+    push @missing, $mod unless eval "require $mod; 1";
+  }
+  if ( @missing ) {
+    print "  [FAIL]  Missing Perl modules: " . join( ", ", @missing ) . "\n";
+    print "\n  Install via CPAN or your system package manager, "
+        . "then re-run configure.\n\n";
+    exit 1;
+  }
+  status_ok("Required Perl modules present");
+
+  unless ( eval "use Scalar::Util qw(weaken); 1" ) {
+    print "  [FAIL]  Scalar::Util is not compiled with XS support.\n";
+    print "\n  Please reinstall Scalar::Util from CPAN and re-run configure.\n\n";
+    exit 1;
+  }
+  status_ok("Scalar::Util (XS)");
+}
+
+##
+## Rewrite the perl shebang line in every RepeatModeler script.
+##
+sub update_shebangs {
+  my ($perl) = @_;
+
+  section_header("Perl Interpreter");
+  status_ok($perl);
+
+  my @scripts = qw(
+    BuildDatabase
+    Refiner
+    RepeatClassifier
+    RepeatModeler
+    TRFMask
+    LTRPipeline
+    util/align.pl
+    util/Linup
+    util/CntSubst
+    util/alignAndCallConsensus.pl
+    util/AutoRunBlocker.pl
+    util/bestwindow.pl
+    util/Blocker.pl
+    util/ClusterPartialMatchingSubs.pl
+    util/extendFlankingSeqs.pl
+    util/extend-stk.pl
+    util/fasta-trf-filter.pl
+    util/generateSeedAlignments.pl
+    util/renameIds.pl
+    util/rmblast.pl
+    util/TSD.pl
+    util/viewMSA.pl
+    util/viewMultipleMSA.pl
+    util/visualizeAlignPNG.pl
+  );
+
+  my $perlEsc = $perl;
+  $perlEsc =~ s/\//\\\//g;
+
+  for my $script ( @scripts ) {
+    if ( -s $script ) {
+      system( qq($perl -i -0pe 's/^#\\!.*perl.*/#\\!$perlEsc/g;' $script) );
+    }
+  }
+}
+
+##
+## General helper: configure a required directory-type tool.
+## Named args: key, label, desc, url, version_check (optional coderef).
+##
+sub _configure_dir {
+  my (%args) = @_;
+  my $key     = $args{key};
+  my $label   = $args{label};
+  my $opt_key = $config->{$key}->{'command_line_override'};
+
+  section_header($label);
+  print "\n  $args{desc}\n";
+  print "  $args{url}\n\n" if $args{url};
+
+  # Non-interactive: valid path supplied on command line
+  if ( $opts{$opt_key} ) {
+    if ( RepModelConfig::validateParam($key) ) {
+      status_ok( "$label: " . $config->{$key}->{'value'} );
+      $args{version_check}->() if $args{version_check};
+      return;
+    }
+    status_warn("Specified $label path is not valid: $opts{$opt_key}");
+    print "\n";
+  }
+
+  my $current = $config->{$key}->{'value'} // "";
+
+  # Seed from PATH if not currently valid
+  if ( !$current || !RepModelConfig::validateParam($key) ) {
+    if ( my $binary = ( $config->{$key}->{'expected_binaries'} // [] )->[0] ) {
+      my $found = find_in_path($binary);
+      $current  = dirname($found) if $found;
+    }
+  }
+
+  # Offer to keep if already valid
+  if ( $current && RepModelConfig::validateParam($key) ) {
+    print "  Currently configured: $current\n\n";
+    if ( prompt_yn( "Keep this $label configuration?", "y" ) ) {
+      status_ok("$label: $current");
+      $args{version_check}->() if $args{version_check};
+      return;
+    }
+    print "\n";
+  }
+
+  my $expected = join( ", ",
+      @{ $config->{$key}->{'expected_binaries'} // [] } );
+
+  while (1) {
+    my $dir = prompt( "Path to $label directory", $current );
+    $config->{$key}->{'value'} = $dir;
+    if ( RepModelConfig::validateParam($key) ) {
+      status_ok("$label: $dir");
+      $args{version_check}->() if $args{version_check};
+      return;
+    }
+    print "\n  Could not find required binaries in '$dir'.\n";
+    print "  Expected: $expected\n\n" if $expected;
+    $current = $dir;
+  }
+}
+
+##
+## Configure RepeatMasker (required).
+##
+sub configure_repeatmasker {
+  _configure_dir(
+    key   => 'REPEATMASKER_DIR',
+    label => 'RepeatMasker',
+    desc  => 'RepeatMasker performs initial masking and is required for '
+           . "RepeatModeler's\n  classification pipeline. (4.2.4 or higher)",
+    url   => 'https://www.repeatmasker.org/',
+    version_check => sub {
+      my $val = $config->{'REPEATMASKER_DIR'}->{'value'};
+      my $ver = `$val/RepeatMasker -v 2>&1`;
+      if ( $ver =~ /version\s+(\d+)\.(\d+)\.(\d+)/ ) {
+        my ( $maj, $min, $rev ) = ( $1, $2, $3 );
+        unless ( $maj > 4 || ( $maj == 4 && $min > 2 )
+              || ( $maj == 4 && $min == 2 && $rev >= 4 ) ) {
+          die "\n  ERROR: RepeatMasker $maj.$min.$rev is too old. "
+            . "Please use 4.2.4 or higher.\n\n";
+        }
+        status_info("Version: $maj.$min.$rev");
+      }
+    },
+  );
+}
+
+##
+## Configure FamDB (required for RepeatClassifier).
+##
+sub configure_famdb {
+  my $key   = 'FAMDB_DIR';
+  my $label = 'FamDB';
+
+  section_header("FamDB");
+  print "\n  FamDB provides access to the Dfam TE protein and consensus\n";
+  print "  libraries used by RepeatClassifier. (V3.0.0 or higher)\n";
+  print "  https://github.com/Dfam-consortium/FamDB\n\n";
+
+  my $opt_key = $config->{$key}->{'command_line_override'};
+
+  if ( $opts{$opt_key} ) {
+    if ( RepModelConfig::validateParam($key) ) {
+      status_ok( "FamDB: " . $config->{$key}->{'value'} );
+      return;
+    }
+    status_warn("Specified FamDB path is not valid: $opts{$opt_key}");
+    print "  famdb.py must exist and be executable in that directory.\n\n";
+  }
+
+  my $current        = $config->{$key}->{'value'} // "";
+  my $currently_valid = $current && RepModelConfig::validateParam($key);
+
+  if ( $currently_valid ) {
+    print "  Currently configured: $current\n\n";
+    if ( prompt_yn( "Keep this FamDB configuration?", "y" ) ) {
+      status_ok("FamDB: $current");
+      return;
+    }
+    print "\n";
+  }
+
+  while (1) {
+    my $dir = prompt(
+        "Path to FamDB installation (directory containing famdb.py)",
+        $current );
+    $config->{$key}->{'value'} = $dir;
+    if ( RepModelConfig::validateParam($key) ) {
+      status_ok("FamDB: $dir");
+      return;
+    }
+    print "\n  famdb.py not found or not executable in '$dir'.\n\n";
+    $current = $dir;
+  }
+}
+
+##
+## Configure RMBlast (required).
+##
+sub configure_rmblast {
+  _configure_dir(
+    key   => 'RMBLAST_DIR',
+    label => 'RMBlast',
+    desc  => 'RMBlast provides the alignment engine for RepeatModeler. '
+           . '(2.17.1 or higher)',
+    url   => 'https://www.repeatmasker.org/rmblast/',
+    version_check => sub {
+      my $val = $config->{'RMBLAST_DIR'}->{'value'};
+      my $ver = `$val/rmblastn -version 2>&1`;
+      if ( $ver =~ /rmblastn:\s+(\d+)\.(\d+)\.(\d+)/ ) {
+        my ( $maj, $min, $rev ) = ( $1, $2, $3 );
+        unless ( $maj > 2 || ( $maj == 2 && $min > 17 )
+              || ( $maj == 2 && $min == 17 && $rev >= 1 ) ) {
+          die "\n  ERROR: RMBlast $maj.$min.$rev is too old. "
+            . "Please use 2.17.1 or higher.\n\n";
+        }
+        status_info("Version: $maj.$min.$rev");
+      }
+    },
+  );
+}
+
+##
+## Configure RepeatScout (required).
+##
+sub configure_repeatscout {
+  _configure_dir(
+    key   => 'RSCOUT_DIR',
+    label => 'RepeatScout',
+    desc  => 'RepeatScout performs de novo repeat discovery. (1.0.7 or higher)',
+    url   => 'https://github.com/mmcco/RepeatScout',
+    version_check => sub {
+      my $val = $config->{'RSCOUT_DIR'}->{'value'};
+      my $ver = `$val/RepeatScout -blah 2>&1`;
+      if ( $ver =~ /Version\s+(\d+)\.(\d+)\.(\d+)/ ) {
+        my ( $maj, $min, $rev ) = ( $1, $2, $3 );
+        unless ( $maj > 1 || ( $maj == 1 && $min > 0 )
+              || ( $maj == 1 && $min == 0 && $rev >= 7 ) ) {
+          die "\n  ERROR: RepeatScout $maj.$min.$rev is too old. "
+            . "Please use 1.0.7 or higher.\n\n";
+        }
+        status_info("Version: $maj.$min.$rev");
+      }
+    },
+  );
+}
+
+##
+## Configure RECON (required).
+##
+sub configure_recon {
+  _configure_dir(
+    key   => 'RECON_DIR',
+    label => 'RECON',
+    desc  => 'RECON performs automated de novo repeat element definition.',
+    url   => 'https://github.com/dfam-consortium/RECON',
+  );
+}
+
+##
+## Configure RepeatAfterMe (required).
+##
+sub configure_repeatafterme {
+  _configure_dir(
+    key   => 'REPEATAFTERME_DIR',
+    label => 'RepeatAfterMe',
+    desc  => 'RepeatAfterMe extends repeat model boundaries. (0.0.7 or higher)',
+    url   => 'https://github.com/Dfam-consortium/RepeatAfterMe',
+  );
+}
+
+##
+## Configure TRF (required).
+##
+sub configure_trf {
+  _configure_dir(
+    key   => 'TRF_DIR',
+    label => 'TRF',
+    desc  => 'Tandem Repeat Finder identifies tandem repeats. '
+           . 'The executable must be named "trf". (4.0.9 or higher)',
+    url   => 'https://github.com/Benson-Genomics-Lab/TRF',
+  );
+}
+
+##
+## Configure CD-HIT (required).
+##
+sub configure_cdhit {
+  _configure_dir(
+    key   => 'CDHIT_DIR',
+    label => 'CD-HIT',
+    desc  => 'CD-HIT clusters sequences to reduce redundancy.',
+    url   => 'https://github.com/weizhongli/cdhit',
+  );
+}
+
+##
+## Configure UCSC TwoBit tools (required).
+##
+sub configure_ucsctools {
+  _configure_dir(
+    key   => 'UCSCTOOLS_DIR',
+    label => 'UCSC TwoBit Tools',
+    desc  => 'UCSC TwoBit tools (twoBitToFa, faToTwoBit, twoBitInfo) '
+           . 'handle 2bit genome files.',
+    url   => 'https://hgdownload.soe.ucsc.edu/admin/exe/',
+  );
+}
+
+##
+## Optionally configure the LTR structural identification pipeline.
+##
+sub configure_ltr_pipeline {
+  section_header("LTR Structural Identification Pipeline  (optional)");
+  print "\n  RepeatModeler can use an LTR structural pipeline to identify\n";
+  print "  LTR retrotransposons with greater sensitivity. Requires:\n";
+  print "  GenomeTools, LTR_Retriever (v2.9.0), MAFFT, and NINJA.\n\n";
+
+  # If all four are already configured and valid, offer to keep them
+  my @ltr_keys = qw( GENOMETOOLS_DIR LTR_RETRIEVER_DIR MAFFT_DIR NINJA_DIR );
+  my $all_valid = 1;
+  for my $k ( @ltr_keys ) {
+    $all_valid = 0 unless RepModelConfig::validateParam($k);
+  }
+
+  if ( $all_valid ) {
+    print "  LTR pipeline currently configured:\n";
+    for my $k ( @ltr_keys ) {
+      printf "    %-18s  %s\n", $k, $config->{$k}->{'value'};
+    }
+    print "\n";
+    if ( prompt_yn( "Keep this LTR pipeline configuration?", "y" ) ) {
+      for my $k ( @ltr_keys ) {
+        status_ok( "$k: " . $config->{$k}->{'value'} );
+      }
+      return;
+    }
+    print "\n";
+  }
+
+  unless ( prompt_yn( "Configure the LTR pipeline?", "n" ) ) {
+    status_info("LTR pipeline not configured (optional).");
+    return;
+  }
+
+  print "\n";
+
+  _configure_dir(
+    key   => 'GENOMETOOLS_DIR',
+    label => 'GenomeTools',
+    desc  => 'GenomeTools provides structural LTR detection (gt ltrharvest).',
+    url   => 'http://genometools.org/',
+  );
+
+  _configure_dir(
+    key   => 'LTR_RETRIEVER_DIR',
+    label => 'LTR_Retriever',
+    desc  => 'LTR_Retriever identifies and classifies LTR elements. (v2.9.0)',
+    url   => 'https://github.com/oushujun/LTR_retriever',
+    version_check => sub {
+      my $val = $config->{'LTR_RETRIEVER_DIR'}->{'value'};
+      my $ver = "";
+      if ( open( my $fh, "<", "$val/LTR_retriever" ) ) {
+        while ( <$fh> ) {
+          if ( /^my\s+\$version\s*=\s*"(\S+)"/ ) { $ver = $1; last; }
+        }
+        close $fh;
+      }
+      if ( $ver ) {
+        unless ( $ver eq "v2.9.0" ) {
+          die "\n  ERROR: LTR_Retriever $ver is not the required version. "
+            . "Please use v2.9.0.\n\n";
+        }
+        status_info("Version: $ver");
+      }
+    },
+  );
+
+  _configure_dir(
+    key   => 'MAFFT_DIR',
+    label => 'MAFFT',
+    desc  => 'MAFFT performs multiple sequence alignment.',
+    url   => 'https://mafft.cbrc.jp/alignment/software/',
+  );
+
+  _configure_dir(
+    key   => 'NINJA_DIR',
+    label => 'NINJA',
+    desc  => 'NINJA performs rapid phylogenetic analysis.',
+    url   => 'https://github.com/TravisWheelerLab/NINJA',
+  );
+}
+
+##
+## Extract FamDB libraries and build BLAST databases in Libraries/.
+## Called once at configure time so RepeatClassifier can rely on them.
+##
+## Print a final summary of the installed configuration.
+##
+sub print_summary {
+  my $w = 62;
+  print "\n" . "=" x $w . "\n";
+  printf " %-*s\n", $w - 2, " Configuration Summary";
+  print "=" x $w . "\n\n";
+
+  my @core = (
+    [ 'REPEATMASKER_DIR', 'RepeatMasker'   ],
+    [ 'FAMDB_DIR',        'FamDB'          ],
+    [ 'RMBLAST_DIR',      'RMBlast'        ],
+    [ 'RSCOUT_DIR',       'RepeatScout'    ],
+    [ 'RECON_DIR',        'RECON'          ],
+    [ 'REPEATAFTERME_DIR','RepeatAfterMe'  ],
+    [ 'TRF_DIR',          'TRF'            ],
+    [ 'CDHIT_DIR',        'CD-HIT'         ],
+    [ 'UCSCTOOLS_DIR',    'UCSC TwoBit'    ],
+  );
+
+  for my $item ( @core ) {
+    my ( $key, $label ) = @$item;
+    my $val = $config->{$key}->{'value'} // "";
+    if ( $val && RepModelConfig::validateParam($key) ) {
+      printf "  %-16s  %s\n", "$label:", $val;
+    }
+    else {
+      printf "  %-16s  (not configured)\n", "$label:";
+    }
+  }
+
+  # FamDB database details from famdb.py info
+  if ( RepModelConfig::validateParam('FAMDB_DIR') ) {
+    my $famdb_dir = $config->{'FAMDB_DIR'}->{'value'};
+    my $info = `$famdb_dir/famdb.py info 2>/dev/null` // "";
+    if ( $info ) {
+      my ( $db_name, $db_ver, $db_date, $db_count );
+      $db_name  = $1 if $info =~ /^Database\s*:\s*(\S.*)/m;
+      $db_ver   = $1 if $info =~ /^Version\s*:\s*(\S.*)/m;
+      $db_date  = $1 if $info =~ /^Date\s*:\s*(\S.*)/m;
+      $db_count = $1 if $info =~ /^Total consensus sequences present\s*:\s*(\d+)/m;
+      $db_count = $1 if !$db_count && $info =~ /^Total HMMs present\s*:\s*(\d+)/m;
+      if ( $db_name ) {
+        printf "  %-16s  %s %s (%s)\n", "",
+            $db_name, $db_ver // "", $db_date // "";
+        printf "  %-16s  %s families\n", "",
+            _commify($db_count) if $db_count;
+      }
+    }
+  }
+
+  # Optional LTR pipeline tools
+  my @ltr_keys = qw( GENOMETOOLS_DIR LTR_RETRIEVER_DIR MAFFT_DIR NINJA_DIR );
+  my $any_ltr  = 0;
+  for my $k ( @ltr_keys ) {
+    $any_ltr = 1 if RepModelConfig::validateParam($k);
+  }
+
+  if ( $any_ltr ) {
+    my %ltr_labels = (
+      GENOMETOOLS_DIR   => 'GenomeTools',
+      LTR_RETRIEVER_DIR => 'LTR_Retriever',
+      MAFFT_DIR         => 'MAFFT',
+      NINJA_DIR         => 'NINJA',
+    );
+    print "\n  LTR Pipeline:\n";
+    for my $k ( @ltr_keys ) {
+      if ( RepModelConfig::validateParam($k) ) {
+        printf "  %-16s  %s\n", "  $ltr_labels{$k}:", $config->{$k}->{'value'};
+      }
+    }
+  }
+
+  print "\n" . "=" x $w . "\n";
+  printf " %-*s\n", $w - 2, " RepeatModeler v$version is configured and ready.";
+  print "=" x $w . "\n\n";
+}
+
+sub _commify {
+  my $n = reverse( $_[0] // 0 );
+  $n =~ s/(\d{3})(?=\d)/$1,/g;
+  return scalar reverse $n;
 }
 
 1;
