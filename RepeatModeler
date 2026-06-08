@@ -1969,8 +1969,11 @@ sub benchmarkStorage {
   return ( $bytesPerSec / 1000000 );
 }
 
+# Streamlined workflow for more modern versions of RECON 1.09 or later.
+# Currently this isn't enabled as the these newer versions of RECON still support
+# backward compatibility with older workflows.
 # For RECON 1.09 and later
-sub runRECON {
+sub runRECON_NEW {
     my %parameters = @_;
 
     elapsedTime( 2 );
@@ -2052,7 +2055,7 @@ sub runRECON {
     return;
 }
 
-sub runRECONOLD {
+sub runRECON {
   my %parameters = @_;
 
   elapsedTime( 2 );
@@ -2072,7 +2075,7 @@ sub runRECONOLD {
   system( "mkdir summary" );
 
   print "  - RECON: Running imagespread..\n";
-  `$RECON_DIR/imagespread seqnames msps.out`;
+  `$RECON_DIR/imagespread seqnames msps.out > imagespread.log 2>&1`;
   `mv gmon.out imagespread-gmon.out` if ( -f "gmon.out" );
 
   if ( $? ) { die "imagespread failed. Exit code $?\n"; }

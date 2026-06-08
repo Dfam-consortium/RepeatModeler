@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - RepeatClassifier is now responsible for querying and caching reference 
   libraries from FamDB.
 
+### Fixed
+- Bug that caused RepeatModeler to fail when used with the older RECON 1.08 release.
+  Github Issue #312
+
 ## [2.0.8]
 
 ### Added
