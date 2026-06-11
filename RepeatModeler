@@ -1754,10 +1754,23 @@ if ( $numModels > 0 ) {
   my $origDir = getcwd();
   chdir( $tmpDir );
   my $addlOpts = "";
-  $addlOpts = "-threads $options{'threads'} " if ( $options{'threads'} );
-  my $classifierLog = `$FindBin::RealBin/RepeatClassifier -consensi consensi.fa $addlOpts -stockholm families.stk 2>&1`;
+  $addlOpts .= "-threads $options{'threads'} " if ( $options{'threads'} );
+  for my $key ( keys %$config ) {
+    my $opt = $config->{$key}->{'command_line_override'} // next;
+    $addlOpts .= "-$opt $options{$opt} " if exists $options{$opt};
+  }
+  my $classifierLog = "";
+  open( my $clf_fh, "-|",
+        "$FindBin::RealBin/RepeatClassifier -consensi consensi.fa $addlOpts -stockholm families.stk 2>&1" )
+      or die "Cannot run RepeatClassifier: $!";
+  while ( my $line = <$clf_fh> ) {
+    print $line;
+    print $LOG $line;
+    $classifierLog .= $line;
+  }
+  close( $clf_fh );
   chdir( $origDir );
-  log_print "$classifierLog\n";
+  print "\n";
   log_print "Classification Time: " . elapsedTime( 1 ) . "\n";
 }
 
@@ -1956,8 +1969,11 @@ sub benchmarkStorage {
   return ( $bytesPerSec / 1000000 );
 }
 
+# Streamlined workflow for more modern versions of RECON 1.09 or later.
+# Currently this isn't enabled as the these newer versions of RECON still support
+# backward compatibility with older workflows.
 # For RECON 1.09 and later
-sub runRECON {
+sub runRECON_NEW {
     my %parameters = @_;
 
     elapsedTime( 2 );
@@ -2039,7 +2055,7 @@ sub runRECON {
     return;
 }
 
-sub runRECONOLD {
+sub runRECON {
   my %parameters = @_;
 
   elapsedTime( 2 );
@@ -2059,7 +2075,7 @@ sub runRECONOLD {
   system( "mkdir summary" );
 
   print "  - RECON: Running imagespread..\n";
-  `$RECON_DIR/imagespread seqnames msps.out`;
+  `$RECON_DIR/imagespread seqnames msps.out > imagespread.log 2>&1`;
   `mv gmon.out imagespread-gmon.out` if ( -f "gmon.out" );
 
   if ( $? ) { die "imagespread failed. Exit code $?\n"; }

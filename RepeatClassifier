@@ -69,12 +69,14 @@ Robert Hubley <rhubley@systemsbiology.org>
 # Module Dependence
 #
 use strict;
+$| = 1;
 use FindBin;
 use lib $FindBin::RealBin;
 use Data::Dumper;
 use Cwd;
 use Carp;
 use File::Basename;
+use File::Path qw(make_path rmtree);
 use Pod::Text;
 use Getopt::Long;
 
@@ -177,6 +179,7 @@ my $config           = $RepModelConfig::configuration;
 my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLASTN_PRGM    = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $NCBIBLASTX_PRGM  = $config->{'RMBLAST_DIR'}->{'value'} . "/blastx";
+my $MAKEBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
 my $cmdSuffix = "> /dev/null 2>&1";
 $cmdSuffix = "" if ( $DEBUG );
 
@@ -194,22 +197,41 @@ if ( not defined $searchEngineN ) {
       . "running the configure script.\n";
 }
 
-# 
-# Assess reference libraries
 #
-my $TE_PROTEIN_LIB = "$REPEATMASKER_DIR/Libraries/RepeatPeps.lib";
-my $TE_CONSENSUS_LIB = "$REPEATMASKER_DIR/Libraries/RepeatMasker.lib";
+# Resolve reference libraries from FamDB, building them if needed.
+#
+my $FAMDB_DIR = $config->{'FAMDB_DIR'}->{'value'};
 
-if ( !-s "$TE_CONSENSUS_LIB" . ".nsq" ) {
-  die "Missing $TE_CONSENSUS_LIB" . ".nsq!\n" 
-      . "Please rerun the configure program "
-      . "in the RepeatMasker directory\nbefore running this script.\n";
+my $famdb_info = `$FAMDB_DIR/famdb.py info 2>&1`;
+my ( $dfam_version, $dfam_database, $dfam_date );
+if ( $famdb_info =~ /^Version\s*:\s*(\S+)/m )  { $dfam_version  = $1; }
+if ( $famdb_info =~ /^Database\s*:\s*(.+)/m )   { $dfam_database = $1; $dfam_database =~ s/\s+$//; }
+if ( $famdb_info =~ /^Date\s*:\s*(\S+)/m )      { $dfam_date     = $1; }
+die $CLASS . ": Could not determine FamDB version. "
+    . "Check that FAMDB_DIR is configured correctly.\n"
+    unless $dfam_version;
+
+#
+# Print greeting header (before any library building output)
+#
+print "#\n";
+print "# RepeatClassifier\n";
+print "#\n";
+print "# Version $version\n";
+if ( $options{'threads'} ) {
+  print "# Threads: " . $options{'threads'} . "\n";
+} else {
+  print "# Threads: 1\n";
 }
-if ( !-s "$TE_PROTEIN_LIB".".psq" ) {
-  die "Missing $TE_PROTEIN_LIB" . ".psq!\n"
-      . "Please rerun the configure program in the RepeatMasker directory\n"
-      . "before running this script.\n";
-}
+print "# Current Working Directory: " . getcwd() . "\n";
+print "# FamDB:\n";
+print "#   Database: $dfam_database\n" if $dfam_database;
+print "#    Version: $dfam_version\n";
+print "#       Date: $dfam_date\n"     if $dfam_date;
+
+my ( $TE_PROTEIN_LIB, $TE_CONSENSUS_LIB ) =
+    resolve_reference_libraries( $FAMDB_DIR, $dfam_version, $MAKEBLASTDB_PRGM,
+                                 $options{'consensi'} );
 
 open IN, "<$TE_PROTEIN_LIB"
     or die "Could not open $TE_PROTEIN_LIB for reading!\n";
@@ -223,42 +245,27 @@ open IN, "<$TE_CONSENSUS_LIB"
     or die "Could not open $TE_CONSENSUS_LIB for reading!\n";
 my $consensiCount = 0;
 while (<IN>) {
-  # We could also count the taxa
   $consensiCount++ if ( /^>/ );
 }
 close IN;
 
-
-#
-# Print greeting
-#
-print "#\n"; 
-print "# RepeatClassifier\n";
-print "#\n";
-print "# Version $version\n";
-if ( $options{'threads'} ) {
-  print "# Threads: " . $options{'threads'} . "\n";
-}else {
-  print "# Threads: 1\n";
-}
-print "# Current Working Directory: " . getcwd() . "\n";
 print "# Protein Library: $TE_PROTEIN_LIB\n";
 print "#   - $proteinCount proteins\n";
 print "# Consensi Library: $TE_CONSENSUS_LIB\n";
 print "#   - $consensiCount consensus sequences\n";
 
-# RepeatMasker 4.1.9 approximate protein library size
+# Dfam 3.9 approximate protein library size
 if ( $proteinCount < 17500 ) {
   print "# !!!! WARNING !!!! -- The protein library does not appear to be complete.\n";
-  print "#                      This may result in poor clasification performance.  Please\n";
-  print "#                      ensure that you have the latest version of RepeatMasker\n";
+  print "#                      This may result in poor classification performance.  Please\n";
+  print "#                      ensure that you have the latest version of FamDB\n";
   print "#                      installed.\n";
 }
 # Dfam 3.9 approximate curated TE consensus library size
 if ( $consensiCount < 26200 ) {
   print "# !!!! WARNING !!!! -- The curated TE consensus library does not appear to be complete.\n";
-  print "#                      This may result in poor clasification performance.  Please\n";
-  print "#                      ensure that you have the latest version of RepeatMasker\n";
+  print "#                      This may result in poor classification performance.  Please\n";
+  print "#                      ensure that you have the latest version of FamDB\n";
   print "#                      installed and that you have installed the complete set of Dfam\n";
   print "#                      partitions.\n";
 }
@@ -585,7 +592,6 @@ unlink "tmpConsensi.fa.log"    if ( !$DEBUG && -e "tmpConsensi.fa.log" );
 unlink "tmpConsensi.fa.masked" if ( !$DEBUG && -e "tmpConsensi.fa.masked" );
 unlink "tmpConsensi.fa.out"    if ( !$DEBUG && -e "tmpConsensi.fa.out" );
 unlink "tmpConsensi.fa.tbl"    if ( !$DEBUG && -e "tmpConsensi.fa.tbl" );
-
 # Cya!
 exit;
 
@@ -1647,6 +1653,113 @@ my %rmToDfamClass = (
     }
     print OUT "" . $seedAlign->toString();
   }
+}
+
+##
+## Locate pre-built FamDB reference libraries or build them on first use.
+## Search order: <install>/Libraries, ~/.RepeatModelerCache, <input_file_dir>.
+## Dies if no writable location can be found or the build fails everywhere.
+##
+sub resolve_reference_libraries {
+  my ( $famdb_dir, $version, $makeblastdb, $input_file ) = @_;
+
+  my $prot_label = "PROT-Dfam_$version";
+  my $cons_label = "CONS-Dfam_$version";
+
+  my @candidates = (
+    "$FindBin::RealBin/Libraries",
+    "$ENV{HOME}/.RepeatModelerCache",
+  );
+  push @candidates, dirname( Cwd::abs_path( $input_file ) ) if $input_file;
+
+  for my $base ( @candidates ) {
+    my $prot_lib = "$base/$prot_label/repeatpeps.lib";
+    my $cons_lib = "$base/$cons_label/reference.fa";
+
+    return ( $prot_lib, $cons_lib )
+        if -s "$prot_lib.psq" && -s "$cons_lib.nsq";
+
+    next unless _can_write_dir( $base );
+
+    print "\nBuilding FamDB $version reference libraries (one-time step)...\n";
+    print "  Location: $base\n";
+    if ( _build_reference_libraries( $famdb_dir, $makeblastdb,
+                                     "$base/$prot_label",
+                                     "$base/$cons_label" ) ) {
+      return ( $prot_lib, $cons_lib );
+    }
+  }
+
+  die "$CLASS: Could not find or build FamDB $version reference libraries.\n"
+      . "  Searched:\n"
+      . join( "", map { "    $_\n" } @candidates );
+}
+
+sub _can_write_dir {
+  my $dir = shift;
+  unless ( -d $dir ) {
+    eval { make_path($dir) };
+    return 0 if $@;
+  }
+  if ( open my $fh, '>', "$dir/.rmwritetest" ) {
+    close $fh;
+    unlink "$dir/.rmwritetest";
+    return 1;
+  }
+  return 0;
+}
+
+sub _build_reference_libraries {
+  my ( $famdb_dir, $makeblastdb, $prot_dir, $cons_dir ) = @_;
+
+  for my $dir ( $prot_dir, $cons_dir ) {
+    eval { make_path($dir) };
+    if ( $@ || !-d $dir ) {
+      warn "  Could not create $dir\n";
+      return 0;
+    }
+  }
+
+  print "  Extracting RepeatPeps from FamDB...\n";
+  system("$famdb_dir/famdb.py repeat_peps > \"$prot_dir/repeatpeps.lib\" 2>/dev/null");
+  unless ( -s "$prot_dir/repeatpeps.lib" ) {
+    rmtree($prot_dir);
+    warn "  Failed to extract RepeatPeps from FamDB.\n";
+    return 0;
+  }
+
+  print "  Extracting consensus sequences from FamDB...\n";
+  system("$famdb_dir/famdb.py fasta_all > \"$cons_dir/reference.fa\" 2>/dev/null");
+  unless ( -s "$cons_dir/reference.fa" ) {
+    rmtree($cons_dir);
+    warn "  Failed to extract consensus sequences from FamDB.\n";
+    return 0;
+  }
+
+  print "  Building protein BLAST database...\n";
+  system(   "$makeblastdb -dbtype prot "
+          . "-in \"$prot_dir/repeatpeps.lib\" "
+          . "-out \"$prot_dir/repeatpeps.lib\" "
+          . "-blastdb_version 4 2>/dev/null" );
+  unless ( -s "$prot_dir/repeatpeps.lib.psq" ) {
+    rmtree($prot_dir);
+    warn "  Failed to build protein BLAST database.\n";
+    return 0;
+  }
+
+  print "  Building nucleotide BLAST database...\n";
+  system(   "$makeblastdb -dbtype nucl "
+          . "-in \"$cons_dir/reference.fa\" "
+          . "-out \"$cons_dir/reference.fa\" "
+          . "-blastdb_version 4 2>/dev/null" );
+  unless ( -s "$cons_dir/reference.fa.nsq" ) {
+    rmtree($cons_dir);
+    warn "  Failed to build nucleotide BLAST database.\n";
+    return 0;
+  }
+
+  print "  Done.\n";
+  return 1;
 }
 
 1;
