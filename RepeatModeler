@@ -2560,7 +2560,7 @@ sub buildRSConsensiMT {
   my $f_idx = 1;
   my %localizedToSeqNames = ();
   foreach my $rsID ( sort keys %families ) {
-    #print "\nProcessing RepeatScout family: $rsID\n";
+    #print "\nProcessing RepeatScout family: $rsID (family Size cutoff = $familySizeCutoff\n";
     my $numElements = $#{ $families{$rsID}->{'elements'} } + 1;
     if ( $numElements < $familySizeCutoff ) {
       delete $families{$rsID};
@@ -2652,6 +2652,12 @@ sub buildRSConsensiMT {
     close FAM;
     $f_idx++;
   } # foreach my $rsID
+
+  if ( scalar keys %families == 0 ) {
+    log_print "   - Insufficient instances in all RepeatScout families -- skipping round.\n";
+    undef %families;
+    return 0;
+  }
 
   my $tsk = ThreadedTaskSimple->new();
   $tsk->setWorkingDir($workDir);
@@ -2752,9 +2758,10 @@ sub buildRSConsensiMT {
         # File only contains one family
         my $seedAlign = $stockholmFile->get( 0 );
 
-        # Add details to DE line
-        $seedAlign->setDescription( "RepeatModeler Generated - rnd-$round"
-          . "_family-$famNum, RepeatScout: [ $rsID, RS Size = "
+        # Add details to DE/CC lines
+        $seedAlign->setDescription("RepeatModeler Generated - rnd-$round"
+            . "_family-$famNum");
+        $seedAlign->setComment( "RepeatScout: [ $rsID, RS Size = "
           . ( $#{ $families{$rsID}->{'elements'} } + 1 )
           . ", Refiner Input Size = $numElements, Final Multiple Alignment Size = $maSize ]"
         );
@@ -3136,9 +3143,11 @@ sub buildReconConsensiMT {
         # File only contains one family
         my $seedAlign = $stockholmFile->get( 0 );
 
-        # Add details to DE line
+        # Add details to DE/CC lines
         $seedAlign->setDescription( "RepeatModeler Generated - rnd-$round"
-                              . "_family-$familyID, RECON: [ RECON Size = "
+                              . "_family-$familyID");
+        $seedAlign->setComment( 
+                                "RECON: [ RECON Size = "
                               . ( $#{ $families{$familyID}->{'elements'} } + 1 )
                               . ", Final Multiple Alignment Size = $maSize ]" );
         print OUT "" . $seedAlign->toString();

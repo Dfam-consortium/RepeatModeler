@@ -435,9 +435,11 @@ foreach my $cluster ( sort keys %clusters ) {
       # File only contains one family
       my $seedAlign = $stockholmFile->get( 0 );
 
-      # Add details to DE line
+      # Add details to DE/CC lines
       $seedAlign->setDescription( "RepeatModeler Generated - ltr-1"
-        . "_family-$idx, [ Type=$famType, Final Multiple Alignment Size = $maSize ]"
+        . "_family-$idx"
+      );
+      $seedAlign->setComment( " LTR-Pipeline [ Type=$famType, Final Multiple Alignment Size = $maSize ]"
       );
 
       print OUTSTK "" . $seedAlign->toString();
