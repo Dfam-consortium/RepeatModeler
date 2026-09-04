@@ -137,12 +137,69 @@ if ( $options{'version'} ) {
 my $MOUT;
 open $MOUT,">MultMSA.html" or die;
 
-my $idx = 1;
+# First pass: read every MSA and determine the longest one so that all
+# panels can be rendered using a single, normalized horizontal scale.
+my @maligns         = ();
+my $globalMaxLength = 0;
 foreach my $file ( @ARGV ) {
   print "Processing $file\n";
   my $malign = readMSA($file);
-  generateJavascriptSummaryAndAlignmentViewer( $malign, $MOUT, $file, $idx );
+  my $len    = getRefLen($malign);
+  $globalMaxLength = $len if ( $len > $globalMaxLength );
+  push @maligns, [ $file, $malign ];
+}
+
+# Second pass: render each MSA, passing the shared maximum length.  The
+# AlignmentSummary javascript library is inlined once for the whole page
+# rather than re-inlined for every MSA.
+print $MOUT "<html>\n<head>\n<script>\n";
+open my $JSIN, "<$FindBin::RealBin/javascript/isb/AlignmentSummary.js"
+    or die "Could not inline $FindBin::RealBin/javascript/isb/"
+    . "AlignmentSummary.js file!";
+while ( <$JSIN> ) {
+  print $MOUT $_;
+}
+close $JSIN;
+print $MOUT "</script>\n</head>\n<body>\n";
+
+# Heatmap legend ( these colors mirror the qualColor array in
+# javascript/isb/AlignmentSummary.js: red = high divergence, blue = low ).
+my @heatColors = ( "#ff6600", "#ffcc00", "#ccff00", "#66ff00", "#00ff00",
+                   "#00ff66", "#00ffcc", "#00ccff", "#0066ff", "#0000ff" );
+print $MOUT "<div style=\"font-family:sans-serif;margin:10px 0 20px 0;\">\n";
+print $MOUT "  <b>Divergence heatmap</b><br>\n";
+print $MOUT "  <span style=\"vertical-align:middle;\">High divergence&nbsp;</span>";
+foreach my $c ( @heatColors ) {
+  print $MOUT "<span style=\"display:inline-block;width:20px;height:14px;"
+            . "background:$c;vertical-align:middle;\"></span>";
+}
+print $MOUT "<span style=\"vertical-align:middle;\">&nbsp;Low divergence</span>\n";
+print $MOUT "  <div style=\"font-size:0.85em;color:#333;margin-top:4px;\">"
+          . "Divergence is calculated in non-overlapping windows of 10&nbsp;bp."
+          . "</div>\n";
+print $MOUT "</div>\n";
+
+my $idx = 1;
+foreach my $rec ( @maligns ) {
+  my ( $file, $malign ) = @{$rec};
+  generateJavascriptSummaryAndAlignmentViewer( $malign, $MOUT, $file, $idx,
+                                               $globalMaxLength );
   $idx++;
+}
+
+print $MOUT "</body>\n</html>\n";
+
+# Return the reference length used as the displayed MSA "length" ( consensus
+# length by default, or the full aligned width with -fullmsa ).
+sub getRefLen {
+  my $mAlign = shift;
+  my $refSeq = $mAlign->getReferenceSeq();
+  if ( $options{'fullmsa'} ) {
+    return length( $refSeq );
+  }
+  my $refSeqNoIns = $refSeq;
+  $refSeqNoIns =~ s/-//g;
+  return length( $refSeqNoIns );
 }
 
 sub readMSA {
@@ -216,6 +273,7 @@ sub generateJavascriptSummaryAndAlignmentViewer {
   my $MOUT   = shift;
   my $filename = shift;
   my $idx = shift;
+  my $globalMaxLength = shift;
 
   my $subroutine = ( caller( 0 ) )[ 0 ] . "::" . ( caller( 0 ) )[ 3 ];
 
@@ -279,12 +337,8 @@ sub generateJavascriptSummaryAndAlignmentViewer {
 
   # Get ungapped reference sequence length
   my $refSeq      = $mAlign->getReferenceSeq();
-  my $refSeqNoIns = $refSeq;
-  $refSeqNoIns =~ s/-//g;
-  my $refLen          = length( $refSeqNoIns );
-  if ( $options{'fullmsa'} ) {
-    $refLen = length($refSeq);
-  }
+  my $refLen      = getRefLen( $mAlign );
+  $globalMaxLength = $refLen unless ( $globalMaxLength );
   my $qualityBlockLen = 10;
   $summaryData{'num_alignments'}  = $mAlign->getNumAlignedSeqs();
   $summaryData{'length'}          = $refLen;
@@ -386,8 +440,8 @@ sub generateJavascriptSummaryAndAlignmentViewer {
 
   }
 
-  # Begin writing the HTML
-  print $OUT "<html>\n";
+  # Begin writing this MSA's panel ( the surrounding <html>/<head> with the
+  # inlined AlignmentSummary library is emitted once by the caller ).
   if ( $options{'fullmsa'} ) {
     print $OUT "<H1>Full MSA View: $filename</H1>\n";
   }else {
@@ -399,7 +453,7 @@ print $OUT "
 <button onClick=\"mySummary_$idx.render('end');\">End Sort</button>
 <button onClick=\"mySummary_$idx.render('div');\">Divergence Sort</button>
 <p>    
-<div id=\"canvasesdiv\" style=\"position:relative\">
+<div id=\"canvasesdiv_$idx\" style=\"position:relative\">
   <canvas id=\"alignment_canvas_$idx\" width=\"800\" height=\"1600\" style=\"z-index:1;position:absolute;left:0px;top:0px;\">Canvas not supported</canvas>
   <canvas id=\"detail_canvas_$idx\" width=\"800\" height=\"1600\" style=\"z-index:2;position:absolute;left:0px;top:0px;\">Canvas not supported</canvas>
   <canvas id=\"guideline_canvas_$idx\" width=\"800\" height=\"1600\" style=\"z-index:3;position:absolute;left:0px;top:0px;\">Canvas not supported</canvas>
@@ -417,25 +471,17 @@ print $OUT "<p><script>\n";
   #$jsonStr =~ s/\[/\n[/g;
   print $OUT "$jsonStr;\n";
 
-  open IN, "<$FindBin::RealBin/javascript/isb/AlignmentSummary.js"
-      or die "Could not inline $FindBin::RealBin/javascript/"
-      . "isb/AlignmentSummary.js file!";
-  while ( <IN> ) {
-    print $OUT "$_";
-  }
-  close IN;
-
   print $OUT "\n\n";
 
   print $OUT "var mySummary_$idx = new AlignmentSummary( "
       . "  document.getElementById('alignment_canvas_$idx'), "
       . "  document.getElementById('guideline_canvas_$idx'), "
       . "  document.getElementById('detail_canvas_$idx'), "
-      . " summaryData_$idx, {});\n";
+      . " summaryData_$idx, { maxLength: $globalMaxLength });\n";
 
 #  print $OUT "var myViewer = new AlignmentViewer( "
 #      . "document.getElementById('canvas'), detailData, {} );\n";
-  print $OUT "</script></html>";
+  print $OUT "</script>\n";
 }
 
 1;

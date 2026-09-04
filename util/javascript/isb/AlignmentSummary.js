@@ -62,6 +62,12 @@ function AlignmentSummary(align_canvas, guide_canvas, detail_canvas, json, optio
     this.guide_canvas = guide_canvas;
     this.detail_canvas = detail_canvas;
 
+    // Shared horizontal scale.  When several MSAs are displayed together the
+    // caller passes options.maxLength ( the longest MSA among them ) so that
+    // every panel is rendered at the same bp-per-pixel scale and their rulers
+    // line up.  When absent we fall back to this MSA's own length.
+    this.maxLength = (options && options.maxLength) ? options.maxLength : this.json.length;
+
     this.alignDetailVisible = false;
     this.alignDetailXPos = 0;
     this.alignDetailYPos = 0;
@@ -69,11 +75,18 @@ function AlignmentSummary(align_canvas, guide_canvas, detail_canvas, json, optio
     this.alignDetailHeight = 150;
 
     // TODO: Use above general layout variables to determine canvas height
-    this.align_canvas.height = (this.json.num_alignments * 2) + 10 + 8 + 10 + 10;
+    this.align_canvas.height = (this.json.num_alignments * 2) + 10 + 8 + 10 + 10 + 12;
     this.guide_canvas.height = this.align_canvas.height;
     this.detail_canvas.height = this.align_canvas.height + this.alignDetailHeight;
     this.cdiv = this.align_canvas.parentNode;
-    this.cdiv.style.height = this.align_canvas.height;
+    this.cdiv.style.height = this.align_canvas.height + "px";
+    // The detail canvas extends alignDetailHeight px below the others to draw
+    // click-popups.  We deliberately do NOT reserve that space ( it would add a
+    // large gap between stacked MSA panels ).  Because it is a transparent
+    // overlay that overflows onto the next panel, disable its pointer events so
+    // it cannot swallow clicks meant for that panel's buttons -- all mouse
+    // handling lives on the guide canvas.
+    this.detail_canvas.style.pointerEvents = "none";
 
     // Get drawing contexts
     this.guide_context = this.guide_canvas.getContext("2d");
@@ -90,8 +103,11 @@ function AlignmentSummary(align_canvas, guide_canvas, detail_canvas, json, optio
     // Constants to reduce lookup(?) in event listener
     this.WIDTH = this.align_canvas.width;
     this.HEIGHT = this.align_canvas.height;
-    this.pixelToBP = this.json.length / this.WIDTH;
+    this.pixelToBP = this.maxLength / (this.WIDTH - 10);
     this.currRulerY = 0;
+    // Right edge ( in pixels ) of the drawn, scaled alignment.  Updated in
+    // render(); the guide overlay is confined to [10, rulerRightX].
+    this.rulerRightX = this.WIDTH;
 
     var that = this;
     this.guide_canvas.addEventListener("mousemove", function (evt) {
@@ -139,7 +155,10 @@ AlignmentSummary.prototype.mouseDownHndlr = function (evt) {
     }
     this.alignDetailYPos = mousePos.y;
     this.alignDetailVisible = true;
-    var alignIdx = parseInt((mousePos.y - (8 + 10)) / (1 + 1));
+    // First alignment row sits below the ruler labels + ruler + margin
+    // ( rulerLabelHeight 11 + rulerVerticalMargin 10 + rulerHeight 8 ); rows are
+    // alignmentSpacing ( alignmentGlyphHeight 1 + 1 ) px tall.
+    var alignIdx = parseInt((mousePos.y - (11 + 10 + 8)) / (1 + 1));
     if ( alignIdx >= 0 )
     {
       this.drawAlignDetail2(this.alignDetailXPos, this.alignDetailYPos,
@@ -154,7 +173,7 @@ AlignmentSummary.prototype.mouseDownHndlr = function (evt) {
 AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, alignIdx, maxGroupingDist) {
     var popupWidth = width;
     var popupHeight = height;
-    var titleHeight = 25;
+    var titleHeight = 40;
     var margin = 10;
     var alignViewWidth = popupWidth - (2 * margin);
     var alignSpacing = 20;
@@ -221,15 +240,32 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
     // Write detail header
     this.detail_context.font = "15px Georgia";
     this.detail_context.fillStyle = 'black';
-    this.detail_context.fillText(alignIdx + " : " + this.json.alignments[alignIdx][0] + " : " + this.json.alignments[alignIdx][6] + "-" + this.json.alignments[alignIdx][7] , x + margin, y + margin + 5);
+    this.detail_context.fillText("line " + alignIdx + " : " + this.json.alignments[alignIdx][0] + " : " + this.json.alignments[alignIdx][6] + "-" + this.json.alignments[alignIdx][7] , x + margin, y + margin + 5);
 
     // Draw forward strand reference line
+    var refY = y + margin + titleHeight;
+    var refLeftX = referenceXOffset;
+    var refRightX = referenceXOffset + parseInt(this.json.length * xsc);
     this.detail_context.beginPath();
     this.detail_context.lineWidth = 2;
     this.detail_context.strokeStyle = 'green';
-    this.detail_context.moveTo(referenceXOffset, y + margin + titleHeight);
-    this.detail_context.lineTo(referenceXOffset + parseInt(this.json.length * xsc), y + margin + titleHeight);
+    this.detail_context.moveTo(refLeftX, refY);
+    this.detail_context.lineTo(refRightX, refY);
     this.detail_context.stroke();
+
+    // "MSA Reference: # bp" caption, one font-line above the coordinate-label
+    // row, centered over the green bar.
+    this.detail_context.font = "8px Georgia";
+    this.detail_context.fillStyle = 'green';
+    var refCaption = "MSA Reference: " + this.json.length + " bp";
+    var refCaptionW = this.detail_context.measureText(refCaption).width;
+    this.detail_context.fillText(refCaption,
+        refLeftX + ((refRightX - refLeftX) / 2) - (refCaptionW / 2), refY - 13);
+
+    // The connector-landing coordinates ( drawn in the instance loop below )
+    // share a row just above the green bar; track occupied spans so they don't
+    // overprint one another.
+    var refLabelSpans = [];
 
     var levels = [];
     for (var j = 0; j < idxs.length; j += 1) {
@@ -249,67 +285,110 @@ AlignmentSummary.prototype.drawAlignDetail2 = function (x, y, width, height, ali
         }
     }
 
-    // Draw main instance sequence line [gray]
+    // Instance (grey) line near the bottom of the popup.
+    var offset = parseInt(x + margin + ((alignViewWidth / 2) - ((alignedLen * xsc) / 2)));
+    var greyY = y + height - margin;
+    var greyRightX = offset + (alignedLen * xsc);
     this.detail_context.strokeStyle = 'gray';
     this.detail_context.lineWidth = 2;
-    var offset = parseInt(x + margin + ((alignViewWidth/2) - ((alignedLen * xsc)/2)));
-    var alignYOffset = y + height - margin - (levels.length * (alignSpacing + 2));
-
     this.detail_context.beginPath();
-    this.detail_context.moveTo(offset, alignYOffset + (levels.length * alignSpacing));
-    this.detail_context.lineTo(offset+(alignedLen*xsc), alignYOffset + (levels.length * alignSpacing));
+    this.detail_context.moveTo(offset, greyY);
+    this.detail_context.lineTo(greyRightX, greyY);
     this.detail_context.stroke();
 
+    // Grey caption above the instance line: sequence id and its length.
+    this.detail_context.font = "8px Georgia";
+    this.detail_context.fillStyle = 'gray';
+    this.detail_context.fillText(name + "  " + alignedLen + " bp", offset, greyY - 3);
+
+    // Black fragment lines are centered vertically between the green reference
+    // line ( top ) and the grey instance line ( bottom ).
+    var blackBandHeight = (levels.length - 1) * alignSpacing;
+    var blackBandTop = ((refY + greyY) / 2) - (blackBandHeight / 2);
+
     for (var j = 0; j < levels.length; j += 1) {
+        var blackY = blackBandTop + (j * alignSpacing);
         for (var k = 0; k < levels[j].length; k += 1) {
-            this.detail_context.beginPath();
-            this.detail_context.strokeStyle = 'black';
             var start = offset + ((parseInt(levels[j][k][6]) - minAlignPos) * xsc);
-            //var start = offset + ((levels[j][k][6]) * xsc);
             var end = start + ((parseInt(levels[j][k][7]) - parseInt(levels[j][k][6]) + 1) * xsc);
 
             // Draw alignment line
-            this.detail_context.moveTo(start, alignYOffset + (j * alignSpacing));
-            if ( parseInt(levels[j][k][6]) === refStart &&
-                 parseInt(levels[j][k][7]) === refEnd
-               ) {
-              this.detail_context.lineWidth = 4;
-            }else {
-              this.detail_context.lineWidth = 2;
-            }
-            this.detail_context.lineTo(end, alignYOffset + (j * alignSpacing));
+            this.detail_context.beginPath();
+            this.detail_context.moveTo(start, blackY);
+            this.detail_context.lineWidth = 2;
+            this.detail_context.lineTo(end, blackY);
             if (levels[j][k][4] === "F") this.detail_context.strokeStyle = 'black';
             else this.detail_context.strokeStyle = 'red';
             this.detail_context.stroke();
-            // write divergence
+
+            // write divergence, centered under the black fragment line
             this.detail_context.font = "8px Georgia";
             this.detail_context.fillStyle = 'black';
-            this.detail_context.fillText(levels[j][k][5],
-                                         start,alignYOffset + (j * alignSpacing) + 8);
+            var divLbl = "Div: " + levels[j][k][5];
+            var divW = this.detail_context.measureText(divLbl).width;
+            this.detail_context.fillText(divLbl,
+                ((start + end) / 2) - (divW / 2), blackY + 8);
 
-            // Draw start connector
+            // Dotted connectors: from where they land on the green reference bar,
+            // through the black fragment endpoint, continuing straight down to
+            // the grey instance line.
+            var startLandX = parseInt(referenceXOffset + (levels[j][k][1] * xsc));
+            var endLandX = parseInt(referenceXOffset +
+                ((levels[j][k][1] + levels[j][k][2]) * xsc));
             this.detail_context.strokeStyle = 'black';
             this.detail_context.lineWidth = 1;
             this.detail_context.setLineDash([2, 3]);
             this.detail_context.beginPath();
-            this.detail_context.moveTo(start, alignYOffset + (j * alignSpacing));
-            this.detail_context.lineTo(parseInt(referenceXOffset + (levels[j][k][1] * xsc)), y + margin + titleHeight);
+            this.detail_context.moveTo(startLandX, refY);
+            this.detail_context.lineTo(start, blackY);
+            this.detail_context.lineTo(start, greyY);
             this.detail_context.stroke();
-            // Draw end connector
             this.detail_context.beginPath();
-            this.detail_context.moveTo(end, alignYOffset + (j * alignSpacing));
-            this.detail_context.lineTo(parseInt(referenceXOffset + ((levels[j][k][1] + levels[j][k][2]) * xsc)), y + margin + titleHeight);
+            this.detail_context.moveTo(endLandX, refY);
+            this.detail_context.lineTo(end, blackY);
+            this.detail_context.lineTo(end, greyY);
             this.detail_context.stroke();
-
             this.detail_context.setLineDash([]);
+
+            // Label the reference coordinates where the connectors land on the
+            // green bar, just above it, when there is horizontal room for them.
+            this.detail_context.font = "8px Georgia";
+            this.detail_context.fillStyle = 'green';
+            var sLbl = "" + parseInt(levels[j][k][1]);
+            var sLblW = this.detail_context.measureText(sLbl).width;
+            if (this._reserveLabelSpan(refLabelSpans,
+                    startLandX - (sLblW / 2), startLandX + (sLblW / 2))) {
+                this.detail_context.fillText(sLbl, startLandX - (sLblW / 2), refY - 3);
+            }
+            var eLbl = "" + (parseInt(levels[j][k][1]) + parseInt(levels[j][k][2]));
+            var eLblW = this.detail_context.measureText(eLbl).width;
+            if (this._reserveLabelSpan(refLabelSpans,
+                    endLandX - (eLblW / 2), endLandX + (eLblW / 2))) {
+                this.detail_context.fillText(eLbl, endLandX - (eLblW / 2), refY - 3);
+            }
         }
     }
 };
 
+
+// Reserve [lo,hi] on a list of occupied horizontal spans.  Returns false ( and
+// reserves nothing ) when the range overlaps one already taken, so callers can
+// skip a label that would overprint another.
+AlignmentSummary.prototype._reserveLabelSpan = function (spans, lo, hi) {
+    for (var s = 0; s < spans.length; s += 1) {
+        if (lo < spans[s][1] && hi > spans[s][0]) {
+            return false;
+        }
+    }
+    spans.push([lo, hi]);
+    return true;
+};
+
 AlignmentSummary.prototype.mouseMoveHndlr = function (evt) {
     var mousePos = this.getMousePos(this.guide_canvas, evt);
-    if (mousePos.x >= 10) {
-        this.guide_context.clearRect(0, 0, this.WIDTH, this.HEIGHT);
+    this.guide_context.clearRect(0, 0, this.WIDTH, this.HEIGHT);
+    // Confine the column marker to the drawn, scaled alignment region.
+    if (mousePos.x >= 10 && mousePos.x <= this.rulerRightX) {
         this.guide_context.strokeStyle = "#ff0000";
         this.guide_context.beginPath();
         this.guide_context.moveTo(mousePos.x, 0);
@@ -325,8 +404,8 @@ AlignmentSummary.prototype.mouseMoveHndlr = function (evt) {
         if (textXPos < 10) {
             textXPos = 10;
         }
-        if (textXPos + text_width > this.WIDTH) {
-            textXPos = this.WIDTH - text_width;
+        if (textXPos + text_width > this.rulerRightX) {
+            textXPos = this.rulerRightX - text_width;
         }
 
         this.guide_context.fillStyle = "#FAF7F8";
@@ -339,30 +418,88 @@ AlignmentSummary.prototype.mouseMoveHndlr = function (evt) {
 };
 
 
+// Choose a "nice" tick interval ( 1/2/5 x 10^n ) so that roughly
+// targetTicks major ticks span the given range.
+AlignmentSummary.prototype.niceTickInterval = function (range, targetTicks) {
+    if (range <= 0) {
+        return 1;
+    }
+    var raw = range / targetTicks;
+    var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+    var norm = raw / mag;
+    // Round the interval *up* to the next nice value so the resulting tick
+    // spacing is at least what the caller asked for ( never tighter ).
+    var nice;
+    if (norm <= 1) {
+        nice = 1;
+    } else if (norm <= 2) {
+        nice = 2;
+    } else if (norm <= 5) {
+        nice = 5;
+    } else {
+        nice = 10;
+    }
+    return nice * mag;
+};
+
+
+// Draw a horizontal ruler from value minVal ( at x ) to maxVal ( at x+width ).
+// Major ticks run the full height, minor ticks half height.  The endpoints
+// ( minVal and maxVal ) are always labeled, and interior major ticks carry
+// their value as well.
 AlignmentSummary.prototype.ruler = function (x, y, width, height, minVal, maxVal, minorTickInterval, majorTickInterval) {
-    this.align_context.beginPath();
-    this.align_context.moveTo(x, y);
-    this.align_context.lineTo(x + width, y);
-    this.align_context.stroke();
+    var ctx = this.align_context;
+    ctx.strokeStyle = "#000000";
+    ctx.fillStyle = "#000000";
+    ctx.lineWidth = 1;
 
-    // Translations
-    var pixelsPerUnit = width / (maxVal - minVal + 1);
-    var pixelsPerMajorTick = majorTickInterval * pixelsPerUnit;
-    var pixelsPerMinorTick = minorTickInterval * pixelsPerUnit;
+    // Baseline
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + width, y);
+    ctx.stroke();
 
-    for (var i = 0; i < width; i += pixelsPerMajorTick) {
-        this.align_context.beginPath();
-        this.align_context.moveTo(x + i, y);
-        this.align_context.lineTo(x + i, y + height);
-        this.align_context.stroke();
+    // Map a value in [minVal,maxVal] linearly onto [x, x+width].
+    var range = maxVal - minVal;
+    if (range < 1) {
+        range = 1;
+    }
+    var pixelsPerUnit = width / range;
+
+    // Minor ticks
+    for (var v = minVal; v <= maxVal; v += minorTickInterval) {
+        var px = x + (v - minVal) * pixelsPerUnit;
+        ctx.beginPath();
+        ctx.moveTo(px, y);
+        ctx.lineTo(px, y + (height / 2));
+        ctx.stroke();
     }
 
-    for (var i = 0; i < width; i += pixelsPerMinorTick) {
-        this.align_context.beginPath();
-        this.align_context.moveTo(x + i, y);
-        this.align_context.lineTo(x + i, y + (height / 2));
-        this.align_context.stroke();
+    // Major ticks.  The loop starts on minVal ( the start tick ); maxVal rarely
+    // lands on a major step, so draw an explicit full-height end tick to match.
+    for (var v = minVal; v <= maxVal + 0.0001; v += majorTickInterval) {
+        var px = x + (v - minVal) * pixelsPerUnit;
+        ctx.beginPath();
+        ctx.moveTo(px, y);
+        ctx.lineTo(px, y + height);
+        ctx.stroke();
     }
+    ctx.beginPath();
+    ctx.moveTo(x + width, y);
+    ctx.lineTo(x + width, y + height);
+    ctx.stroke();
+
+    // Labels: only the start/end points of the MSA are labeled.
+    ctx.font = "9px Calibri";
+    ctx.textBaseline = "bottom";
+    ctx.textAlign = "left";
+    ctx.fillText(minVal, x, y - 1);
+    ctx.textAlign = "right";
+    ctx.fillText(maxVal, x + width, y - 1);
+
+    // Restore text defaults
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
 };
 
 
@@ -378,7 +515,24 @@ AlignmentSummary.prototype.render = function (order, maxGroupingDist) {
     var rulerVerticalMargin = 10;
 
     var viewWidth = this.align_canvas.width - divMargin; // Width of reference sequence in pixels
-    var xScale = viewWidth / this.json.length;
+    // Normalize: scale against the longest MSA so that all panels share one
+    // bp-per-pixel scale.  This panel's ruler only spans its own length.
+    var xScale = viewWidth / this.maxLength;
+    var rulerWidth = this.json.length * xScale;
+    this.rulerRightX = divMargin + rulerWidth;
+    // Derive tick spacing from the ruler's on-screen width so that ticks never
+    // crowd closer than these pixel thresholds ( and thin out automatically
+    // when this panel is short relative to the shared scale ).
+    var minMajorPx = 70; // minimum pixels between full-height ticks
+    var minMinorPx = 10; // minimum pixels between minor ticks
+    var majorTick = this.niceTickInterval(this.json.length,
+        Math.max(1, Math.floor(rulerWidth / minMajorPx)));
+    var minorTick = this.niceTickInterval(this.json.length,
+        Math.max(1, Math.floor(rulerWidth / minMinorPx)));
+    if (minorTick > majorTick) {
+        minorTick = majorTick;
+    }
+    var rulerLabelHeight = 11; // vertical room reserved above the ruler for labels
     var alignments = this.json.alignments;
     var qualWidthBP = this.json.qualityBlockLen;
 
@@ -390,8 +544,13 @@ AlignmentSummary.prototype.render = function (order, maxGroupingDist) {
     this.detail_context.clearRect(0, 0, this.detail_canvas.width,
     this.detail_canvas.height);
 
-    // Reset the max grouping dist
-    this.maxGroupingDist = maxGroupingDist;
+    // Reset the max grouping dist, but only when the caller supplied one.  The
+    // sort buttons call render(order) with no second argument; clobbering this
+    // with undefined would break drawAlignDetail2's proximity filter ( every
+    // comparison becomes NaN ) so the detail popup loses all instance lines.
+    if (maxGroupingDist !== undefined) {
+        this.maxGroupingDist = maxGroupingDist;
+    }
 
     // Select ordering
     if (order == "orient") {
@@ -450,18 +609,31 @@ AlignmentSummary.prototype.render = function (order, maxGroupingDist) {
 
     var curY = 0;
     var referenceDrawn = 0;
-    if (order != "orient") {
-        this.ruler(divMargin, 0, viewWidth, rulerHeight, 1, 946, 10, 100);
-        this.currRulerY = 0;
-        curY = rulerVerticalMargin + rulerHeight;
+
+    // Orientation sort normally splits the ruler between forward ( above ) and
+    // reverse ( below ) strands.  With no reverse strands there is nothing to
+    // place below the ruler, so draw it at the top like the other sorts.
+    var hasReverse = false;
+    for (var r = 0; r < alignments.length; r += 1) {
+        if (alignments[r][4] == "R") {
+            hasReverse = true;
+            break;
+        }
+    }
+    if (order != "orient" || !hasReverse) {
+        this.ruler(divMargin, rulerLabelHeight, rulerWidth, rulerHeight,
+        1, this.json.length, minorTick, majorTick);
+        this.currRulerY = rulerLabelHeight;
+        curY = rulerLabelHeight + rulerVerticalMargin + rulerHeight;
         referenceDrawn = 1;
     }
     for (var i = 0; i < alignments.length; i += 1) {
         if (referenceDrawn == 0 && alignments[i][4] == "R") {
-            curY = curY + rulerVerticalMargin;
-            this.ruler(divMargin, curY + (i * alignmentSpacing),
-            viewWidth, rulerHeight, 1, 946, 10, 100);
-            this.currRulerY = curY + (i * alignmentSpacing);
+            curY = curY + rulerVerticalMargin + rulerLabelHeight;
+            var rulerY = curY + (i * alignmentSpacing);
+            this.ruler(divMargin, rulerY,
+            rulerWidth, rulerHeight, 1, this.json.length, minorTick, majorTick);
+            this.currRulerY = rulerY;
             curY = curY + rulerHeight + rulerVerticalMargin;
             referenceDrawn = 1;
         }
@@ -509,6 +681,7 @@ AlignmentSummary.prototype.render = function (order, maxGroupingDist) {
             qualIdx++;
         }
     }
+
     if (this.json.seedStart) {
         this.align_context.fillStyle = "rgba(10, 10, 10, 0.25)";
         this.align_context.fillRect((divMargin + (this.json.seedStart * xScale)),

@@ -622,13 +622,12 @@ my $backupIdx = 1;
 while ( 1 ) { 
 
   unless ( $engine eq "crossmatch" ) {
-    # Always make a database as the sequence may have changed
-    my $buildCmd = "$RMBLAST_DIR/makeblastdb -blastdb_version 4 -out $conFile "
-            . "-parse_seqids -dbtype nucl -in $conFile >/dev/null 2>&1";
-    system($buildCmd);
-    if ( ! -s "$conFile.nsq" ) {
-      die "ERROR running makeblastdb.  The full command run: $buildCmd\n";
-    }
+    # Always rebuild the database as the sequence may have changed
+    $searchEngineN->setSubject(
+        $searchEngineN->prepareSubject( $conFile,
+                                        dbVersion   => 4,
+                                        parseSeqIDs => 1,
+                                        force       => 1 ) );
   }
  
   my %collected = ();
@@ -775,9 +774,12 @@ while ( 1 ) {
 
     # re-search new consensi vs repseq
     unless ( $engine eq "crossmatch" ) {
-      # Always make a database as the sequence may have changed
-      system(   "$RMBLAST_DIR/makeblastdb -blastdb_version 4 -out $conFile "
-            . "-parse_seqids -dbtype nucl -in $conFile >/dev/null 2>&1 ");
+      # Always rebuild the database as the sequence may have changed
+      $searchEngineN->setSubject(
+          $searchEngineN->prepareSubject( $conFile,
+                                          dbVersion   => 4,
+                                          parseSeqIDs => 1,
+                                          force       => 1 ) );
     }
  
     ( $status, $resultCollection ) = $searchEngineN->search();
@@ -1148,10 +1150,7 @@ sub saveNewCons {
 sub cleanup {
   my $outdir = shift;
   my $conFile = shift;
-  # cleanup
-  foreach my $ext ( "nog", "nsg", "nsi", "nhr", "nin", "nsq", "nsd", "njs" ){
-    unlink "$outdir/$conFile.$ext" if ( -s "$outdir/$conFile.$ext" );
-  }
+  unlink( grep { -e } $searchEngineN->getSubjectArtifacts( "$outdir/$conFile" ) );
 }
 
 sub scoretotal {

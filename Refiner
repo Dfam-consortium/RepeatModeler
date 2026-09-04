@@ -191,7 +191,6 @@ sub usage {
 #
 RepModelConfig::resolveConfiguration( \%options );
 my $config           = $RepModelConfig::configuration;
-my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
 my $RMBLASTN_PRGM    = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $REPEATAFTERME_DIR = $config->{'REPEATAFTERME_DIR'}->{'value'};
 
@@ -1058,10 +1057,10 @@ sub bootstrapConsensus {
 
   my $cons = "";
 
-  # MAKEBLASTDB the database
-  system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $pathToFastaFile "
-          . "-dbtype nucl -in $pathToFastaFile >> "
-          . "$wrkDir/makeblastdb.log 2>&1" );
+  # Prepare the instances for the engine, in place beside the file.
+  my $subject = $srchEngAllVsAll->prepareSubject( $pathToFastaFile,
+                                                  dbVersion => 4,
+                                                  force     => 1 );
 
   ## Setup the ALL vs ALL parameters 
   $srchEngAllVsAll->setMatrix( "$matrixDir/ncbi/nt/comparison.matrix" );
@@ -1080,7 +1079,7 @@ sub bootstrapConsensus {
 
   # 1. Search all instances against each other
   $srchEngAllVsAll->setQuery( $pathToFastaFile );
-  $srchEngAllVsAll->setSubject( $pathToFastaFile );
+  $srchEngAllVsAll->setSubject( $subject );
 
   print $CLASS
       . "::bootstrapConsensus(): Running All-vs-All "
@@ -1095,9 +1094,7 @@ sub bootstrapConsensus {
   print "Search complete\n" if ( $DEBUG > 8 );
 
   ## Cleanup after run
-  # Remove ncbi databases
-  system(   "rm $pathToFastaFile.nin "
-          . "$pathToFastaFile.nhr $pathToFastaFile.nsq $pathToFastaFile.njs " )
+  unlink( grep { -e } $srchEngAllVsAll->getSubjectArtifacts( $subject ) )
       unless ( $DEBUG );
 
   print $CLASS
@@ -1282,14 +1279,10 @@ sub refineConsensus {
     }
   }
 
-  # MAKEBLASTDB the consensus file
-  system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out "
-                . "$consFile "
-                . "-dbtype nucl -in "
-                . "$consFile >> "
-                . "$wrkDir/makeblastdb.log 2>&1" );
-
-  $srchEngOneVsAll->setSubject( $consFile );
+  # Prepare the consensus file for the engine.  Refiner rewrites it under
+  # the same name on every round, so never reuse an earlier index.
+  $srchEngOneVsAll->setSubject(
+      $srchEngOneVsAll->prepareSubject( $consFile, dbVersion => 4, force => 1 ) );
   $srchEngOneVsAll->setQuery( $instFile );
 
   print $CLASS
@@ -1301,8 +1294,8 @@ sub refineConsensus {
             if ( $DEBUG > 8 );
   my ( $runStat, $familyCollection ) = $srchEngOneVsAll->search();
 
-  # Remove the ncbi databases
-  system( "rm $consFile.n*" ) unless ( $DEBUG );
+  unlink( grep { -e } $srchEngOneVsAll->getSubjectArtifacts( $consFile ) )
+      unless ( $DEBUG );
 
   print $CLASS
             . "::refineConsensus(): RMBlast returned "

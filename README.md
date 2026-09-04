@@ -163,10 +163,10 @@ from Genbank ( approx 11MB ) into a file called elephant.fa.
 
   1. Create a Database for RepeatModeler
 
-     RepeatModeler uses a NCBI BLASTDB as input to the
-     repeat modeling pipeline.  A utility is provided to assist
-     the user in creating a single database from several 
-     types of input structures.  
+     RepeatModeler samples from a UCSC 2bit file built by the
+     BuildDatabase utility, which also assists the user in
+     creating a single database from several types of input
+     structures.
 
            <RepeatModelerPath>/BuildDatabase -name elephant elephant.fa
 

@@ -50,6 +50,12 @@ Path to the FamDB installation directory (containing famdb.py).
 
 Path to the RMBlast bin directory.
 
+=item -ncbiblast_dir <path>
+
+Path to the NCBI BLAST+ bin directory (optional).  RepeatClassifier and the
+LTR pipeline need programs from the toolkit that the 3.x series of RMBlast
+does not ship.  When unset, RMBLAST_DIR and then PATH are searched.
+
 =item -rscout_dir <path>
 
 Path to the RepeatScout installation directory.
@@ -181,6 +187,7 @@ print_banner();
 configure_repeatmasker();
 configure_famdb();
 configure_rmblast();
+configure_ncbiblast();
 configure_repeatscout();
 configure_recon();
 configure_repeatafterme();
@@ -469,7 +476,8 @@ sub configure_repeatmasker {
     key   => 'REPEATMASKER_DIR',
     label => 'RepeatMasker',
     desc  => 'RepeatMasker performs initial masking and is required for '
-           . "RepeatModeler's\n  classification pipeline. (4.2.4 or higher)",
+           . "RepeatModeler's\n  classification pipeline. (4.2.5 or higher, the first\n"
+           . "  release whose search engine modules prepare their own subjects)",
     url   => 'https://www.repeatmasker.org/',
     version_check => sub {
       my $val = $config->{'REPEATMASKER_DIR'}->{'value'};
@@ -477,9 +485,11 @@ sub configure_repeatmasker {
       if ( $ver =~ /version\s+(\d+)\.(\d+)\.(\d+)/ ) {
         my ( $maj, $min, $rev ) = ( $1, $2, $3 );
         unless ( $maj > 4 || ( $maj == 4 && $min > 2 )
-              || ( $maj == 4 && $min == 2 && $rev >= 4 ) ) {
+              || ( $maj == 4 && $min == 2 && $rev >= 5 ) ) {
           die "\n  ERROR: RepeatMasker $maj.$min.$rev is too old. "
-            . "Please use 4.2.4 or higher.\n\n";
+            . "Please use 4.2.5 or higher.  This release of RepeatModeler\n"
+            . "         prepares search databases through RepeatMasker's search\n"
+            . "         engine modules, which earlier releases do not provide.\n\n";
         }
         status_info("Version: $maj.$min.$rev");
       }
@@ -552,12 +562,13 @@ sub configure_rmblast {
     key   => 'RMBLAST_DIR',
     label => 'RMBlast',
     desc  => 'RMBlast provides the alignment engine for RepeatModeler. '
-           . '(2.17.1 or higher)',
+           . '(2.17.1 or higher, including the 3.x series)',
     url   => 'https://www.repeatmasker.org/rmblast/',
     version_check => sub {
       my $val = $config->{'RMBLAST_DIR'}->{'value'};
       my $ver = `$val/rmblastn -version 2>&1`;
-      if ( $ver =~ /rmblastn:\s+(\d+)\.(\d+)\.(\d+)/ ) {
+      # 2.x prints "rmblastn: 2.17.1+", 3.x prints "rmblastn 3.0.7".
+      if ( $ver =~ /rmblastn:?\s+(\d+)\.(\d+)\.(\d+)/ ) {
         my ( $maj, $min, $rev ) = ( $1, $2, $3 );
         unless ( $maj > 2 || ( $maj == 2 && $min > 17 )
               || ( $maj == 2 && $min == 17 && $rev >= 1 ) ) {
@@ -568,6 +579,79 @@ sub configure_rmblast {
       }
     },
   );
+}
+
+##
+## Configure the NCBI BLAST+ toolkit (optional).
+##
+## RepeatClassifier runs blastx and the LTR pipeline hands LTR_retriever a
+## blastn.  A 2.x RMBlast directory holds both, so most installations need
+## nothing here; a 3.x RMBlast ships only rmblastn and dustmasker.
+##
+sub configure_ncbiblast {
+  my $key     = 'NCBIBLAST_DIR';
+  my $label   = 'NCBI BLAST+';
+  my $opt_key = $config->{$key}->{'command_line_override'};
+
+  section_header("$label  (optional)");
+  print "\n  RepeatClassifier needs blastx and makeblastdb, and the LTR\n";
+  print "  pipeline needs blastn, from the NCBI BLAST+ toolkit.  A 2.x\n";
+  print "  RMBlast installation already provides them.\n";
+  print "  https://blast.ncbi.nlm.nih.gov/\n\n";
+
+  if ( $opts{$opt_key} ) {
+    if ( RepModelConfig::validateParam($key) ) {
+      status_ok( "$label: " . $config->{$key}->{'value'} );
+      return;
+    }
+    if ( $no_prompt ) {
+      die "\n  ERROR: $label path '$opts{$opt_key}' is not valid.\n"
+        . "         Expected blastx, blastn and makeblastdb in that directory.\n\n";
+    }
+    status_warn("Specified $label path is not valid: $opts{$opt_key}");
+    print "\n";
+  }
+
+  my $current = $config->{$key}->{'value'} // "";
+  if ( $current && RepModelConfig::validateParam($key) ) {
+    print "  Currently configured: $current\n\n";
+    if ( prompt_yn( "Keep this $label configuration?", "y" ) ) {
+      status_ok("$label: $current");
+      return;
+    }
+    print "\n";
+  }
+
+  # Nothing to do when the RMBlast directory or PATH already has the tools.
+  my $blastx = RepModelConfig::findNCBIProgram("blastx");
+  if ( $blastx ) {
+    $config->{$key}->{'value'} = "";
+    status_ok( "$label: found in " . dirname($blastx) );
+    return;
+  }
+
+  if ( $no_prompt ) {
+    $config->{$key}->{'value'} = "";
+    status_warn("$label not found. RepeatClassifier and the LTR pipeline "
+              . "will not run until -$opt_key is set.");
+    return;
+  }
+
+  while (1) {
+    my $dir = prompt( "Path to $label bin directory (Enter to skip)", "" );
+    if ( !$dir ) {
+      $config->{$key}->{'value'} = "";
+      status_warn("$label not configured. RepeatClassifier and the LTR "
+                . "pipeline will not run until it is.");
+      return;
+    }
+    $config->{$key}->{'value'} = $dir;
+    if ( RepModelConfig::validateParam($key) ) {
+      status_ok("$label: $dir");
+      return;
+    }
+    print "\n  Could not find blastx, blastn and makeblastdb in '$dir'.\n\n";
+  }
 }
 
 ##
@@ -803,6 +887,16 @@ sub print_summary {
     else {
       printf "  %-16s  (not configured)\n", "$label:";
     }
+  }
+
+  # The toolkit may come from NCBIBLAST_DIR, the RMBlast directory or PATH.
+  my $blastx = RepModelConfig::findNCBIProgram("blastx");
+  if ( $blastx ) {
+    printf "  %-16s  %s\n", "NCBI BLAST+:", dirname($blastx);
+  }
+  else {
+    printf "  %-16s  (not found; needed by RepeatClassifier and -LTRStruct)\n",
+        "NCBI BLAST+:";
   }
 
   # FamDB database details from famdb.py info

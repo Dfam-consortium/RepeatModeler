@@ -174,7 +174,6 @@ my $DEBUG = 0;
 my $CM_DIR = $RepeatMaskerConfig::configuration->{'CROSSMATCH_DIR'}->{'value'};
 my $RMSK_DIR = $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLAST_DIR = $RepModelConfig::configuration->{'RMBLAST_DIR'}->{'value'};
-#my $RMBLAST_DIR = "/home/rhubley/projects/Claude/rmblast-port/rmblast/wrappers";
 my $defaultEngine = "rmblast";
 
 #
@@ -465,8 +464,12 @@ if ( $resolvedMatrix ne "" ) {
 my $db_seqs;
 my $db_size;
 if ( $engine eq "rmblast" ) {
-  if ( ! -s "$databaseFile.nhr" || $options{'force'} ) {
-    if ( $options{'rmb_db_softmask'} ) {
+  my $subject = $databaseFile;
+  if ( $options{'rmb_db_softmask'} ) {
+    # prepareSubject() cannot attach mask data, so this branch still runs
+    # convert2blastmask and makeblastdb itself.  Only the 2.x rmblast
+    # series ships those tools.
+    if ( ! $sEngineObj->isSubjectPrepared( $databaseFile ) || $options{'force'} ) {
       # The blast database has several hardcoded IDs for a handful of standard filters:
       #    enum EBlast_filter_program {
       #        eBlast_filter_program_not_set      =   0,
@@ -480,8 +483,6 @@ if ( $engine eq "rmblast" ) {
       system(   "$engine_dir/convert2blastmask -in $databaseFile -parse_seqids " 
               . "-masking_algorithm Unknown -masking_options \"all lowercase regions\" "
               . "-outfmt maskinfo_asn1_bin -out $databaseFile.asnb" );
-      # Do we need to use blastdb version 4 anymore?
-      #      . "-blastdb_version 4 "
       my $cmd = "$engine_dir/makeblastdb -out $databaseFile "
               . "-mask_data $databaseFile.asnb "
               . "-parse_seqids -dbtype nucl -in $databaseFile > "
@@ -492,45 +493,44 @@ if ( $engine eq "rmblast" ) {
         system("cat makedb.log");
         exit(1);
       }
+      unlink("makedb.log") if ( -e "makedb.log" );
     }else {
-      # Do we need to use blastdb version 4 anymore?
-      #      . "-blastdb_version 4 "
-      my $cmd = "$engine_dir/makeblastdb -out $databaseFile "
-              . "-parse_seqids -dbtype nucl -in $databaseFile > "
-              . "makedb.log 2>&1";
-      system( $cmd );
-      if ( $? ) {
-        printf "\n\nERROR building nucleotide database! makeblastdb command ($cmd) exited with value %d\n\n", $? >> 8;
-        system("cat makedb.log");
-        exit(1);
+      unless ( ! $options{'quiet'} ) {
+        print "# WARNING: RMBlast database exists for $databaseFile.  Use -force to force rebuilding of the database\n";
       }
     }
-    unlink("makedb.log") if ( -e "makedb.log" );
   }else {
-    unless ( ! $options{'quiet'} ) {
-      print "# WARNING: RMBlast database exists for $databaseFile.  Use -force to force rebuilding of the database\n";
+    # The 3.x engine searches the FASTA file directly and reports no
+    # artifacts, so the warning below applies only to the 2.x engine.
+    my @artifacts = $sEngineObj->getSubjectArtifacts( $databaseFile );
+    if ( @artifacts && ! $options{'force'}
+         && $sEngineObj->isSubjectPrepared( $databaseFile ) ) {
+      unless ( ! $options{'quiet'} ) {
+        print "# WARNING: RMBlast database exists for $databaseFile.  Use -force to force rebuilding of the database\n";
+      }
     }
+    $subject = $sEngineObj->prepareSubject( $databaseFile,
+                                            dbVersion   => 4,
+                                            parseSeqIDs => 1,
+                                            force       => $options{'force'},
+                                            checkStale  => 1 );
   }
-  open IN,"$engine_dir/blastdbcmd -db $databaseFile -dbtype nucl -info|" or 
-     die "Could not obtain database info using $engine_dir/blastdbcmd";
+  $sEngineObj->setSubject( $subject );
+
+  # Count sequences and bases in the FASTA file.  blastdbcmd used to
+  # report these, but the 3.x rmblast does not ship it.
+  $db_seqs = 0;
+  $db_size = 0;
+  open IN, "<$databaseFile" or die "Could not open $databaseFile: $!";
   while ( <IN> ) {
-    # Database: sva_a.fa
-    # 	1 sequences; 1,387 total bases
-    # 
-    # Date: Jun 5, 2023  12:33 PM	Longest sequence: 1,387 bases
-    # 
-    # BLASTDB Version: 5
-    # 
-    # Volumes:
-    # 	/u1/home/rhubley/projects/cons_thresholds/foo
-    if ( /^\s+([\d\,]+)\s+sequences;\s+([\d\,]+)\s+total bases\s*$/ ) {
-      $db_seqs = $1;
-      $db_size = $2;
+    if ( /^>/ ) {
+      $db_seqs++;
+      next;
     }
+    s/\s+//g;
+    $db_size += length( $_ );
   }
   close IN;
-  $db_seqs =~ s/,//g;
-  $db_size =~ s/,//g;
 
 }elsif ( $engine eq "nhmmer" ) {
   my $dbFile = $databaseFile;

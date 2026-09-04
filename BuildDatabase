@@ -6,7 +6,7 @@
 ##      Arian Smit <asmit@systemsbiology.org>
 ##      Robert Hubley <rhubley@systemsbiology.org>
 ##  Description:
-##      A utility for creating a WU-Blast/RepeatModeler XDF database
+##      A utility for creating a RepeatModeler sequence database
 ##      from a set of fasta files.
 ##
 #******************************************************************************
@@ -41,9 +41,10 @@ BuildDatabase - Format FASTA files for use with RepeatModeler
 
 =head1 DESCRIPTION
 
-  This is basically a wrapper around AB-Blast's and NCBI Blast's
-  DB formating programs.  It assists in aggregating files for processing 
-  into a single database.  Source files can be specified by:
+  Gathers one or more FASTA files into the database RepeatModeler
+  samples from: a UCSC 2bit file named <name>.2bit and a <name>.translation
+  file mapping the original sequence identifiers to the ones stored in
+  it.  Source files can be specified by:
 
       - Placing the names of the FASTA files on the command
         line.
@@ -55,7 +56,11 @@ BuildDatabase - Format FASTA files for use with RepeatModeler
   NOTE: Sequence identifiers are not preserved in this database. Each
         sequence is assigned a new GI ( starting from 1 ).  The 
         translation back to the original sequence is preserved in the
-        *.translation file.
+        *.translation file.  Empty sequences are skipped and receive
+        no GI.
+
+  NOTE: The 2bit format stores A, C, G, T and N only.  Any other IUB
+        ambiguity code in the input is stored as N.
 
 The options are:
 
@@ -86,13 +91,13 @@ The files names are listed one per line and should be fully qualified.
 
 =over 4
 
-RepeatModeler, RMBlast
+RepeatModeler
 
 =back
 
 =head1 COPYRIGHT
 
-Copyright 2004-2019 Institute for Systems Biology
+Copyright 2004-2026 Institute for Systems Biology
 
 =head1 AUTHOR
 
@@ -114,6 +119,7 @@ use Cwd;
 # RepeatModeler Libraries
 use RepModelConfig;
 use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
+use TwoBitDB;
 
 #
 # Class Globals & Constants
@@ -187,16 +193,17 @@ if ( ( $#ARGV == -1 && !$options{'batch'} && !$options{'dir'} )
 # file.
 #
 RepModelConfig::resolveConfiguration( \%options );
-my $config           = $RepModelConfig::configuration;
-my $XDFORMAT_PRGM    = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
-my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
-my $NCBIDBCMD_PRGM   = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
+my $config     = $RepModelConfig::configuration;
+my $FATOTWOBIT = $config->{'UCSCTOOLS_DIR'}->{'value'} . "/faToTwoBit";
 
-my $engine = "rmblast";
 if ( $options{'engine'} && $options{'engine'} =~ /wublast|abblast/i ) {
   die "ERROR: \"-engine $options{'engine'}\" is deprecated, this verison of RepeatModeler uses rmblast only.\n";
 }
 die "Missing database name!\n" if ( !defined $options{'name'} );
+if ( !RepModelConfig::validateParam( 'UCSCTOOLS_DIR' ) ) {
+  die "\n  The UCSC TwoBit tools are missing or UCSCTOOLS_DIR is set "
+    . "incorrectly!\n  Rerun ./configure or check your command line.\n\n";
+}
 
 my @fileList = ();
 
@@ -284,64 +291,51 @@ for ( my $i = 0 ; $i <= $#fileList ; $i++ ) {
   else {
     open IN, "<$file" or die $CLASS . ": Cannot open file $file\n";
   }
+  # faToTwoBit drops empty sequences, so number only the ones it will
+  # keep, or the GIs stored in the file and the translation table will
+  # disagree.  The loop holds each defline back until a sequence line
+  # follows it.
+  my $pendingID;
   while ( <IN> ) {
-    if ( /^\>\s*(\S+)\s+(.*)/ ) {
-      print $SEQ ">gi|$index\n";
-      print $IDX "$1\t$index\n";
-      $index++;
+    if ( /^\>\s*(\S+)/ ) {
+      print "  WARNING: Skipping empty sequence $pendingID\n"
+          if ( defined $pendingID );
+      $pendingID = $1;
     }
-    else {
+    elsif ( /\S/ ) {
+      if ( defined $pendingID ) {
+        print $SEQ ">gi|$index\n";
+        print $IDX "$pendingID\t$index\n";
+        $index++;
+        undef $pendingID;
+      }
       print $SEQ $_;
     }
   }
+  print "  WARNING: Skipping empty sequence $pendingID\n"
+      if ( defined $pendingID );
   close IN;
 }
 close $SEQ;
 $file = $seqFilename;
 
-if ( $engine eq "rmblast" ) {
-  my $cmd = "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $options{'name'} -parse_seqids -dbtype nucl -in $file 2>&1";
-  print "Running: $cmd\n" if ( $DEBUG );
-  $results = `$cmd`;
-  if ( $? ) {
-    print "The makeblastdb program exited with code " . ($? >> 8) . ".  Please check your input file(s) for potential formating errors.\n$NCBIBLASTDB_PRGM returned: $results\n";
-    print "The command used was: $cmd\n";
-    die;
-  }
-}
-else {
-  $results = `$XDFORMAT_PRGM -n -o $options{'name'} $file 2>&1`;
-  while ( $results =~
-/sequences\s*\(letters\)\s*(?:written|appended):\s*([\d,]+)\s+\(([\d,]+)\).*$/mg
-      )
-  {
-    my $size = $2;
-    my $seqs = $1;
-    $size =~ s/,//g;
-    $dbSize += $size;
-    $seqs =~ s/,//g;
-    $dbSeqs += $seqs;
-    last;
-  }
+my $twoBitFile = "$options{'name'}.2bit";
+my $cmd = "$FATOTWOBIT -long $file $twoBitFile 2>&1";
+print "Running: $cmd\n" if ( $DEBUG );
+$results = `$cmd`;
+if ( $? || !-s $twoBitFile ) {
+  print "The faToTwoBit program exited with code " . ( $? >> 8 )
+      . ".  Please check your input file(s) for potential formatting "
+      . "errors.\n$FATOTWOBIT returned: $results\n";
+  print "The command used was: $cmd\n";
+  unlink( $twoBitFile ) if ( -e $twoBitFile );
+  die;
 }
 
-if ( $engine eq "abblast" ) {
-  $results = `$XDFORMAT_PRGM -n -X $options{'name'} 2>&1`;
-}
-else {
-  $results = `$NCBIDBCMD_PRGM -db $options{'name'} -info 2>&1`;
-  while (
-        $results =~ /\s+([\d\,]+)\s+sequences;\s+([\d\,]+)\s+total bases.*$/mg )
-  {
-    my $size = $2;
-    my $seqs = $1;
-    $size =~ s/,//g;
-    $dbSize += $size;
-    $seqs =~ s/,//g;
-    $dbSeqs += $seqs;
-    last;
-  }
-}
+my $db = TwoBitDB->new( fileName => $twoBitFile );
+$dbSeqs = $db->getSeqCount();
+$dbSize += $_ foreach ( $db->getSeqLengths() );
+undef $db;
 print "Number of sequences (bp) added to database: $dbSeqs ( $dbSize bp )\n";
 
 close $IDX;

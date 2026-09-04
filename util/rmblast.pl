@@ -231,15 +231,9 @@ if ( ! -s $ARGV[0] )
 }
 
 my $query = $ARGV[0];
-my $subj = $ARGV[1];
-
-if ( ! -s "$subj.nhr" ) {
-  system(   $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb -out $subj "
-          . "-parse_seqids -dbtype nucl -in $subj > "
-          . "makeblastdb.log 2>&1" );
-  system("cat makeblastdb.log");
-  unlink("makeblastdb.log");
-}
+my $subj = $searchEngineN->prepareSubject( $ARGV[1],
+                                           dbVersion   => 4,
+                                           parseSeqIDs => 1 );
 
 $searchEngineN->setQuery( $query );
 $searchEngineN->setSubject( $subj );
@@ -264,10 +258,7 @@ if ( $status )
 }
 
 if ( $cleanup ) {
-  foreach my $suffix ( 'ndb', 'nos', 'ntf', 'nto', 'not', 'nhr', 'nin', 'nog', 'nsq' ) {
-    my $file = $subj . "." . $suffix;
-    unlink ($file) if ( -e $file );
-  }
+  unlink( grep { -e } $searchEngineN->getSubjectArtifacts( $subj ) );
 }
 
 1;

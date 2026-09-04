@@ -43,6 +43,13 @@ Detailed help
 
 Number of threads to use in the search.
 
+=item -no_clash_rule
+
+When protein hits to a consensus fall in clashing classes, the class
+with evidence at least 10 orders of magnitude more significant wins.
+This option disables that rule; clashing classes then merge to a
+common root or become Unknown, as before.
+
 =back
 
 =head1 CONFIGURATION OVERRIDES
@@ -113,7 +120,7 @@ my $version = $RepModelConfig::VERSION;
 #   -t=s: String parameters
 #   -t=i: Number paramters
 #
-my @opts = qw( help consensi=s stockholm=s debug preserve_class threads=s );
+my @opts = qw( help consensi=s stockholm=s debug preserve_class threads=s no_clash_rule );
 
 # Add configuration parameters as additional command-line options
 push @opts, RepModelConfig::getCommandLineOptions();
@@ -178,8 +185,18 @@ RepModelConfig::resolveConfiguration( \%options );
 my $config           = $RepModelConfig::configuration;
 my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLASTN_PRGM    = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
-my $NCBIBLASTX_PRGM  = $config->{'RMBLAST_DIR'}->{'value'} . "/blastx";
-my $MAKEBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
+
+# The protein search still runs NCBI blastx against a database its own
+# makeblastdb built.  Neither ships with the 3.x series of RMBlast.
+my $NCBIBLASTX_PRGM  = RepModelConfig::findNCBIProgram( "blastx" );
+my $MAKEBLASTDB_PRGM = RepModelConfig::findNCBIProgram( "makeblastdb" );
+foreach my $missing ( [ "blastx", $NCBIBLASTX_PRGM ],
+                      [ "makeblastdb", $MAKEBLASTDB_PRGM ] ) {
+  die $CLASS . ": "
+      . RepModelConfig::ncbiProgramMissingMessage( $missing->[ 0 ],
+                       "RepeatClassifier uses for the protein search" )
+      if ( !defined $missing->[ 1 ] );
+}
 my $cmdSuffix = "> /dev/null 2>&1";
 $cmdSuffix = "" if ( $DEBUG );
 
@@ -231,7 +248,7 @@ print "#       Date: $dfam_date\n"     if $dfam_date;
 
 my ( $TE_PROTEIN_LIB, $TE_CONSENSUS_LIB ) =
     resolve_reference_libraries( $FAMDB_DIR, $dfam_version, $MAKEBLASTDB_PRGM,
-                                 $options{'consensi'} );
+                                 $searchEngineN, $options{'consensi'} );
 
 open IN, "<$TE_PROTEIN_LIB"
     or die "Could not open $TE_PROTEIN_LIB for reading!\n";
@@ -694,9 +711,14 @@ sub blastxAnalysis {
     elsif ( /Frame\s*=\s*([-+])(\d+)/ ) {
 
       # ncbi/ab blastx
+      # The Frame line follows the Score line in each HSP block, so the
+      # orientation is recorded here, for the HSP whose Score line was
+      # just accepted.  Recording it at the Score line, as this parser
+      # once did, stored the previous HSP's frame.
       $orientation = $1;
       $orientation = "Plus" if ( $orientation eq "+" );
       $orientation = "Minus" if ( $orientation eq "-" );
+      $queryHits{$sbjct}->{'or'} = $orientation if ( $on && $sbjct );
     }
     if ( /^ Score\s*=\s*([\d\.]+) .+ Expect(?:\(\d+\))? = (\S+)/ ) {
 
@@ -714,7 +736,6 @@ sub blastxAnalysis {
           $queryHits{$sbjct}->{'score'} = $1;
           $queryHits{$sbjct}->{'p'}     = $2;
         }
-        $queryHits{$sbjct}->{'or'} = $orientation;
         $on = 1;
       }
       else {
@@ -782,6 +803,21 @@ sub blastxAnalysis {
 }
 
 ##---------------------------------------------------------------------##
+## Use: &pValMuchBetter( $pA, $pB );
+##
+##      True if $pA is at least 10 orders of magnitude more
+##      significant than $pB.  A p value of zero is treated as more
+##      significant than any nonzero p value.
+##---------------------------------------------------------------------##
+sub pValMuchBetter {
+  my ( $pA, $pB ) = @_;
+  return 0 if ( !defined $pA || !defined $pB );
+  return ( $pB > 0 ) if ( $pA == 0 );
+  return 0 if ( $pB == 0 );
+  return ( $pA <= $pB * 1e-10 );
+}
+
+##---------------------------------------------------------------------##
 ## Use: &chooseBestBlastX( queryHits => $queryHitsRef,
 ##                        pValues => \%pValues,
 ##                        masklevel => $masklevel );
@@ -815,11 +851,13 @@ sub chooseBestBlastX {
     die "scorea $a $b" unless $queryHits->{$a}->{'score'};
     die "scoreb $a $b" unless $queryHits->{$b}->{'score'};
         ( $queryHits->{$a}->{'beg'} <=> $queryHits->{$b}->{'beg'} )
-     || ( $queryHits->{$a}->{'score'} <=> $queryHits->{$b}->{'score'} );
+     || ( $queryHits->{$a}->{'score'} <=> $queryHits->{$b}->{'score'} )
+     || ( $a cmp $b );
   } grep { !/query|oppositestrand/ } keys %{$queryHits};
 
   my $nr = 0;
   my ( $lastclass, $lastori, $classunknown, $oriunknown );
+  my $lastPVal;
   if ( $#sortedmatches >= 0 ) {
 SUBJECTS:
     foreach my $subj ( @sortedmatches ) {
@@ -913,15 +951,30 @@ SUBJECTS:
             . "$queryHits->{ $subj }->{ 'aligned' }\t"
             . "$queryHits->{ $subj }->{ 'p' }\n";
         $class =~ s/-gene$//;
+        my $pCur         = $queryHits->{$subj}->{'p'};
+        my $keepLastPVal = 0;
         if ( $lastclass && $class !~ /^$lastclass/ && $lastclass !~ /^$class/ )
         {
           print "      ! Clashing classes: $q $lastclass $class\n"
               if ( $DEBUG );
 
-          # perhaps if a p value is > 10 orders of magnitude smaller for one
-          # class than an other, and the protein matches at least partially
-          # overlap, take the better p value
-          if ( $class =~ /LTR\/ERV/ && $lastclass =~ /LTR\/ERV/ ) {
+          # When one class rests on much more significant evidence than
+          # the other ( at least 10 orders of magnitude, see
+          # pValMuchBetter ), that class wins the clash.  Disable with
+          # -no_clash_rule to fall back on merging to a common root.
+          if ( !$options{'no_clash_rule'}
+               && &pValMuchBetter( $pCur, $lastPVal ) )
+          {
+
+            # the current subject's class stands
+          }
+          elsif ( !$options{'no_clash_rule'}
+                  && &pValMuchBetter( $lastPVal, $pCur ) )
+          {
+            $class        = $lastclass;
+            $keepLastPVal = 1;
+          }
+          elsif ( $class =~ /LTR\/ERV/ && $lastclass =~ /LTR\/ERV/ ) {
 
             # there are some proteins in the database of
             # mosaic elements combining the three families
@@ -947,7 +1000,10 @@ SUBJECTS:
           ++$oriunknown;
         }
         $lastclass = $class;
-        $lastori   = $queryHits->{$subj}->{'or'};
+        $lastPVal  = $pCur
+            if ( !$keepLastPVal
+                 && ( !defined $lastPVal || $pCur < $lastPVal ) );
+        $lastori = $queryHits->{$subj}->{'or'};
       }
       else {
         print SUMR "$q\t$queryHits->{ $subj }->{ 'beg' } "
@@ -1106,7 +1162,8 @@ sub conflictsolver {
   #print "conflictsolver: $query\n";
   #print "  - Best protein hit: class=$protClass pVal=$protPVal orient=$protOrient\n";
   #print "  - DNA Matches: " . Dumper($dnaScores) . "\n";
-  foreach my $dnaMatch ( sort { $dnaScores->{$b} <=> $dnaScores->{$a} }
+  foreach my $dnaMatch ( sort { $dnaScores->{$b} <=> $dnaScores->{$a}
+                                  || $a cmp $b }
                          keys %{$dnaScores} )
   {
     my ( $temp1, $temp2, $dnaAndProteinCompatible ) = &matchprotanddnaclass(
@@ -1661,7 +1718,7 @@ my %rmToDfamClass = (
 ## Dies if no writable location can be found or the build fails everywhere.
 ##
 sub resolve_reference_libraries {
-  my ( $famdb_dir, $version, $makeblastdb, $input_file ) = @_;
+  my ( $famdb_dir, $version, $makeblastdb, $searchEngine, $input_file ) = @_;
 
   my $prot_label = "PROT-Dfam_$version";
   my $cons_label = "CONS-Dfam_$version";
@@ -1677,13 +1734,13 @@ sub resolve_reference_libraries {
     my $cons_lib = "$base/$cons_label/reference.fa";
 
     return ( $prot_lib, $cons_lib )
-        if -s "$prot_lib.psq" && -s "$cons_lib.nsq";
+        if -s "$prot_lib.psq" && $searchEngine->isSubjectPrepared( $cons_lib );
 
     next unless _can_write_dir( $base );
 
     print "\nBuilding FamDB $version reference libraries (one-time step)...\n";
     print "  Location: $base\n";
-    if ( _build_reference_libraries( $famdb_dir, $makeblastdb,
+    if ( _build_reference_libraries( $famdb_dir, $makeblastdb, $searchEngine,
                                      "$base/$prot_label",
                                      "$base/$cons_label" ) ) {
       return ( $prot_lib, $cons_lib );
@@ -1710,7 +1767,7 @@ sub _can_write_dir {
 }
 
 sub _build_reference_libraries {
-  my ( $famdb_dir, $makeblastdb, $prot_dir, $cons_dir ) = @_;
+  my ( $famdb_dir, $makeblastdb, $searchEngine, $prot_dir, $cons_dir ) = @_;
 
   for my $dir ( $prot_dir, $cons_dir ) {
     eval { make_path($dir) };
@@ -1747,14 +1804,13 @@ sub _build_reference_libraries {
     return 0;
   }
 
-  print "  Building nucleotide BLAST database...\n";
-  system(   "$makeblastdb -dbtype nucl "
-          . "-in \"$cons_dir/reference.fa\" "
-          . "-out \"$cons_dir/reference.fa\" "
-          . "-blastdb_version 4 2>/dev/null" );
-  unless ( -s "$cons_dir/reference.fa.nsq" ) {
+  print "  Preparing consensus library for the search engine...\n";
+  my $prepared = eval {
+    $searchEngine->prepareSubject( "$cons_dir/reference.fa", dbVersion => 4 );
+  };
+  unless ( $prepared && $searchEngine->isSubjectPrepared( $prepared ) ) {
     rmtree($cons_dir);
-    warn "  Failed to build nucleotide BLAST database.\n";
+    warn "  Failed to prepare the consensus library: $@\n";
     return 0;
   }
 

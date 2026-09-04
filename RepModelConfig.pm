@@ -153,7 +153,7 @@ BEGIN {
                                  },
           'REPEATMASKER_DIR' => {
                                   'command_line_override' => 'repeatmasker_dir',
-                                  'description' => 'The path to the installation of RepeatMasker (4.2.4 or higher).',
+                                  'description' => 'The path to the installation of RepeatMasker (4.2.5 or higher).',
                                   'environment_override' => 'REPEATMASKER_DIR',
                                   'expected_binaries' => [
                                                            'RepeatMasker'
@@ -161,19 +161,29 @@ BEGIN {
                                   'expected_files' => [],
                                   'param_type' => 'directory',
                                   'required' => 1,
-                                  'value' => '/usr/local/RepeatMasker-4.2.4-Dfam-4.0_RB'
+                                  'value' => '/home/rhubley/projects/Claude/RepeatMasker'
                                 },
+          'NCBIBLAST_DIR' => {
+                               'command_line_override' => 'ncbiblast_dir',
+                               'description' => 'The path to the bin directory of the NCBI BLAST+ toolkit.  RepeatClassifier needs its blastx and makeblastdb, and the LTR structural pipeline needs its blastn for LTR_retriever.  Leave unset to look in RMBLAST_DIR and then on PATH; a 2.x RMBlast installation ships the toolkit, so this only needs setting alongside a 3.x RMBlast.',
+                               'environment_override' => 'NCBIBLAST_DIR',
+                               'expected_binaries' => [
+                                                        'blastx',
+                                                        'blastn',
+                                                        'makeblastdb'
+                                                      ],
+                               'expected_files' => [],
+                               'param_type' => 'directory',
+                               'required' => 0,
+                               'value' => ''
+                             },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
-                             'description' => 'The path to the installation of RMBlast (2.17.1 or higher).',
+                             'description' => 'The path to the bin directory of RMBlast (2.17.1 or higher, including the 3.x series).',
                              'environment_override' => 'RMBLAST_DIR',
                              'expected_binaries' => [
                                                       'rmblastn',
-                                                      'dustmasker',
-                                                      'makeblastdb',
-                                                      'blastdbcmd',
-                                                      'blastdb_aliastool',
-                                                      'blastn'
+                                                      'dustmasker'
                                                     ],
                              'expected_files' => [],
                              'param_type' => 'directory',
@@ -229,6 +239,18 @@ BEGIN {
 ##----------------------------------------------------------------------##
 ##  Do not edit below this line                                         ##
 ##----------------------------------------------------------------------##
+
+  #
+  # Apply environment overrides now, while still inside BEGIN, so that
+  # "use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}..."
+  # in the scripts sees them.  resolveConfiguration() applies them again
+  # at run time together with the command line overrides.
+  #
+  foreach my $param ( keys %$configuration ) {
+    my $envName = $configuration->{$param}->{'environment_override'};
+    $configuration->{$param}->{'value'} = $ENV{$envName}
+        if ( defined $envName && exists $ENV{$envName} );
+  }
 
   #
   # Current version of the software
@@ -544,6 +566,48 @@ BEGIN {
     }
   }
 
+  #
+  # Locate a program from the NCBI BLAST+ toolkit.  The 3.x series of
+  # RMBlast does not ship the toolkit, so the few places that still need
+  # one of its programs look here rather than in RMBLAST_DIR.
+  #
+  #   my $path = RepModelConfig::findNCBIProgram( "blastx" );
+  #
+  # Returns the path of the first executable found in NCBIBLAST_DIR,
+  # then RMBLAST_DIR, then the directories on PATH, or undef.
+  #
+  sub findNCBIProgram {
+    my $name = shift;
+
+    my @dirs = ();
+    foreach my $param ( "NCBIBLAST_DIR", "RMBLAST_DIR" ) {
+      my $dir = $configuration->{$param}->{'value'};
+      push @dirs, $dir if ( defined $dir && $dir ne "" );
+    }
+    push @dirs, split( /:/, $ENV{'PATH'} // "" );
+
+    foreach my $dir ( @dirs ) {
+      next if ( $dir eq "" );
+      my $path = "$dir/$name";
+      return $path if ( -x $path && !-d $path );
+    }
+    return undef;
+  }
+
+  #
+  # The message to die with when findNCBIProgram() comes up empty.
+  #
+  sub ncbiProgramMissingMessage {
+    my $name    = shift;
+    my $purpose = shift;
+
+    return "Could not find the NCBI BLAST+ program '$name', which $purpose.\n"
+        . "It was not found in NCBIBLAST_DIR, RMBLAST_DIR, or on PATH.\n"
+        . "Install the NCBI BLAST+ toolkit and point NCBIBLAST_DIR at its\n"
+        . "bin directory ( rerun ./configure, set the NCBIBLAST_DIR\n"
+        . "environment variable, or pass -ncbiblast_dir ).\n";
+  }
+
   sub getDependencyVersion {
     my $param = shift;
 
@@ -572,8 +636,9 @@ BEGIN {
       #./rmblastn -version
       #rmblastn: 2.9.0+
       # Package: blast 2.9.0, build Sep  9 2019 15:21:42
+      # The 3.x series prints a bare "rmblastn 3.0.7".
       $tmpStr = `$value/rmblastn -version`;
-      $tmpStr =~ /rmblastn:\s+(\d+\.\d+\.\d+\+?)/;
+      $tmpStr =~ /rmblastn:?\s+(\d+\.\d+\.\d+\+?)/;
       $version = $1;
     }elsif ( $param eq "RECON_DIR" ) {
       # More complex.  The version is only printed in a

@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- Support for the 3.x series of RMBlast, which searches FASTA files directly and
+  ships no makeblastdb, blastdbcmd or blastdb_aliastool. RepeatModeler now prepares
+  search subjects through RepeatMasker's search engine objects and needs
+  RepeatMasker 4.2.5 or higher; configure checks for it.
+- TwoBitDB.pm, a read-only SeqDBI implementation over a UCSC 2bit file.
+- NCBIBLAST_DIR, an optional setting naming an NCBI BLAST+ bin directory for
+  RepeatClassifier's blastx and LTR_retriever's blastn. When unset, RepeatModeler
+  looks in RMBLAST_DIR and then on PATH.
+
+### Changed
+- BuildDatabase writes <name>.2bit and <name>.translation instead of an NCBI BLAST
+  database. RepeatModeler converts a database from an earlier release on first use
+  when it can find blastdbcmd, and otherwise asks for BuildDatabase to be rerun.
+- The 2bit format stores A, C, G, T and N only, so BuildDatabase records every
+  other IUB ambiguity code as N. The NCBI database preserved them. RepeatModeler
+  already treated ambiguous bases as N when sampling and never aligned the genome
+  directly, so the analysis sees the same bases it did before.
+- Sample blocks are now listed in the order the sequences appear in the database
+  rather than in the order blastdbcmd returned them, which was hash order.
+  A run with -srand on a genome of more than one sequence therefore draws a
+  different sample than the same seed drew under earlier releases, and its
+  families may differ accordingly. Single-sequence genomes are unaffected.
+- RMBLAST_DIR is checked for rmblastn and dustmasker only.
+- Environment overrides such as REPEATMASKER_DIR now apply to the module search
+  path as well as to the run-time configuration.
+- sampleDB-N.fa.masked is written in input order, so it no longer changes between
+  runs.
+- The wrappers/ directory of NCBI tool shims is gone.
+- The first-stage filter for RepeatScout consensi now runs inside RepeatModeler
+  rather than through RepeatScout's filter-stage-1.prl, and calls TRF with a
+  maximum period of 2000 instead of 500. Satellites with repeat units between
+  500 and 2000 bp were passing the filter and reaching Refiner as families of
+  overlapping 20 kb windows. The thresholds and counting are otherwise the
+  script's. The per-round log is now repeatscout-filter.log.
+
+### Fixed
+- Batch grouping in the all-vs-other search read the length of an arbitrary
+  sequence instead of the batch's first sequence.
+- Ambiguous-base counts for sample blocks were shifted by one base.
+- Version detection accepted only the "rmblastn: 2.x.y+" output shape.
+
 ## [2.0.9]
 
 ### Added

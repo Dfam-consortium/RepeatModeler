@@ -43,7 +43,10 @@ Detailed help
 
 The name of the sequence database to run an analysis on.
 This is the name that was provided to the BuildDatabase script
-using the "-name" option.
+using the "-name" option, which produced <name>.2bit and
+<name>.translation.  A database built by an earlier release, in
+NCBI BLAST format, is converted to 2bit on first use; that needs
+the blastdbcmd program from a 2.x RMBlast or NCBI BLAST+ installation.
 
 =item -threads #
 
@@ -142,6 +145,7 @@ use RepeatUtil;
 use SeedAlignment;
 use SeedAlignmentCollection;
 use ThreadedTaskSimple;
+use TwoBitDB;
 
 # RepeatMasker Libraries
 use SearchResult;
@@ -254,10 +258,6 @@ sub usage {
 #
 RepModelConfig::resolveConfiguration( \%options );
 my $config           = $RepModelConfig::configuration;
-my $NCBIDBCMD_PRGM   = $config->{'RMBLAST_DIR'}->{'value'} . "/blastdbcmd";
-my $NCBIBLASTDB_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/makeblastdb";
-my $NCBIDBALIAS_PRGM =
-    $config->{'RMBLAST_DIR'}->{'value'} . "/blastdb_aliastool";
 my $DUSTMASKER_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/dustmasker";
 my $RMBLASTN_PRGM   = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $XDFORMAT_PRGM   = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
@@ -271,7 +271,8 @@ my $FATOTWOBIT      = $config->{'UCSCTOOLS_DIR'}->{'value'} . "/faToTwoBit";
 
 ## validate params
 # Minimal commands
-foreach my $param ( "RMBLAST_DIR", "TRF_DIR", "RSCOUT_DIR", "RECON_DIR" ) {
+foreach my $param ( "RMBLAST_DIR", "TRF_DIR", "RSCOUT_DIR", "RECON_DIR",
+                    "UCSCTOOLS_DIR" ) {
   if ( !RepModelConfig::validateParam( $param ) ) {
     die
 "\n  RepeatModeler dependency missing or incorrectly set for $param!\n  Rerun ./configure or check your command line to ensure that RepeatModeler\n  has access to and the correct version of this dependency.\n\n";
@@ -457,25 +458,13 @@ $fragmentSize = $options{'recon_batch_size'} if ( exists $options{'recon_batch_s
 $reconSampleSizeStart = $options{'recon_sample_size_start'} if ( exists $options{'recon_sample_size_start'} );
 
 #
-# Gather details from the database
+# The database is <name>.2bit and <name>.translation from BuildDatabase.
+# The name may be given with or without the suffix.
 #
-my $genomeDB = $options{'database'};
-if ( -s $genomeDB ) {
-  $genomeDB = File::Spec->rel2abs($genomeDB);
-}elsif ( -s "$genomeDB.nsq" ){
-  $genomeDB = File::Spec->rel2abs("$genomeDB.nsq");
-}elsif ( -s "$genomeDB.00.nsq" ) {
-  $genomeDB = File::Spec->rel2abs("$genomeDB.00.nsq");
-}
-my $genomeDBDir = dirname($genomeDB);
-#$genomeDB =~ s/(.+)\.n[nihs][rndiq]$/$1/;
-$genomeDB =~ s/(.+?)(\.00\.nsq|\.nsq)$/$1/;
-my $genomeDBName = basename($genomeDB);
-my $dbIndex;
-$dbIndex = `$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt "%i %l"`;
-
-# The twobit version of the genomeDB
-my $genomeTwoBit = "";
+my $genomeDB = File::Spec->rel2abs( $options{'database'} );
+$genomeDB =~ s/\.2bit$//;
+my $genomeDBDir  = dirname( $genomeDB );
+my $genomeDBName = basename( $genomeDB );
 
 # Initialize working directory and logging
 my $tmpDir;
@@ -483,7 +472,6 @@ my $LOG;
 if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
   $tmpDir =  abs_path($options{'recoverDir'});
   open $LOG, ">>", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing (appending)!\n";
-  $genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
 }else {
   #
   # Create temp directory
@@ -498,15 +486,13 @@ if ( $options{'recoverDir'} && -d $options{'recoverDir'} ) {
     $tmpDir = createTempDir( \@tmpDirPath );
   }
   open $LOG, ">", "$tmpDir/rmod.log" or die "Could not open up $tmpDir/rmod.log for writing!\n";
-
-  # Build the genome.2bit file
-  my $cmd = "$NCBIDBCMD_PRGM -entry all -db $genomeDB -outfmt \"%f\" | $FATOTWOBIT -long stdin $tmpDir/genome.2bit";
-  system($cmd);
-  if ( ! -s "$tmpDir/genome.2bit" ) {
-    die "ERROR: Failed to create $tmpDir/genome.2bit file using command: $cmd\n";
-  }
-  $genomeTwoBit = File::Spec->rel2abs("$tmpDir/genome.2bit");
 }
+
+# The 2bit file holding the genome.  Refiner extends consensi against it
+# and every sample comes from it.
+my $genomeTwoBit = resolveGenomeTwoBit( $genomeDB, $tmpDir );
+my $genomeSeqDB  = TwoBitDB->new( fileName => $genomeTwoBit,
+                                  tempDir  => $tmpDir );
 
 # print to screen and log
 sub log_print {
@@ -540,13 +526,8 @@ log_print "Random Number Seed: $seed\n";
 log_print "Database = $genomeDB ";
 
 my $dbSize       = 0;
-my @contigSizes  = ();
-while ( $dbIndex =~ />?(\S+)\s+(\d+)\s*$/mg ) {
-  print "." if ( ( $#contigSizes % 10000 ) == 0 );
-  push @contigSizes,  $2;
-  $dbSize += $2;
-}
-undef $dbIndex;
+my @contigSizes  = $genomeSeqDB->getSeqLengths();
+$dbSize += $_ foreach ( @contigSizes );
 log_print "\n";
 
 die "Database $genomeDB does not contain any sequences!\n"
@@ -630,7 +611,7 @@ my $dbSourceList;
 if ( $options{'onlyIns'} ) {
   $dbSourceList = &initializeSampleSourceList(
                                                approxBlockSize => $fragmentSize,
-                                               genomeDB        => $genomeDB,
+                                               genomeSeqDB     => $genomeSeqDB,
                                                dbSize          => $dbSize,
                                                noFrag          => 1
   );
@@ -638,7 +619,7 @@ if ( $options{'onlyIns'} ) {
 else {
   $dbSourceList = &initializeSampleSourceList(
                                                approxBlockSize => $fragmentSize,
-                                               genomeDB        => $genomeDB,
+                                               genomeSeqDB     => $genomeSeqDB,
                                                dbSize          => $dbSize
   );
 }
@@ -906,8 +887,7 @@ while ( 1 ) {
     $usedBlockIndex = &sampleFromDB(
                                      sampleSizeMax  => $rsSampleSize,
                                      dbSourceBlocks => $dbSourceList,
-                                     dbType         => $engine,
-                                     dbFile         => $genomeDB,
+                                     genomeSeqDB    => $genomeSeqDB,
                                      fastaFile      => $sampleFastaFile,
                                      prohibitX      => 1
     );
@@ -919,8 +899,7 @@ while ( 1 ) {
       &sampleFromDB(
                      sampleSizeMax   => $sampleSize,
                      dbSourceBlocks  => $dbSourceList,
-                     dbType          => $engine,
-                     dbFile          => $genomeDB,
+                     genomeSeqDB     => $genomeSeqDB,
                      withReplacement => 1,
                      fastaFile       => $sampleFastaFile
       );
@@ -934,8 +913,7 @@ while ( 1 ) {
       &sampleFromDB(
                      sampleSizeMax  => $sampleSize,
                      dbSourceBlocks => $dbSourceList,
-                     dbType         => $engine,
-                     dbFile         => $genomeDB,
+                     genomeSeqDB    => $genomeSeqDB,
                      fastaFile      => $sampleFastaFile
       );
 
@@ -984,13 +962,6 @@ while ( 1 ) {
       }
 
       system( "cp $sampleFastaFile.rscons.filtered $roundConsensiFile" );
-
-      # MAKEBLASTDB the database RMH: 8/9/2024
-      my ($error, $cmd, $retCode, $messages) = &RepeatUtil::makeBlastDB($NCBIBLASTDB_PRGM, 
-                                                $sampleFastaFile, $sampleFastaFile,1, 4);
-      if ( $error ) {
-        die "Failed to execute: $cmd returned code $retCode!\nMessages: $messages\n";
-      }
 
       ( $roundModels ) = &buildRSConsensiMT(
                                  workDir          => $roundTmpDir,
@@ -1052,29 +1023,12 @@ while ( 1 ) {
     $searchEngineN->setAdditionalParameters( undef );
     $searchEngineN->setMaskLevel( undef );
 
-    my $annots;
-    my $bp_masked;
-    if ( $searchEngineN->getVersion() =~ /.*(\d+)\.(\d+)\.\d+.*/ &&
-         ( $1 > 2 || ($1 == 2 && $2 >= 13) ) ) {
-      ($annots, $bp_masked) = RepeatUtil::ncbiMaskDatabaseNativeMT(
-                                  makeDBPath   => $NCBIBLASTDB_PRGM,
+    my ( $annots, $bp_masked ) = RepeatUtil::ncbiMaskDatabaseNativeMT(
                                   rmblastnPath => $RMBLASTN_PRGM,
                                   workingDir   => $roundTmpDir,
                                   fastaFile    => "$roundTmpDir/tmpSample.fa",
                                   consensi     => $consensiFile,
                                   threads      => $threads );
-    }else {
-      ($annots, $bp_masked) = RepeatUtil::ncbiMaskDatabaseMT(
-                                  makeDBPath   => $NCBIBLASTDB_PRGM,
-                                  dbCMDPath    => $NCBIDBCMD_PRGM,
-                                  aliasPath    => $NCBIDBALIAS_PRGM,
-                                  rmblastnPath => $RMBLASTN_PRGM,
-                                  workingDir   => $roundTmpDir,
-                                  fastaFile    => "$roundTmpDir/tmpSample.fa",
-                                  consensi     => $consensiFile,
-                                  threads      => $threads );
-
-    }
     log_print "       $annots repeats masked totaling $bp_masked bp(s).\n";
     
     # clear special parameters 10/15/22
@@ -1146,14 +1100,24 @@ while ( 1 ) {
   # sensible name $sampleFastaFile with a ".masked" extension.
   system( "mv $roundTmpDir/tmpSample.fa $sampleFastaFile.masked" );
 
-  # Tabulate non-Ambiguous bases
+  # Tabulate non-Ambiguous bases and index the sample.  The all-vs-other
+  # batches below draw their queries from this same FastaDB, so it stays
+  # open for the rest of the round.
   my $sampleDB = FastaDB->new( fileName => "$sampleFastaFile.masked",
                                openMode => SeqDBI::ReadOnly );
   my $postMaskNonAmbigBases = 0;
+  my %sampleSeqs;
+  my @sampleSeqIDArray = ();
+  my $sampleDBSize = 0;
+  my $sampleDBLen  = 0;
   foreach my $seqID ( $sampleDB->getIDs() ) {
     $postMaskNonAmbigBases += $sampleDB->getSubtLength( $seqID );
+    my $len = $sampleDB->getSeqLength( $seqID );
+    $sampleSeqs{$seqID} = $len;
+    push @sampleSeqIDArray, $seqID;
+    $sampleDBLen += $len;
+    $sampleDBSize++;
   }
-  undef $sampleDB;
 
   log_print " -- Sample Stats:\n";
   log_print "       Sample Size $actualGenomeSampleSize bp\n";
@@ -1178,30 +1142,14 @@ while ( 1 ) {
     log_print "             Masked: 0\n";
   }
 
-  # MAKEBLASTDB the database
-  system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $sampleFastaFile.masked "
-          . "-parse_seqids -dbtype nucl -in $sampleFastaFile.masked >> "
-          . "$roundTmpDir/makeblastdb.log 2>&1" );
- 
-  # Gather details of the sample
-  # TODO: Get this from the sample routine
-  my %sampleSeqs;
-  my @sampleSeqIDArray = ();
-  my $sampleDBSize     = 0;
-  my $sampleDBLen      = 0;
-  my $sampleIndex = `$NCBIDBCMD_PRGM -db $sampleFastaFile.masked -entry all -outfmt "gi|%g %l"`;
+  # Prepare the masked sample as the subject of the all-vs-other searches.
+  # The subject restriction those searches apply matches on parsed "gi|N"
+  # identifiers.
+  my $sampleSubject = $searchEngineN->prepareSubject( "$sampleFastaFile.masked",
+                                                      parseSeqIDs => 1,
+                                                      dbVersion   => 4,
+                                                      force       => 1 );
 
-  # Both search engines produce indexes in reverse order ie:
-  #    gi|3  35000
-  #    gi|2  40000
-  #    gi|1  40000
-  while ( $sampleIndex =~ /(\S+)\s+(\d+)\s*$/mg ) {
-    $sampleSeqs{$1} = $2;
-    push @sampleSeqIDArray, $1;
-    $sampleDBLen += $2;
-    $sampleDBSize++;
-  }
-  undef $sampleIndex;
   $totSampledBP += $sampleDBLen;
   log_print " -- Input Database Coverage: $totSampledBP bp out of $dbSize bp ( "
       . sprintf( "%0.2f", ( $totSampledBP / $dbSize ) * 100 )
@@ -1244,8 +1192,7 @@ while ( 1 ) {
 
     my $compStartTime = time;
     while ( $startGID < $sampleDBSize ) {
-      if (
-         $sampleSeqs{ $sampleSeqIDArray[ $startGID ] } < ( $fragmentSize / 4 ) )
+      if ( $sampleSeqs{"gi|$startGID"} < ( $fragmentSize / 4 ) )
       {
         do {
           $endGID++;
@@ -1265,7 +1212,7 @@ while ( 1 ) {
           if ( $retry > 0 );
         $status = runAllvsOtherMatrixRow( $searchEngineN, $batchNum, $startGID,
                                           $endGID, $roundTmpDir, 
-                                          $sampleFastaFile, $NCBIDBALIAS_PRGM,
+                                          $sampleDB, $sampleSubject,
                                           $sampleDBSize );
       }while ( ($status != 0 || ! -e "$batchFile.msps") && 
                $retry++ < $retryLimit );
@@ -1491,9 +1438,8 @@ if ( $options{'LTRStruct'} ) {
   # Save genome to sequence file
   open OUT, ">$tmpDir/tmpInputSeq"
       or die "Could not open $tmpDir/tmpInputSeq for writing!\n";
-  open SEQ, "$NCBIDBCMD_PRGM -db $genomeDB -entry all -outfmt \"%f\"|"
-      or die "Could not run: $NCBIDBCMD_PRGM\n";
-  while ( <SEQ> ) {
+  my $SEQ = $genomeSeqDB->openFastaStream();
+  while ( <$SEQ> ) {
     if ( /^>/ ) {
       # Replace >gi|232 with >gi-232 so that LTR_retriever is happy.  This is
       # a known issue with LTR_retriever-2.6
@@ -1501,7 +1447,7 @@ if ( $options{'LTRStruct'} ) {
     }
     print OUT;
   }
-  close SEQ;
+  $genomeSeqDB->closeStream( $SEQ );
   close OUT;
   # LTRPipeline -giToID dmel.translation -threads 20 tmpInputSeq
   if ( -s "$tmpDir/tmpInputSeq" ) {
@@ -1829,27 +1775,23 @@ sub runAllvsOtherMatrixRow {
   my $startGID = shift;
   my $endGID   = shift;
   my $roundTmpDir = shift;
-  my $sampleFastaFile = shift;
-  my $NCBIDBALIAS_PRGM  = shift;
+  my $sampleDB = shift;         # FastaDB over the masked sample
+  my $sampleSubject = shift;    # the same sample, prepared for the engine
   my $sampleDBSize = shift;
 
-  ## DEBUG
-  #print "runAllvsOtherMatrixRow( batchNum=$batchNum, startGID=$startGID, endGID=$endGID, roundTmpDir=$roundTmpDir, sampleFastaFile=$sampleFastaFile, sampleDBSize=$sampleDBSize )\n"
-  #    if ( $DEBUG );
-  ## DEBUG
-
   # Generate query batch file
-  my $sampleID = $startGID;
-  while ( $sampleID <= $endGID ) {
-    system(   "$NCBIDBCMD_PRGM -db $sampleFastaFile.masked "
-            . "-entry \"gi|$sampleID\" "
-            . ">> $roundTmpDir/batch-$batchNum.fa "
-            . "2>>$roundTmpDir/blastdbcmd.log" );
-    $sampleID++;
+  open my $QRY, ">$roundTmpDir/batch-$batchNum.fa"
+      or die "Could not open $roundTmpDir/batch-$batchNum.fa for writing!\n";
+  for ( my $sampleID = $startGID ; $sampleID <= $endGID ; $sampleID++ ) {
+    my $seqID = "gi|$sampleID";
+    my $seq   = $sampleDB->getSequence( $seqID );
+    $seq =~ s/(.{50})/$1\n/g;
+    print $QRY ">$seqID " . $sampleDB->getDescription( $seqID ) . "\n$seq\n";
   }
+  close $QRY;
 
   $searchEngineN->setQuery( "$roundTmpDir/batch-$batchNum.fa" );
-  $searchEngineN->setSubject( "$sampleFastaFile.masked" );
+  $searchEngineN->setSubject( $sampleSubject );
 
   # Create a gilist
   # The batches are sometimes made up of smaller sequences
@@ -1880,12 +1822,7 @@ sub runAllvsOtherMatrixRow {
            . "for writing!\n";
   print GI join( "\n", @giList ) . "\n";
   close GI;
-  system(   "$NCBIDBALIAS_PRGM -gi_file_in "
-            . "$roundTmpDir/batch-$batchNum-gilist.txt "
-            . "-gi_file_out $roundTmpDir/batch-$batchNum-gilist "
-            . "> /dev/null 2>&1" );
-  $searchEngineN->setAdditionalParameters(
-        " -gilist $roundTmpDir/batch-$batchNum-gilist " );
+  $searchEngineN->setSubjectIDList( "$roundTmpDir/batch-$batchNum-gilist.txt" );
 
   # Run search
   my ( $status, $resultCollection ) = $searchEngineN->search();
@@ -1934,7 +1871,7 @@ sub runAllvsOtherMatrixRow {
   }
   close OUT;
 
-  $searchEngineN->setAdditionalParameters( undef );
+  $searchEngineN->setSubjectIDList( undef );
   return ($status);
 }
 
@@ -2155,6 +2092,163 @@ sub runRECON {
 }
 
 ##-------------------------------------------------------------------------##
+# Use: my $kept = filterRepeatScoutConsensi( inFile   => "x.rscons",
+#                                            outFile  => "x.rscons.filtered",
+#                                            logFile  => "filter.log",
+#                                            trfPrgm  => "/path/trf",
+#                                            dustPrgm => "/path/dustmasker" );
+#
+#   The first-stage filter for RepeatScout consensi, ported from the
+#   filter-stage-1.prl script in the RepeatScout package.  A consensus of
+#   50 bp or less is skipped.  A longer one is dropped when TRF or
+#   dustmasker masks more than half of it; the two are judged separately,
+#   so a consensus that is 40% tandem and 40% low complexity passes.
+#
+#   The script ran TRF with a maximum period of 500, which cannot report a
+#   tandem unit longer than that, so satellites with units of several
+#   hundred base pairs reached Refiner as ordinary families.  The period
+#   here is 2000, TRF's ceiling.  Everything else about the counting is
+#   as the script did it: the masked fraction is the sequence length minus
+#   the unmasked characters in each program's output, over the sequence
+#   length.
+#
+#   Kept consensi go to outFile with the script's header annotation
+#   "(RR=n.  TRF=t DUST=d)", wrapped at 80 columns.  Dropped ones are
+#   named in logFile.  Returns the number kept.
+#
+#   Runs in the current directory, which runRepeatScout() has already
+#   changed to the round directory; TRF writes its output beside the
+#   input file.
+##-------------------------------------------------------------------------##
+sub filterRepeatScoutConsensi {
+  my %parameters = @_;
+
+  foreach my $required ( "inFile", "outFile", "logFile", "trfPrgm", "dustPrgm" ) {
+    die $CLASS . "::filterRepeatScoutConsensi() missing $required parameter!\n"
+        if ( !defined $parameters{$required} );
+  }
+  my $inFile   = $parameters{'inFile'};
+  my $outFile  = $parameters{'outFile'};
+  my $logFile  = $parameters{'logFile'};
+  my $trfPrgm  = $parameters{'trfPrgm'};
+  my $dustPrgm = $parameters{'dustPrgm'};
+
+  my $DUST_THRESHOLD = 0.5;
+  my $TRF_THRESHOLD  = 0.5;
+  my $MIN_LENGTH     = 50;
+  my @trfParams      = ( 2, 7, 7, 80, 10, 50, 2000 );
+  my $trfSuffix      = join( ".", @trfParams );
+
+  # One record at a time in a scratch file, as the script did, so that
+  # TRF and dustmasker report on a single consensus.
+  my $tmpFile = "$inFile.filter-tmp.fa";
+
+  open my $IN, "<", $inFile
+      or die $CLASS . "::filterRepeatScoutConsensi(): Could not open $inFile: $!\n";
+  open my $OUT, ">", $outFile
+      or die $CLASS . "::filterRepeatScoutConsensi(): Could not open $outFile: $!\n";
+  open my $LOGF, ">>", $logFile
+      or die $CLASS . "::filterRepeatScoutConsensi(): Could not open $logFile: $!\n";
+
+  my $repeatNum  = 1;
+  my $numDeleted = 0;
+  my $numSkipped = 0;
+  my $numKept    = 0;
+  my $head;
+  my $body = "";
+
+  my $judge = sub {
+    # The read loops below would otherwise clobber the caller's $_,
+    # which still holds the next record's header line.
+    local $_;
+    return if ( !defined $head );
+    if ( length( $body ) <= $MIN_LENGTH ) {
+      $numSkipped++;
+      return;
+    }
+
+    open my $TMP, ">", $tmpFile
+        or die $CLASS . "::filterRepeatScoutConsensi(): Could not open $tmpFile: $!\n";
+    print $TMP "$head (RR=$repeatNum)\n$body\n";
+    close $TMP;
+
+    # TRF: masked bases become N in the .mask file.  -h suppresses the
+    # HTML reports the script had to delete afterwards.
+    system( "$trfPrgm $tmpFile @trfParams -f -d -m -h > /dev/null 2>&1" );
+    my $maskFile = "$tmpFile.$trfSuffix.mask";
+    open my $TRF, "<", $maskFile
+        or die $CLASS
+        . "::filterRepeatScoutConsensi(): TRF did not produce $maskFile.  "
+        . "The command was: $trfPrgm $tmpFile @trfParams -f -d -m -h\n";
+    my $unmasked = 0;
+    while ( <$TRF> ) {
+      next if ( /^>/ );
+      chomp;
+      s/[nN]//g;
+      $unmasked += length( $_ );
+    }
+    close $TRF;
+    unlink( $maskFile, "$tmpFile.$trfSuffix.dat" );
+    my $trfFrac = ( length( $body ) - $unmasked ) / length( $body );
+
+    # dustmasker: masked bases come back in lower case.
+    open my $DUST, "$dustPrgm -in $tmpFile -outfmt fasta 2>/dev/null |"
+        or die $CLASS . "::filterRepeatScoutConsensi(): Could not run $dustPrgm: $!\n";
+    $unmasked = 0;
+    while ( <$DUST> ) {
+      next if ( /^>/ );
+      chomp;
+      s/[actgnN]//g;
+      $unmasked += length( $_ );
+    }
+    close $DUST;
+    die $CLASS
+        . "::filterRepeatScoutConsensi(): $dustPrgm failed on $tmpFile "
+        . "( exit code " . ( $? >> 8 ) . " )\n"
+        if ( $? != 0 );
+    my $dustFrac = ( length( $body ) - $unmasked ) / length( $body );
+
+    if ( $dustFrac <= $DUST_THRESHOLD && $trfFrac <= $TRF_THRESHOLD ) {
+      printf $OUT "%s (RR=%d.  TRF=%.3f DUST=%.3f)\n", $head, $repeatNum,
+          $trfFrac, $dustFrac;
+      for ( my $i = 0 ; $i < length( $body ) ; $i += 80 ) {
+        print $OUT substr( $body, $i, 80 ), "\n";
+      }
+      $numKept++;
+    }
+    else {
+      printf $LOGF "deleting %s: TRF=%.3f DUST=%.3f\n", $head, $trfFrac,
+          $dustFrac;
+      $numDeleted++;
+    }
+    $repeatNum++;
+  };
+
+  while ( <$IN> ) {
+    chomp;
+    next if ( /^#/ );
+    if ( /^>/ ) {
+      $judge->();
+      $head = $_;
+      $body = "";
+    }
+    else {
+      $body .= $_;
+    }
+  }
+  $judge->();
+  close $IN;
+  close $OUT;
+  unlink( $tmpFile ) if ( -e $tmpFile );
+
+  print $LOGF "$numDeleted deleted.  $numKept saved.  $numSkipped skipped "
+      . "for length.\n";
+  close $LOGF;
+
+  return $numKept;
+}
+
+##-------------------------------------------------------------------------##
 #
 # Use: my = runRepeatScout( .. );
 #
@@ -2225,40 +2319,12 @@ sub runRepeatScout {
 
     # Run TRF/DUSTMASKER on sequences
     log_print "   - RepeatScout: Running filtering stage..";
-    $ENV{'TRF_COMMAND'}        = $TRF_PRGM;
-    $ENV{'DUSTMASKER_COMMAND'} = $DUSTMASKER_PRGM;
-    $cmd                       =
-          "$RSCOUT_DIR/filter-stage-1.prl $fastaFile.rscons > "
-        . "$fastaFile.rscons.filtered 2>> filter-stage-1.log";
-    `$cmd`;
-
-    my $finalFams = 0;
-    if ( -s "$fastaFile.rscons.filtered" ) {
-      open IN, "<$fastaFile.rscons.filtered"
-          or die
-          "Could not open $tmpDir/$fastaFile.rscon.filtered for reading!\n";
-      while ( <IN> ) {
-        $finalFams++ if ( /^>/ );
-      }
-      close IN;
-    }
-    else {
-      if ( -s "filter-stage-1.log" ) {
-        open IN, "<filter-stage-1.log"
-            or die "Could not open $tmpDir/filter-stage-1.log for reading!\n";
-        my $errMsg = "";
-        while ( <IN> ) {
-          if ( /ERROR/ || /Can\'t locate/ || /BEGIN failed/ ) {
-            $errMsg .= $_;
-          }
-        }
-        close IN;
-        if ( $errMsg ne "" ) {
-          die "RepeatScout filter-stage-1 failed:\n$errMsg"
-              . "Please see $tmpDir/filter-stage-1.log for details.\n";
-        }
-      }
-    }
+    my $finalFams = filterRepeatScoutConsensi(
+                                      inFile    => "$fastaFile.rscons",
+                                      outFile   => "$fastaFile.rscons.filtered",
+                                      logFile   => "repeatscout-filter.log",
+                                      trfPrgm   => $TRF_PRGM,
+                                      dustPrgm  => $DUSTMASKER_PRGM );
     log_print " $finalFams families remaining\n";
   }
   else {
@@ -2315,13 +2381,13 @@ sub identifySatelliteAndContained {
   # Large Satellite Detection
   #    
   #    1. Build a database from consensi.fa
-  # MAKEBLASTDB the consensi.fa
-  system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $workDir/$consFile "
-              . "-parse_seqids -dbtype nucl -in $workDir/$consFile >> "
-              . "$workDir/makeblastdb.log 2>&1" );
+  my $consSubject = $searchEngineN->prepareSubject( "$workDir/$consFile",
+                                                    parseSeqIDs => 1,
+                                                    dbVersion   => 4,
+                                                    force       => 1 );
 
   #    2. Search consensi.fa against itself
-  $searchEngineN->setSubject( "$workDir/$consFile" );
+  $searchEngineN->setSubject( $consSubject );
   $searchEngineN->setQuery( "$workDir/$consFile" );
 
   #    3. For each family which has a off diagonal match to itself
@@ -2452,10 +2518,11 @@ sub buildRSConsensiMT {
   }
   $consDB = undef;
   
-  # Regenerate database for consensi.fa
-  system(   "$NCBIBLASTDB_PRGM -blastdb_version 4 -out $workDir/consensi.fa "
-                . "-parse_seqids -dbtype nucl -in $workDir/consensi.fa >> "
-                . "$workDir/makeblastdb.log 2>&1" );
+  # Prepare the filtered consensi.fa for searching again
+  $searchEngineN->prepareSubject( "$workDir/consensi.fa",
+                                  parseSeqIDs => 1,
+                                  dbVersion   => 4,
+                                  force       => 1 );
 
   # Obtain ranges from new version of RepeatScout (1.0.7 or newer)
   open IN,"<$rangeFile" or die "Could not open $rangeFile for reading!\n";
@@ -3199,6 +3266,55 @@ sub refineOneFamily {
 
  
 #
+# resolveGenomeTwoBit
+#
+#   Find the 2bit file for a database name.  BuildDatabase writes
+#   <name>.2bit, and that is the normal case.  A database built by an
+#   earlier release is an NCBI BLAST database; convert it once with the
+#   blastdbcmd that ships with a 2.x RMBlast or the NCBI BLAST+ toolkit,
+#   beside the database when that directory is writable and otherwise in
+#   the run directory.
+#
+sub resolveGenomeTwoBit {
+  my $genomeDB = shift;
+  my $tmpDir   = shift;
+
+  return "$genomeDB.2bit" if ( -s "$genomeDB.2bit" );
+  return $genomeDB if ( -s $genomeDB && TwoBitDB->isTwoBitFile( $genomeDB ) );
+
+  # A conversion from an earlier run of this release, or the genome.2bit
+  # an earlier release built for RepeatAfterMe.
+  return "$tmpDir/genome.2bit" if ( -s "$tmpDir/genome.2bit" );
+
+  if ( -s "$genomeDB.nsq" || -s "$genomeDB.00.nsq" || -s "$genomeDB.nal" ) {
+    my $blastdbcmd = RepModelConfig::findNCBIProgram( "blastdbcmd" );
+    die "The database $genomeDB was built by an earlier release of "
+        . "BuildDatabase as an NCBI BLAST\n"
+        . "database.  RepeatModeler now reads a 2bit file.  "
+        . RepModelConfig::ncbiProgramMissingMessage( "blastdbcmd",
+                       "is needed to convert it" )
+        . "Alternatively, rerun BuildDatabase on the original FASTA "
+        . "file(s).\n"
+        if ( !defined $blastdbcmd );
+
+    my $target = "$genomeDB.2bit";
+    $target = "$tmpDir/genome.2bit" if ( !-w dirname( $genomeDB ) );
+    log_print "Converting the NCBI BLAST database $genomeDB to $target\n";
+    my $cmd = "$blastdbcmd -entry all -db $genomeDB -outfmt \"%f\" "
+        . "| $FATOTWOBIT -long stdin $target";
+    system( $cmd );
+    if ( !-s $target ) {
+      unlink( $target ) if ( -e $target );
+      die "ERROR: Failed to create $target using command: $cmd\n";
+    }
+    return $target;
+  }
+
+  die "Could not find a database named $genomeDB.  Expected $genomeDB.2bit "
+      . "and $genomeDB.translation as written by BuildDatabase.\n";
+}
+
+#
 # initializeSampleSourceList
 #
 #  Generate a list of sequence chunks that are between 100 and 'approxBlockSize'-ish
@@ -3229,107 +3345,84 @@ sub initializeSampleSourceList {
   my %parameters = @_;
 
   my $approxBlockSize = $parameters{'approxBlockSize'};
-  my $genomeDB        = $parameters{'genomeDB'};
+  my $genomeSeqDB     = $parameters{'genomeSeqDB'};
   my $dbSize          = $parameters{'dbSize'};
   my $noFrag          = $parameters{'noFrag'};
 
   my @sampleSourceList = ();
 
-  # Open up genomeDB, breakup sequences (if need be) and
-  # catalog what we have
-
-  open IN, "$NCBIDBCMD_PRGM -db $genomeDB -entry all|"
-      or die "initializeSampleSourceList: Could read from database "
-      . "$genomeDB using $NCBIDBCMD_PRGM";
-
+  # Walk the genome index, breaking sequences into blocks if need be, and
+  # catalog what we have.  Lengths and ambiguous-base counts come from
+  # the 2bit index, so this reads no sequence.
   print "initializeSampleSourceList: Scanning genome database...\n"
       if ( $DEBUG );
-  my $id  = "";
-  my $seq = "";
-  while ( <IN> ) {
-    if ( /^>/ || eof ) {
-      my $tmpID = "endoffile";
-      $tmpID = $1 if ( /^>(\S+)/ );
-      if ( $tmpID eq "endoffile" ) { #store the last line
-       s/[\n\r\s]+//g;
-       $seq .= uc( $_ );
+  foreach my $id ( $genomeSeqDB->getIDs() ) {
+    my $seqSize      = $genomeSeqDB->getSeqLength( $id );
+    my $nonAmbigSize = $genomeSeqDB->getSubtLength( $id );
+    if ( $nonAmbigSize >= 100 ) {
+      if ( defined $noFrag ) {
+        push @sampleSourceList,
+            {
+              'seqID'         => $id,
+              'start'         => 1,
+              'end'           => $seqSize,
+              'length'        => $seqSize,
+              'non_ambig_len' => $nonAmbigSize,
+              'used_cnt'      => 0
+            };
       }
-      if ( $seq ) {
-        my $seqSize = length $seq;
-        my $nonAmbigSize = $seqSize - ( $seq =~ tr/XN/XN/ );
-        if ( $nonAmbigSize >= 100 ) {
-          if ( defined $noFrag ) {
-            push @sampleSourceList,
-                {
-                  'seqID'         => $id,
-                  'start'         => 1,
-                  'end'           => $seqSize,
-                  'length'        => $seqSize,
-                  'non_ambig_len' => $nonAmbigSize,
-                  'used_cnt'      => 0
-                };
-          }
-          else {
-            my $partialBlockSize = $seqSize -
-                ( int( $seqSize / $approxBlockSize ) * $approxBlockSize );
-            my $numBlocks = int( $seqSize / $approxBlockSize ) + 1;
-            my $blockAddl = 0;
-            if ( $partialBlockSize < ( $approxBlockSize / 2 ) ) {
+      else {
+        my $partialBlockSize = $seqSize -
+            ( int( $seqSize / $approxBlockSize ) * $approxBlockSize );
+        my $numBlocks = int( $seqSize / $approxBlockSize ) + 1;
+        my $blockAddl = 0;
+        if ( $partialBlockSize < ( $approxBlockSize / 2 ) ) {
 
-              # divide last block between all others
-              $blockAddl = int( $partialBlockSize / $numBlocks );
-            }
-
-            my $seqRemaining = $seqSize;
-            my $startPos     = 1;
-            my $blockSize    = $approxBlockSize + $blockAddl;
-            for ( my $i = 0 ; $i < $numBlocks ; $i++ ) {
-              last if ( $blockSize >= $seqRemaining );
-              my $blockseq = substr( $seq, $startPos, $blockSize );
-              my $nonAmbigBlockSize = $blockSize - ( $blockseq =~ tr/XN/XN/ );
-              push @sampleSourceList,
-                  {
-                    'seqID'         => $id,
-                    'start'         => $startPos,
-                    'end'           => $startPos + $blockSize - 1,
-                    'length'        => $blockSize,
-                    'non_ambig_len' => $nonAmbigBlockSize,
-                    'used_cnt'      => 0
-                  };
-
-              $seqRemaining -= $blockSize;
-              $startPos += $blockSize;
-            }
-            if ( $seqRemaining > 0 ) {
-              my $blockseq = substr( $seq, $startPos );
-              my $nonAmbigBlockSize =
-                  $seqRemaining - ( $blockseq =~ tr/XN/XN/ );
-              push @sampleSourceList,
-                  {
-                    'seqID'         => $id,
-                    'start'         => $startPos,
-                    'end'           => $startPos + $seqRemaining - 1,
-                    'length'        => $seqRemaining,
-                    'non_ambig_len' => $nonAmbigBlockSize,
-                    'used_cnt'      => 0
-                  };
-            }
-          }
+          # divide last block between all others
+          $blockAddl = int( $partialBlockSize / $numBlocks );
         }
-        else {
-          print "initializeSampleSourceList: Discarding sequence $id because "
-              . "it's painfully small ( size=$seqSize, nonAmbigSize=$nonAmbigSize )\n"
-              if ( $DEBUG );
+
+        my $seqRemaining = $seqSize;
+        my $startPos     = 1;
+        my $blockSize    = $approxBlockSize + $blockAddl;
+        for ( my $i = 0 ; $i < $numBlocks ; $i++ ) {
+          last if ( $blockSize >= $seqRemaining );
+          my $endPos = $startPos + $blockSize - 1;
+          push @sampleSourceList,
+              {
+                'seqID'         => $id,
+                'start'         => $startPos,
+                'end'           => $endPos,
+                'length'        => $blockSize,
+                'non_ambig_len' =>
+                    $genomeSeqDB->getSubtLengthInRange( $id, $startPos, $endPos ),
+                'used_cnt'      => 0
+              };
+
+          $seqRemaining -= $blockSize;
+          $startPos += $blockSize;
+        }
+        if ( $seqRemaining > 0 ) {
+          my $endPos = $startPos + $seqRemaining - 1;
+          push @sampleSourceList,
+              {
+                'seqID'         => $id,
+                'start'         => $startPos,
+                'end'           => $endPos,
+                'length'        => $seqRemaining,
+                'non_ambig_len' =>
+                    $genomeSeqDB->getSubtLengthInRange( $id, $startPos, $endPos ),
+                'used_cnt'      => 0
+              };
         }
       }
-      $id  = $tmpID;
-      $seq = "";
-      next;
     }
-    s/[\n\r\s]+//g;
-    $seq .= uc( $_ );
+    else {
+      print "initializeSampleSourceList: Discarding sequence $id because "
+          . "it's painfully small ( size=$seqSize, nonAmbigSize=$nonAmbigSize )\n"
+          if ( $DEBUG );
+    }
   }
-  close IN;
 
   return \@sampleSourceList;
 }
@@ -3349,8 +3442,7 @@ sub initializeSampleSourceList {
 #              'length' => 40000, 'non_ambig_len' => 35828, used_cnt => 0 }
 #            ... )
 #    sampleSizeMax:    The maximum sample size
-#    dbFile : The compressed sequence database
-#    dbType : rmblast or abblast
+#    genomeSeqDB : The TwoBitDB holding the genome
 #    fastaFile : The output file to create
 #    prohibitX : Convert 'x'/'X' to 'N'
 #    withReplacement : Allow sequences to be reused between
@@ -3362,15 +3454,10 @@ sub sampleFromDB {
 
   my $dbSourceBlocks  = $parameters{'dbSourceBlocks'};
   my $sampleSizeMax   = $parameters{'sampleSizeMax'};
-  my $dbFile          = $parameters{'dbFile'};
-  my $dbType          = $parameters{'dbType'};
+  my $genomeSeqDB     = $parameters{'genomeSeqDB'};
   my $fastaFile       = $parameters{'fastaFile'};
   my $prohibitX       = $parameters{'prohibitX'};
   my $withReplacement = $parameters{'withReplacement'};
-
-  open ENTRYBAT, ">$fastaFile.entry_batch"
-      or die
-      "sampleFromDB: Could not open $fastaFile.entry_batch for writing!\n";
 
   my $sampleSeqSize   = 0;
   my %usedBlocksIndex = ();
@@ -3389,26 +3476,23 @@ sub sampleFromDB {
       # NOTE: It is assumed that under the "with-replacement" regime
       #       that the caller has re-shuffled the dbSourceBlocks so
       #       that the same sample is not re-generated each time.
-      print ENTRYBAT "$seqID $start-$end\n";
       push @blocks, $sampleSourceBlock;
       $sampleSourceBlock->{'used_cnt'}++;
       $sampleSeqSize += $nonAmbigSize;
       last if ( $sampleSeqSize >= $sampleSizeMax );
     }
   }
-  close ENTRYBAT;
 
-  die "ABBLAST is no longer supported" if ( $dbType eq "abblast" );
-  open IN, "$NCBIDBCMD_PRGM -db $dbFile -entry_batch $fastaFile.entry_batch|"
-      or die
-"sampleFromDB: Could not read entry_batch sequences from $dbFile using $NCBIDBCMD_PRGM.";
+  # One twoBitToFa run returns the blocks in the order requested.  The
+  # loop below renames the records by position and ignores their deflines.
+  my $IN = $genomeSeqDB->openRangeStream( \@blocks );
   open FASTA, ">$fastaFile"
       or die "sampleFromDB: Could not open $fastaFile for writing!\n";
 
   my $seq;
   my $id;
   my $giIndex = 1;
-  while ( <IN> ) {
+  while ( <$IN> ) {
     if ( /^>/ || eof ) {
       my $tmpID = "endoffile";
       $tmpID = $1 if ( /^>(\S+)/ );
@@ -3440,7 +3524,7 @@ sub sampleFromDB {
     s/[\n\r\s]+//g;
     $seq .= $_;
   }
-  close IN;
+  $genomeSeqDB->closeStream( $IN );
   close FASTA;
 
   return ( \%usedBlocksIndex );

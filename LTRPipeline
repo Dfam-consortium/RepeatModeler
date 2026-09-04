@@ -626,9 +626,18 @@ sub runLtrRetriever {
   # NOTE: in LTR_retriever 3.0.0 trf_path is not the path
   #       to the directory containing the binary but rather 
   #       the full path to the binary itself.
+  # LTR_retriever runs blastn and makeblastdb from the directory given
+  # to -blastplus.  A 2.x RMBlast directory holds them; a 3.x one does not.
+  my $blastn = RepModelConfig::findNCBIProgram( "blastn" );
+  die "LTRPipeline::runLtrRetriever: "
+      . RepModelConfig::ncbiProgramMissingMessage( "blastn",
+                         "LTR_retriever runs during the LTR structural search" )
+      if ( !defined $blastn );
+  my $blastPlusDir = dirname( $blastn );
+
   my $cmd            = "cd $tmpDir; $binDir/LTR_retriever " .
                        " -repeatmasker $REPEATMASKER_DIR" .
-                       " -blastplus $RMBLAST_DIR" .
+                       " -blastplus $blastPlusDir" .
                        " -cdhit_path $CDHIT_DIR" .
                        " -trf_path $TRF_DIR/trf" . 
                        " -genome seq.fa -inharvest $full_annotFile -noanno";
