@@ -1013,6 +1013,14 @@ while ( 1 ) {
       system( "touch $sampleFastaFile.rscons.filtered" );
       log_print "NOTE: RepeatScout did not return any models.\n";
     }
+
+    # P4: Round-level checkpoint marker ( preparation for future
+    # auto-resume ).  All round-1 work, including the append into
+    # consensi.fa/families.stk, has completed at this point.
+    open( my $rdDoneMarkerRS, ">", "$roundTmpDir/round.done" )
+        or die "Could not open $roundTmpDir/round.done for writing!\n";
+    close( $rdDoneMarkerRS );
+
     $round++;
 
     last if ( $options{'onlyRS'} );
@@ -1031,7 +1039,118 @@ while ( 1 ) {
   # copy sample file for mask processing
   system( "cp $sampleFastaFile $roundTmpDir/tmpSample.fa" );
 
-  system( "$FindBin::RealBin/TRFMask $roundTmpDir/tmpSample.fa" );
+  # P2: Run TRFMask on sequence-partitioned chunks of the sample in
+  # parallel.  TRF ( and TRFMask ) process each FASTA record
+  # independently, so splitting the sample by sequence ( preserving
+  # order ) and concatenating the per-chunk ".masked" files in order
+  # produces a byte-identical result to a whole-file TRFMask run.
+  {
+    my $trfInFile = "$roundTmpDir/tmpSample.fa";
+    my $trfWorkers = int( $threads / 8 );
+    $trfWorkers = 1 if ( $trfWorkers < 1 );
+    $trfWorkers = 16 if ( $trfWorkers > 16 );
+
+    # First pass: total bp and record count ( for size-balanced chunks )
+    my ( $trfTotalBp, $trfNumRecords ) = ( 0, 0 );
+    {
+      open( my $trfInFH, "<", $trfInFile )
+          or die "Could not open $trfInFile for reading!\n";
+      my $inSeqData = 0;
+      while ( <$trfInFH> ) {
+        if ( /^>/ ) {
+          $trfNumRecords++;
+          $inSeqData = 1;
+        }
+        elsif ( $inSeqData ) {
+          $trfTotalBp += length( $_ ) - 1;
+        }
+      }
+      close( $trfInFH );
+    }
+
+    if ( $trfNumRecords > 0 ) {
+      $trfWorkers = $trfNumRecords if ( $trfWorkers > $trfNumRecords );
+      my $trfTargetBp = int( $trfTotalBp / $trfWorkers ) + 1;
+
+      # Second pass: write records verbatim into contiguous chunks; a
+      # record is never split across chunks.
+      my $trfChunkIdx    = 0;
+      my $trfChunkBp     = 0;
+      my $trfSeenRecord  = 0;
+      my $trfOutFH;
+      open( $trfOutFH, ">", "$trfInFile.trf-chunk-$trfChunkIdx" )
+          or die "Could not open $trfInFile.trf-chunk-$trfChunkIdx"
+                 . " for writing!\n";
+      open( my $trfInFH, "<", $trfInFile )
+          or die "Could not open $trfInFile for reading!\n";
+      while ( my $trfLine = <$trfInFH> ) {
+        if ( $trfLine =~ /^>/ ) {
+          if (   $trfSeenRecord
+               && $trfChunkBp >= $trfTargetBp
+               && $trfChunkIdx < ( $trfWorkers - 1 ) )
+          {
+            close( $trfOutFH );
+            $trfChunkIdx++;
+            $trfChunkBp = 0;
+            open( $trfOutFH, ">", "$trfInFile.trf-chunk-$trfChunkIdx" )
+                or die "Could not open $trfInFile.trf-chunk-$trfChunkIdx"
+                       . " for writing!\n";
+          }
+          $trfSeenRecord = 1;
+        }
+        elsif ( $trfSeenRecord ) {
+          $trfChunkBp += length( $trfLine ) - 1;
+        }
+        print $trfOutFH $trfLine;
+      }
+      close( $trfOutFH );
+      close( $trfInFH );
+
+      my @trfChunkFiles =
+          map { "$trfInFile.trf-chunk-$_" } ( 0 .. $trfChunkIdx );
+
+      # Run TRFMask on each chunk in parallel
+      for my $trfChunkFile ( @trfChunkFiles ) {
+        my $trfPid = fork();
+        die "Could not fork TRFMask worker: $!\n" if ( !defined $trfPid );
+        if ( $trfPid == 0 ) {
+          my $trfLog = "$trfChunkFile.log";
+          my $trfRc =
+              system( "$FindBin::RealBin/TRFMask $trfChunkFile > $trfLog 2>&1" );
+          exit( $trfRc == 0 ? 0 : 1 );
+        }
+      }
+      my $trfFailures = 0;
+      while ( ( my $trfDonePid = waitpid( -1, 0 ) ) > 0 ) {
+        $trfFailures++ if ( $? != 0 );
+      }
+      foreach my $trfChunkFile ( @trfChunkFiles ) {
+        $trfFailures++ if ( ! -s "$trfChunkFile.masked" );
+      }
+
+      if ( $trfFailures ) {
+        # Mirror the original whole-file TRFMask failure mode: leave the
+        # sample unmasked and let the run continue.
+        log_print "WARNING: TRFMask failed on one or more sample chunks."
+                  . "  Continuing with an unmasked sample.\n";
+      }
+      else {
+        # Concatenate the masked chunks in original order
+        open( my $trfMaskedFH, ">", "$trfInFile.masked" )
+            or die "Could not open $trfInFile.masked for writing!\n";
+        foreach my $trfChunkFile ( @trfChunkFiles ) {
+          open( my $trfChunkInFH, "<", "$trfChunkFile.masked" )
+              or die "Could not open $trfChunkFile.masked for reading!\n";
+          while ( <$trfChunkInFH> ) {
+            print $trfMaskedFH $_;
+          }
+          close( $trfChunkInFH );
+        }
+        close( $trfMaskedFH );
+      }
+      unlink( @trfChunkFiles, map { "$_.masked" } @trfChunkFiles );
+    }
+  }
   if ( -s "$roundTmpDir/tmpSample.fa.masked" ) {
     system( "mv $roundTmpDir/tmpSample.fa.masked $roundTmpDir/tmpSample.fa" );
   }
@@ -1228,7 +1347,7 @@ while ( 1 ) {
 
   my $numHSPs = 0;    # Number of High Scoring Pairs produced
   # First check to see if this was already run
-  unless ( -f "$roundTmpDir/msps.out" ) {
+  unless ( -f "$roundTmpDir/msps.out" && -f "$roundTmpDir/msps.done" ) {
     # Nope....starting
     log_print "Running all-by-other comparisons...\n";
     my $totalComparisons =
@@ -1236,116 +1355,236 @@ while ( 1 ) {
     my $completedComparisons = 0;
     log_print "  - Total Comparisons = $totalComparisons\n";
 
-    my $startGID  = 1;    # The gi ID of the start of the batch range
-    my $endGID    = 0;    # The gi ID of the end of the batch range
-    my $batchSize = 0;    # The size of the batch in bp
-    my $batchNum  = 1;    # Batch number we are working on
-    my $retryLimit   = 2;     # Attempt to run batch # times before failing it
+    my $retryLimit = 2;    # Attempt to run batch # times before failing it
 
     my $compStartTime = time;
-    while ( $startGID < $sampleDBSize ) {
-      if (
-         $sampleSeqs{ $sampleSeqIDArray[ $startGID ] } < ( $fragmentSize / 4 ) )
-      {
-        do {
-          $endGID++;
-          $batchSize += $sampleSeqs{ "gi|" . $endGID };
-            } while (    $endGID < $sampleDBSize
-                      && $batchSize < $fragmentSize );
-      }
-      else {
-        $endGID = $startGID;
-      }
 
-      my $status = undef;
-      my $retry = 0;
-      my $batchFile = "$roundTmpDir/batch-$batchNum";
-      do {
-        log_print "WARNING: Retrying batch ( $batchNum ) [ $status ]...\n"
-          if ( $retry > 0 );
-        $status = runAllvsOtherMatrixRow( $searchEngineN, $batchNum, $startGID,
-                                          $endGID, $roundTmpDir, 
-                                          $sampleFastaFile, $NCBIDBALIAS_PRGM,
-                                          $sampleDBSize );
-      }while ( ($status != 0 || ! -e "$batchFile.msps") && 
-               $retry++ < $retryLimit );
-
-      if ( $retry >= $retryLimit ) {
-        ## Too many retries.
-        ## We are out of here!
-        log_print "\n\nFATAL ERROR: RepeatModeler giving up. One or more\n"
-                  . "batches failed!  Unfortunately this type of error\n"
-                  . "cannot be recovered from. Please submit the following\n"
-                  . "details to the feedback page at the repeatmasker\n"
-                  . "website:\n\n"
-                  . "       http://www.repeatmasker.org\n\n"
-                  . "RepeatModeler Version: $version\n"
-                  . "Search Engine: $engine [ "
-                  . $searchEngineN->getVersion() . " ]\n"
-                  . "Command Line: $cmdLine\n"
-                  . "Batch Number: $batchNum\n"
-                  . "Disk Space:\n"
-                  . `df $tmpDir` . "\n";
-        if ( -e "/proc/meminfo" ) {
-          log_print "System Memory:\n";
-          open IN, "</proc/meminfo";
-          while ( <IN> ) {
-            log_print if ( /Mem|Cache|Swap/ );
-          }
-          close IN;
+    # Pre-compute the batch layout ( P1 ).  This is the same batch
+    # enumeration the original serial loop performed, captured up-front
+    # so that the batches may be distributed across parallel workers.
+    my @batches = ();
+    {
+      my $startGID  = 1;    # The gi ID of the start of the batch range
+      my $endGID    = 0;    # The gi ID of the end of the batch range
+      my $batchSize = 0;    # The size of the batch in bp
+      my $batchNum  = 1;    # Batch number we are working on
+      while ( $startGID < $sampleDBSize ) {
+        if (
+           $sampleSeqs{ $sampleSeqIDArray[ $startGID ] } < ( $fragmentSize / 4 ) )
+        {
+          do {
+            $endGID++;
+            $batchSize += $sampleSeqs{ "gi|" . $endGID };
+              } while (    $endGID < $sampleDBSize
+                        && $batchSize < $fragmentSize );
         }
-        log_print "Further details about this problem may be found in\n"
-                . "the directory: $tmpDir\n";
-        log_print "\n\n";
-        exit( -1 );
-      }
- 
-      if ( $status == 0
-           && -e "$batchFile.msps" )
-      {
-        # Run successful
-        print "Batch completed: batch=$batchNum\n"
-                if ( $DEBUG );
-        ## Append msps
-        open MSP, "<$batchFile.msps"
-          or die "Could not open $batchFile.msps for reading!\n";
-        while ( <MSP> ) {
-          $numHSPs++;
+        else {
+          $endGID = $startGID;
         }
-        close MSP;
-        system( "cat $batchFile.msps >> $roundTmpDir/msps.out" );
-        unlink( "$batchFile.msps" ) unless ( $DEBUG );
+        push @batches, [ $batchNum, $startGID, $endGID ];
+        $startGID  = $endGID + 1;
+        $batchSize = 0;
+        $batchNum++;
       }
+    }
 
+    # The number of ( upper-triangular ) comparisons covered by each batch
+    my @batchComparisons = ();
+    for my $batchRef ( @batches ) {
       my $numComparisons = 0;
-      for ( my $l = $startGID ; $l <= $endGID ; $l++ ) {
+      for ( my $l = $batchRef->[ 1 ] ; $l <= $batchRef->[ 2 ] ; $l++ ) {
         $numComparisons += $sampleDBSize - $l;
       }
-      $completedComparisons += $numComparisons;
-      my $comparisonsLeft   = $totalComparisons - $completedComparisons;
-      my $estimatedTimeLeft = "--";
-      if ( ( time - $compStartTime ) > 0 && $completedComparisons > 0 ) {
-        $estimatedTimeLeft =
-              int( $comparisonsLeft /
-                   ( $completedComparisons / ( time - $compStartTime ) ) );
-        my $Min = sprintf( "%02s", int( $estimatedTimeLeft / 60 ) );
-        $estimatedTimeLeft -= $Min * 60;
-        my $Hours = sprintf( "%02s", int( $Min / 60 ) );
-        $Min -= $Hours * 60;
-        my $Sec = sprintf( "%02s", $estimatedTimeLeft );
-        $estimatedTimeLeft = "$Hours:$Min:$Sec";
+      push @batchComparisons, $numComparisons;
+    }
+
+    my $numBatches = scalar( @batches );
+    if ( $numBatches > 0 ) {
+
+      # Number of parallel batch workers ( P1 ):
+      #   W = clamp( int(threads/4), 1, 16 ), overridable via the
+      #   RM_BATCH_WORKERS environment variable.  Each worker runs its
+      #   share of the batches, each rmblastn invocation using
+      #   int(threads/W) threads.
+      my $batchWorkers = int( $threads / 4 );
+      $batchWorkers = 1 if ( $batchWorkers < 1 );
+      $batchWorkers = 16 if ( $batchWorkers > 16 );
+      if ( defined( $ENV{'RM_BATCH_WORKERS'} )
+           && $ENV{'RM_BATCH_WORKERS'} =~ /^\d+$/ )
+      {
+        $batchWorkers = int( $ENV{'RM_BATCH_WORKERS'} );
+        $batchWorkers = 1 if ( $batchWorkers < 1 );
+      }
+      $batchWorkers = $numBatches if ( $batchWorkers > $numBatches );
+      my $coresPerWorker = int( $threads / $batchWorkers );
+      $coresPerWorker = 1 if ( $coresPerWorker < 1 );
+
+      log_print "  - Distributing $numBatches comparison batches across "
+                . "$batchWorkers worker(s) "
+                . "( $coresPerWorker thread(s) per worker )\n";
+
+      # Children report "DONE <batchNum>" / "FAIL <batchNum>" through
+      # this pipe as they complete batches.
+      pipe( my $progressReader, my $progressWriter )
+          or die "Could not create batch progress pipe: $!\n";
+
+      for ( my $w = 0 ; $w < $batchWorkers ; $w++ ) {
+        my $pid = fork();
+        die "Could not fork batch worker: $!\n" if ( !defined $pid );
+        if ( $pid == 0 ) {
+          ## ---- Child batch worker ----
+          close( $progressReader );
+          select( ( select( $progressWriter ), $| = 1 )[0] );
+          select( ( select( $LOG ), $| = 1 )[0] ) if ( defined fileno( $LOG ) );
+
+          # The search engine object was inherited through the fork;
+          # give this child its own ( reduced ) core allocation.  This
+          # only affects the child's copy of the object.
+          $searchEngineN->setCores( $coresPerWorker );
+
+          my $exitCode = 0;
+          for ( my $idx = $w ; $idx < $numBatches ; $idx += $batchWorkers ) {
+            my ( $batchNum, $startGID, $endGID ) = @{ $batches[ $idx ] };
+            my $batchFile = "$roundTmpDir/batch-$batchNum";
+
+            my $status = undef;
+            my $retry  = 0;
+            do {
+              log_print "WARNING: Retrying batch ( $batchNum ) [ $status ]...\n"
+                if ( $retry > 0 );
+
+              # Remove any partial output from a previous attempt ( or
+              # from an interrupted earlier run ).  The batch query file
+              # is built with ">>" so it must start out absent.
+              unlink( "$batchFile.fa", "$batchFile.msps",
+                      "$batchFile-gilist.txt", "$batchFile-gilist" );
+
+              $status = runAllvsOtherMatrixRow( $searchEngineN, $batchNum,
+                                                $startGID, $endGID,
+                                                $roundTmpDir, 
+                                                $sampleFastaFile,
+                                                $NCBIDBALIAS_PRGM,
+                                                $sampleDBSize );
+            }while ( ($status != 0 || ! -e "$batchFile.msps") && 
+                     $retry++ < $retryLimit );
+
+            if ( $retry >= $retryLimit ) {
+              ## Too many retries.
+              ## We are out of here!
+              log_print "\n\nFATAL ERROR: RepeatModeler giving up. One or more\n"
+                        . "batches failed!  Unfortunately this type of error\n"
+                        . "cannot be recovered from. Please submit the following\n"
+                        . "details to the feedback page at the repeatmasker\n"
+                        . "website:\n\n"
+                        . "       http://www.repeatmasker.org\n\n"
+                        . "RepeatModeler Version: $version\n"
+                        . "Search Engine: $engine [ "
+                        . $searchEngineN->getVersion() . " ]\n"
+                        . "Command Line: $cmdLine\n"
+                        . "Batch Number: $batchNum\n"
+                        . "Disk Space:\n"
+                        . `df $tmpDir` . "\n";
+              if ( -e "/proc/meminfo" ) {
+                log_print "System Memory:\n";
+                open IN, "</proc/meminfo";
+                while ( <IN> ) {
+                  log_print if ( /Mem|Cache|Swap/ );
+                }
+                close IN;
+              }
+              log_print "Further details about this problem may be found in\n"
+                        . "the directory: $tmpDir\n";
+              log_print "\n\n";
+              print $progressWriter "FAIL $batchNum\n";
+              $exitCode = 1;
+              last;
+            }
+
+            print "Batch completed: batch=$batchNum\n"
+                    if ( $DEBUG );
+            print $progressWriter "DONE $batchNum\n";
+          }
+          close( $progressWriter );
+          exit( $exitCode );
+        }
+      }
+      close( $progressWriter );
+
+      ## ---- Parent: collect progress, then wait for all workers ----
+      my %failedBatches = ();
+      while ( my $msg = <$progressReader> ) {
+        chomp( $msg );
+        if ( $msg =~ /^DONE (\d+)$/ ) {
+          my $batchNum = $1;
+          $completedComparisons += $batchComparisons[ $batchNum - 1 ];
+
+          my $comparisonsLeft   = $totalComparisons - $completedComparisons;
+          my $estimatedTimeLeft = "--";
+          if ( ( time - $compStartTime ) > 0 && $completedComparisons > 0 ) {
+            $estimatedTimeLeft =
+                  int( $comparisonsLeft /
+                       ( $completedComparisons / ( time - $compStartTime ) ) );
+            my $Min = sprintf( "%02s", int( $estimatedTimeLeft / 60 ) );
+            $estimatedTimeLeft -= $Min * 60;
+            my $Hours = sprintf( "%02s", int( $Min / 60 ) );
+            $Min -= $Hours * 60;
+            my $Sec = sprintf( "%02s", $estimatedTimeLeft );
+            $estimatedTimeLeft = "$Hours:$Min:$Sec";
+          }
+
+          print "      "
+                . sprintf("%3s",
+                          int(( $completedComparisons / $totalComparisons ) * 100)
+                          )
+                . "% completed, "
+                . " $estimatedTimeLeft (hh:mm:ss) est. time remaining.\n";
+        }
+        elsif ( $msg =~ /^FAIL (\d+)$/ ) {
+          $failedBatches{ $1 } = 1;
+        }
+      }
+      close( $progressReader );
+
+      my $workerFailures = 0;
+      while ( ( my $wpid = waitpid( -1, 0 ) ) > 0 ) {
+        $workerFailures++ if ( $? != 0 );
+      }
+      if ( %failedBatches || $workerFailures > 0 ) {
+        die "\nFATAL ERROR: One or more batch comparison workers failed"
+            . " ( failed batch(es): "
+            . join( ",", sort { $a <=> $b } keys( %failedBatches ) )
+            . " ).  Please see the messages above for details.\n";
       }
 
-      print "      "
-            . sprintf("%3s",
-                      int(( $completedComparisons / $totalComparisons ) * 100)
-                      )
-            . "% completed, "
-            . " $estimatedTimeLeft (hh:mm:ss) est. time remaining.\n";
+      ## ---- Assemble msps.out in ascending batch order.  This is
+      ##      byte-identical to the serial approach of appending each
+      ##      batch's msps file as it completed ( batches were
+      ##      numbered and appended in order ).
+      open( my $mspsOutFH, ">", "$roundTmpDir/msps.out" )
+          or die "Could not open $roundTmpDir/msps.out for writing!\n";
+      foreach my $batchRef ( @batches ) {
+        my $batchFile = "$roundTmpDir/batch-" . $batchRef->[ 0 ];
+        if ( ! -e "$batchFile.msps" ) {
+          die "\nFATAL ERROR: Missing batch results file $batchFile.msps!\n";
+        }
+        open( my $mspInFH, "<", "$batchFile.msps" )
+            or die "Could not open $batchFile.msps for reading!\n";
+        while ( <$mspInFH> ) {
+          $numHSPs++;
+          print $mspsOutFH $_;
+        }
+        close( $mspInFH );
+      }
+      close( $mspsOutFH );
+      foreach my $batchRef ( @batches ) {
+        unlink( "$roundTmpDir/batch-" . $batchRef->[ 0 ] . ".msps" )
+            unless ( $DEBUG );
+      }
 
-      $startGID  = $endGID + 1;
-      $batchSize = 0;
-      $batchNum++;
+      # P3: the ordered msps.out is now complete
+      open( my $mspsDoneFH, ">", "$roundTmpDir/msps.done" )
+          or die "Could not open $roundTmpDir/msps.done for writing!\n";
+      close( $mspsDoneFH );
     }
 
     log_print "Comparison Time: "
@@ -1358,25 +1597,33 @@ while ( 1 ) {
   if ( $numHSPs > $recommendedFamilySize ) {
 
     # Create the seqnames file
-    unless ( -f "$roundTmpDir/seqnames" ) {
+    unless ( -f "$roundTmpDir/seqnames" && -f "$roundTmpDir/seqnames.done" ) {
       open OUT, ">$roundTmpDir/seqnames";
       print OUT "" . scalar( @sampleSeqIDArray ) . "\n";
       foreach my $key ( sort( @sampleSeqIDArray ) ) {
         print OUT "$key\n";
       }
       close OUT;
+      open( my $seqnamesDoneFH, ">", "$roundTmpDir/seqnames.done" )
+          or die "Could not open $roundTmpDir/seqnames.done for writing!\n";
+      close( $seqnamesDoneFH );
     }
 
     # Run recon
-    unless ( -f "$roundTmpDir/summary/eles" ) {
+    unless ( -f "$roundTmpDir/summary/eles" && -f "$roundTmpDir/eles.done" ) {
       runRECON( workDir   => $roundTmpDir,
                 reconPath => $RECON_DIR );
+      if ( -f "$roundTmpDir/summary/eles" ) {
+        open( my $elesDoneFH, ">", "$roundTmpDir/eles.done" )
+            or die "Could not open $roundTmpDir/eles.done for writing!\n";
+        close( $elesDoneFH );
+      }
     }
 
     #
     #  Build consensi
     #
-    if ( -f "$roundTmpDir/summary/eles" ) {
+    if ( -f "$roundTmpDir/summary/eles" && -f "$roundTmpDir/eles.done" ) {
       ( $roundModels ) = &buildReconConsensiMT(
                                           workDir          => $roundTmpDir,
                                           consensiFile     => $consensiFile,
@@ -1418,6 +1665,13 @@ while ( 1 ) {
   }
 
   log_print "Round Time: " . elapsedTime( 1 ) . " : $roundModels families discovered.\n";
+
+  # P4: Round-level checkpoint marker ( preparation for future
+  # auto-resume ).  All work for this round, including the append into
+  # consensi.fa/families.stk, has completed at this point.
+  open( my $rdDoneMarker, ">", "$roundTmpDir/round.done" )
+      or die "Could not open $roundTmpDir/round.done for writing!\n";
+  close( $rdDoneMarker );
 
   # How do we proceed from here
   #
