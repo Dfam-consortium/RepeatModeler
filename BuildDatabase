@@ -118,7 +118,6 @@ use Cwd;
 
 # RepeatModeler Libraries
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use TwoBitDB;
 
 #

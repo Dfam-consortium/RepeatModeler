@@ -157,13 +157,11 @@ use File::Basename;
 use File::Temp qw/ tempfile tempdir /;
 #
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use NCBIBlastSearchEngine;
 use CrossmatchSearchEngine;
 use HMMERSearchEngine;
 use SearchResult;
 use SearchResultCollection;
-use RepeatMaskerConfig;
 
 my $Version = "0.1";
 my $DEBUG = 0;
@@ -171,8 +169,6 @@ my $DEBUG = 0;
 #
 # Paths
 #
-my $CM_DIR = $RepeatMaskerConfig::configuration->{'CROSSMATCH_DIR'}->{'value'};
-my $RMSK_DIR = $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLAST_DIR = $RepModelConfig::configuration->{'RMBLAST_DIR'}->{'value'};
 my $defaultEngine = "rmblast";
 
@@ -283,22 +279,11 @@ my $sEngineObj;
 if ( $engine eq "crossmatch" )
 {
   $engine = "crossmatch";
-  unless ( -d $CM_DIR && -x "$CM_DIR/cross_match") {
-    # fall back to path resolution
-    my $retVal = `whereis cross_match`;
-    if ( $retVal =~ /^cross_match:\s+(\S+)/ ) {
-      $engine_prg = $1;
-      $engine_dir = dirname($engine_prg);
-    }else {
-      print "\n\nERROR: Could not locate the cross_match program.  Perhaps, the configured RepeatMasker\n" .
-            "       program ($RMSK_DIR) is not configured to use that\n" .
-            "       search engine.\n\n";
-      exit;
-    }
-  }else {
-    $engine_dir = $CM_DIR;
-    $engine_prg = "$CM_DIR/cross_match";
-  }
+  $engine_prg = RepModelConfig::findProgramOnPath( "cross_match" );
+  die RepModelConfig::programMissingMessage( "cross_match",
+                                    "provides the crossmatch search engine" )
+      if ( !defined $engine_prg );
+  $engine_dir = dirname( $engine_prg );
 
   $sEngineObj = CrossmatchSearchEngine->new( pathToEngine => $engine_prg );
   my $params = "";
@@ -337,23 +322,11 @@ if ( $engine eq "crossmatch" )
   }
 }elsif ( $engine eq "nhmmer" ) {
   $engine = "nhmmer";
-  my $HM_DIR = $RepeatMaskerConfig::configuration->{'HMMER_DIR'}->{'value'};
-  unless ( -d $HM_DIR && -x "$HM_DIR/nhmmer") {
-    # fall back to path resolution
-    my $retVal = `whereis nhmmer`;
-    if ( $retVal =~ /^nhmmer:\s+(\S+)/ ) {
-      $engine_prg = $1;
-      $engine_dir = dirname($engine_prg);
-    }else {
-      print "\n\nERROR: Could not locate the nhmmer program.  Perhaps, the configured RepeatMasker\n" .
-            "       program ($RMSK_DIR) is not configured to use that\n" .
-            "       search engine.\n\n";
-      exit;
-    }
-  }else {
-    $engine_dir = $HM_DIR;
-    $engine_prg = "$HM_DIR/nhmmer";
-  }
+  $engine_prg = RepModelConfig::findProgramOnPath( "nhmmer" );
+  die RepModelConfig::programMissingMessage( "nhmmer",
+                                      "provides the nhmmer search engine" )
+      if ( !defined $engine_prg );
+  $engine_dir = dirname( $engine_prg );
 
   $sEngineObj = HMMERSearchEngine->new( pathToEngine => $engine_prg );
   # Engine specific parameters
@@ -437,10 +410,10 @@ if ( $options{'matrix'} ) {
     push @path, $ENV{'MATRIX_DIR'} if ( exists $ENV{'MATRIX_DIR'} && -d $options{'MATRIX_DIR'} );
     if ( $engine eq "rmblast" ) {
       push @path, "$FindBin::RealBin/../Matrices/ncbi/nt";
-      push @path, $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'} . "/Matrices/ncbi/nt";
+
     }
     if ( $engine eq "crossmatch" ) {
-      push @path, $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'} . "/Matrices/crossmatch";
+      push @path, "$FindBin::RealBin/../Matrices/crossmatch";
     }
     foreach my $dir ( @path ) {
       if ( -s "$dir/$matFileName" ) {

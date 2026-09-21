@@ -16,7 +16,6 @@ use GD::Simple;
 
 #
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use CrossmatchSearchEngine;
 use SearchResult;
 use SearchResultCollection;

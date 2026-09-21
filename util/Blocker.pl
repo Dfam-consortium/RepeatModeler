@@ -125,7 +125,6 @@ use Data::Dumper;
 use Getopt::Long;
 #
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 
 
 # Program version

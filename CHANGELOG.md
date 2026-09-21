@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- generateSeedAlignments.pl records a ConsCmp line in each seed alignment giving
+  the substitutions, insertions, deletions and ambiguous positions between the
+  consensus called from the alignment and the consensus RepeatMasker used. With
+  -consensi the comparison runs over the full length of the library sequence.
+  Without it the script warns and falls back to the reference sequence of the
+  multiple alignment, which covers only the consensus positions the instances
+  aligned to.
 - Support for the 3.x series of RMBlast, which searches FASTA files directly and
   ships no makeblastdb, blastdbcmd or blastdb_aliastool. RepeatModeler now prepares
   search subjects through RepeatMasker's search engine objects and needs
@@ -17,6 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   looks in RMBLAST_DIR and then on PATH.
 
 ### Changed
+- generateSeedAlignments.pl filters families while parsing the alignment file,
+  so whole-genome input with -families no longer loads or validates every
+  alignment. Instance selection stops scanning once the sample budget and
+  coverage depth are met.
 - BuildDatabase writes <name>.2bit and <name>.translation instead of an NCBI BLAST
   database. RepeatModeler converts a database from an earlier release on first use
   when it can find blastdbcmd, and otherwise asks for BuildDatabase to be rerun.
@@ -43,6 +54,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   script's. The per-round log is now repeatscout-filter.log.
 
 ### Fixed
+- generateSeedAlignments.pl marked the wrong alignment as invalid when a range
+  failed the assembly check, because it indexed the failures by their position
+  in the twoBitToFa output rather than in the parsed alignments. Failures are
+  now keyed by range. The script also stops if twoBitToFa exits with an error
+  instead of passing the unchecked remainder.
+- generateSeedAlignments.pl left the N and CpG columns of -outTable empty
+  instead of writing zero, because Perl's s/// returns the empty string
+  rather than zero when it matches nothing.
+- generateSeedAlignments.pl wrote an empty assembly name into the Stockholm
+  CC and ** lines, treated the last non-outlier copy as an outlier, computed the
+  third divergence quartile as int(n/4)*3, and took the consensus length from
+  the first alignment seen rather than the most frequently reported one.
 - Batch grouping in the all-vs-other search read the length of an arbitrary
   sequence instead of the batch's first sequence.
 - Ambiguous-base counts for sample blocks were shifted by one base.

@@ -10,6 +10,10 @@
 ##      this script attempts to classify the models.  The classification
 ##      is compatable with the RepeatMasker program.
 ##
+##      This is a prototype that uses nail ( with a six-frame
+##      translation step ) in place of blastx for the comparison
+##      against the TE protein database.
+##
 #******************************************************************************
 #* Copyright (C) Institute for Systems Biology 2008-2025 Developed by
 #* Arian Smit and Robert Hubley.
@@ -22,11 +26,11 @@
 
 =head1 NAME
 
-RepeatClassifier - Classify Repeat Models
+RepeatClassifier-nail - Classify Repeat Models ( nail prototype )
 
 =head1 SYNOPSIS
 
-  RepeatClassifier [-options] -consensi <repeat model file>
+  RepeatClassifier-nail [-options] -consensi <repeat model file>
                    [-stockholm <stockholm file>]
 
 =head1 DESCRIPTION
@@ -49,6 +53,22 @@ When protein hits to a consensus fall in clashing classes, the class
 with evidence at least 10 orders of magnitude more significant wins.
 This option disables that rule; clashing classes then merge to a
 common root or become Unknown, as before.
+
+=item -nail_sensitivity #
+
+MMseqs2 prefilter sensitivity ( default 7.5, the top of the range MMseqs2
+documents ).  Lower values are faster and less sensitive.  nail accepts
+higher values: on a 764-family human set, every setting from 7.5 to 10
+left the same 184 families with protein evidence and changed no
+classification, while 10 took twice as long as 7.5.  At 6, two families
+lose their protein evidence.
+
+=item -evidence <prefix>
+
+Write the evidence behind every classification to <prefix>.tsv ( one row
+per family ) and <prefix>.json ( protein hits, DNA score buckets, the
+clashes it settled, and the rule behind each call ).  Useful for
+auditing a run or comparing two.
 
 =back
 
@@ -89,7 +109,6 @@ use Getopt::Long;
 
 # RepeatModeler Libraries
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use RepeatUtil;
 
 # RepeatMasker Libraries
@@ -120,7 +139,8 @@ my $version = $RepModelConfig::VERSION;
 #   -t=s: String parameters
 #   -t=i: Number paramters
 #
-my @opts = qw( help consensi=s stockholm=s debug preserve_class threads=s no_clash_rule );
+my @opts = qw( help consensi=s stockholm=s debug preserve_class threads=s no_clash_rule
+               nail_sensitivity=s evidence=s );
 
 # Add configuration parameters as additional command-line options
 push @opts, RepModelConfig::getCommandLineOptions();
@@ -183,20 +203,251 @@ die $CLASS . ": Cannot run classification on an empty consensus file!\n"
 #
 RepModelConfig::resolveConfiguration( \%options );
 my $config           = $RepModelConfig::configuration;
-my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLASTN_PRGM    = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 
-# The protein search still runs NCBI blastx against a database its own
-# makeblastdb built.  Neither ships with the 3.x series of RMBlast.
-my $NCBIBLASTX_PRGM  = RepModelConfig::findNCBIProgram( "blastx" );
-my $MAKEBLASTDB_PRGM = RepModelConfig::findNCBIProgram( "makeblastdb" );
-foreach my $missing ( [ "blastx", $NCBIBLASTX_PRGM ],
-                      [ "makeblastdb", $MAKEBLASTDB_PRGM ] ) {
-  die $CLASS . ": "
-      . RepModelConfig::ncbiProgramMissingMessage( $missing->[ 0 ],
-                       "RepeatClassifier uses for the protein search" )
-      if ( !defined $missing->[ 1 ] );
+#
+# Evidence recording ( -evidence <prefix> )
+#
+# With the flag set, RepeatClassifier records why it made each call and
+# writes the result at the end of the run as <prefix>.tsv ( one row per
+# family ) and <prefix>.json ( full detail ).  Without the flag these
+# hooks write nothing.
+#
+# %EVIDENCE, keyed by query id:
+#   protein  : { hits => [ { subject, class, beg, end, orient, score,
+#                            identical, aligned, positives, p }, ... ],
+#                best_p   => #,
+#                resolved => { class, orient, p },
+#                clashes  => [ { kept, dropped, rule }, ... ] }
+#   dna      : { buckets => [ { class, orient, combined_score }, ... ] }
+#   decision : { rule => <id>, explanations => [ ... ] }
+#   final    : { class, orient }
+#
+my %EVIDENCE;
+my %EVIDENCE_LAST_DECISION;
+my $EVIDENCE_PREFIX = $options{'evidence'};
+my $EVIDENCE_ON =
+    ( defined $EVIDENCE_PREFIX && $EVIDENCE_PREFIX ne "" ) ? 1 : 0;
+
+#
+# BLAST prints "Expect = 0.0, Method: ..." so blastxAnalysis() can capture
+# a p value with a trailing comma.  Perl coerces that to a number in the
+# classifier's own comparisons, but the evidence files should hold a real
+# number.  Returns undef for anything that does not start with one.
+#
+sub evidence_num {
+  my ( $value ) = @_;
+  return undef if ( !defined $value );
+  return undef
+      if ( $value !~ /^\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)/ );
+  return $1 + 0;
 }
+
+sub evidence_begin_query {
+  my ( $q ) = @_;
+  return if ( !$EVIDENCE_ON || !defined $q );
+  $EVIDENCE{$q} ||= {};
+  $EVIDENCE{$q}->{'protein'} ||=
+      { 'hits' => [], 'best_p' => undef, 'clashes' => [] };
+}
+
+sub evidence_protein_add_hit {
+  my ( $q, $hit ) = @_;
+  return if ( !$EVIDENCE_ON );
+  &evidence_begin_query( $q );
+  $hit->{'p'} = &evidence_num( $hit->{'p'} );
+  push @{ $EVIDENCE{$q}->{'protein'}->{'hits'} }, $hit;
+  if ( defined $hit->{'p'} ) {
+    my $bestP = $EVIDENCE{$q}->{'protein'}->{'best_p'};
+    $EVIDENCE{$q}->{'protein'}->{'best_p'} = $hit->{'p'}
+        if ( !defined $bestP || $hit->{'p'} < $bestP );
+  }
+}
+
+#
+# Record how chooseBestBlastX() settled a clash between two protein
+# classes, and which rule did it.
+#
+sub evidence_protein_add_clash {
+  my ( $q, $kept, $dropped, $rule ) = @_;
+  return if ( !$EVIDENCE_ON );
+  &evidence_begin_query( $q );
+  push @{ $EVIDENCE{$q}->{'protein'}->{'clashes'} },
+      { 'kept' => $kept, 'dropped' => $dropped, 'rule' => $rule };
+}
+
+#
+# The class chooseBestBlastX() settled on, rather than the individual
+# hits that fed it.
+#
+sub evidence_protein_set_resolved {
+  my ( $q, $class, $orient, $pVal ) = @_;
+  return if ( !$EVIDENCE_ON );
+  &evidence_begin_query( $q );
+  $EVIDENCE{$q}->{'protein'}->{'resolved'} =
+      { 'class'  => $class,
+        'orient' => $orient,
+        'p'      => &evidence_num( $pVal ) };
+}
+
+sub evidence_dna_set_buckets {
+  my ( $q, $buckets ) = @_;
+  return if ( !$EVIDENCE_ON );
+  $EVIDENCE{$q} ||= {};
+  $EVIDENCE{$q}->{'dna'} = { 'buckets' => $buckets };
+}
+
+sub evidence_set_final {
+  my ( $q, $class, $orient ) = @_;
+  return if ( !$EVIDENCE_ON );
+  $EVIDENCE{$q} ||= {};
+  $EVIDENCE{$q}->{'final'} = { 'class' => $class, 'orient' => $orient };
+}
+
+#
+# conflictsolver() calls matchprotanddnaclass() once per candidate DNA
+# match and then a final time for the pick, so matchprotanddnaclass()
+# stashes its reasoning here instead of filing it directly.
+# conflictsolver() commits the stash after that final call, where it has
+# the query name in hand rather than recovering it from the key.
+#
+sub evidence_stash_decision {
+  my ( $rule, $why ) = @_;
+  return if ( !$EVIDENCE_ON );
+  %EVIDENCE_LAST_DECISION = ( 'rule' => $rule, 'explanations' => $why );
+}
+
+sub evidence_commit_decision {
+  my ( $q ) = @_;
+  return if ( !$EVIDENCE_ON || !defined $q );
+  $EVIDENCE{$q} ||= {};
+  $EVIDENCE{$q}->{'decision'} = {
+                        'rule' => $EVIDENCE_LAST_DECISION{'rule'} // "",
+                        'explanations' =>
+                            $EVIDENCE_LAST_DECISION{'explanations'} || [] };
+  %EVIDENCE_LAST_DECISION = ();
+}
+
+#
+# Gather the combined-score buckets belonging to one query.  Keys of
+# %combscore are "query#class#orientation", and a query id can itself
+# contain a "#" under -preserve_class, so match the known prefix instead
+# of splitting the whole key.
+#
+sub evidence_buckets_for {
+  my ( $q, $combScoreRef ) = @_;
+  my @buckets = ();
+  my $prefix  = $q . "#";
+  foreach my $key ( keys %{$combScoreRef} ) {
+    next if ( index( $key, $prefix ) != 0 );
+    my ( $class, $orient ) =
+        split /\#/, substr( $key, length( $prefix ) ), 2;
+    push @buckets, { 'class'          => $class,
+                     'orient'         => $orient,
+                     'combined_score' => $combScoreRef->{$key} };
+  }
+  return [ sort { $b->{'combined_score'} <=> $a->{'combined_score'} }
+           @buckets ];
+}
+
+sub evidence_write_files {
+  return if ( !$EVIDENCE_ON );
+
+  # Core since 5.14, and only needed when the flag is given.
+  require JSON::PP;
+
+  my $tsvFile  = $EVIDENCE_PREFIX . ".tsv";
+  my $jsonFile = $EVIDENCE_PREFIX . ".json";
+
+  open my $TSV, ">", $tsvFile
+      or die $CLASS . ": Could not open $tsvFile for writing!\n";
+  print $TSV join( "\t",
+                   qw( query_id final_class final_orient protein_class
+                       protein_orient protein_best_p dna_best_class
+                       dna_best_orient dna_best_score decision_rule
+                       notes ) )
+      . "\n";
+
+  my @records = ();
+  foreach my $q ( sort keys %EVIDENCE ) {
+    my $rec      = $EVIDENCE{$q};
+    my $protein  = $rec->{'protein'}  || {};
+    my $dna      = $rec->{'dna'}      || {};
+    my $decision = $rec->{'decision'} || {};
+    my $final    = $rec->{'final'}    || {};
+
+    my ( $dnaClass, $dnaOrient, $dnaScore ) = ( "", "", "" );
+    if ( $dna->{'buckets'} && @{ $dna->{'buckets'} } ) {
+      my $top = $dna->{'buckets'}->[ 0 ];
+      $dnaClass  = $top->{'class'}          // "";
+      $dnaOrient = $top->{'orient'}         // "";
+      $dnaScore  = $top->{'combined_score'} // "";
+    }
+
+    # The resolved class, not the first hit that came in.
+    my $resolved = $protein->{'resolved'} || {};
+
+    print $TSV join( "\t",
+                     $q,
+                     $final->{'class'}    // "",
+                     $final->{'orient'}   // "",
+                     $resolved->{'class'} // "",
+                     $resolved->{'orient'} // "",
+                     $protein->{'best_p'} // "",
+                     $dnaClass,
+                     $dnaOrient,
+                     $dnaScore,
+                     $decision->{'rule'} // "",
+                     ( $decision->{'explanations'}
+                       ? join( "; ", @{ $decision->{'explanations'} } )
+                       : "" ) )
+        . "\n";
+
+    push @records, { 'family'   => $q,
+                     'final'    => $final,
+                     'protein'  => $protein,
+                     'dna'      => $dna,
+                     'decision' => $decision };
+  }
+  close $TSV;
+
+  # One JSON document rather than a run of concatenated objects, with
+  # canonical key order so you can diff two runs against each other.
+  open my $JSON, ">", $jsonFile
+      or die $CLASS . ": Could not open $jsonFile for writing!\n";
+  print $JSON JSON::PP->new->ascii->pretty->canonical->encode(
+                                       { 'version'  => $version,
+                                         'families' => \@records } );
+  close $JSON;
+
+  print "Classification evidence written to $tsvFile and $jsonFile\n";
+}
+
+#
+# The protein search runs nail, which seeds with MMseqs2.  Both paths come
+# from the configuration, so -nail_dir, -mmseqs_dir, and the NAIL_DIR and
+# MMSEQS_DIR environment variables each override them.
+#
+my $NAIL_PRGM   = $config->{'NAIL_DIR'}->{'value'} . "/nail";
+my $MMSEQS_PRGM = $config->{'MMSEQS_DIR'}->{'value'} . "/mmseqs";
+die $CLASS . ": Could not find nail ( looked for $NAIL_PRGM ).\n"
+    . "Set it with -nail_dir, the NAIL_DIR environment variable, or by\n"
+    . "rerunning configure.\n"
+    unless ( -x $NAIL_PRGM );
+die $CLASS . ": Could not find mmseqs, which nail uses for seeding\n"
+    . "( looked for $MMSEQS_PRGM ).  Set it with -mmseqs_dir, the\n"
+    . "MMSEQS_DIR environment variable, or by rerunning configure.\n"
+    unless ( -x $MMSEQS_PRGM );
+
+# MMseqs2 prefilter sensitivity; lower is faster.  7.5 is the top of the
+# range MMseqs2 documents.  On a 764-family human set, every setting from
+# 7.5 to 10 left the same 184 families with protein evidence and changed
+# no classification, and 10 took twice as long as 7.5.  At 6, two
+# families lose their protein evidence.
+my $nailSensitivity = 7.5;
+$nailSensitivity = $options{'nail_sensitivity'}
+    if ( defined $options{'nail_sensitivity'} );
+
 my $cmdSuffix = "> /dev/null 2>&1";
 $cmdSuffix = "" if ( $DEBUG );
 
@@ -247,8 +498,8 @@ print "#    Version: $dfam_version\n";
 print "#       Date: $dfam_date\n"     if $dfam_date;
 
 my ( $TE_PROTEIN_LIB, $TE_CONSENSUS_LIB ) =
-    resolve_reference_libraries( $FAMDB_DIR, $dfam_version, $MAKEBLASTDB_PRGM,
-                                 $searchEngineN, $options{'consensi'} );
+    resolve_reference_libraries( $FAMDB_DIR, $dfam_version, $searchEngineN,
+                                 $options{'consensi'} );
 
 open IN, "<$TE_PROTEIN_LIB"
     or die "Could not open $TE_PROTEIN_LIB for reading!\n";
@@ -378,8 +629,8 @@ close UNC;
 # Simple Repeat Identification
 #
 my $cmd =
-      "$REPEATMASKER_DIR/RepeatMasker -qq -noint "
-    . "-no_is tmpConsensi.fa $cmdSuffix";
+      "$FindBin::RealBin/TRFMask -mode repeatmasker "
+    . "tmpConsensi.fa $cmdSuffix";
 print "Running: $cmd\n" if ( $DEBUG );
 system( $cmd );
 if ( !-s "tmpConsensi.fa.masked" ) {
@@ -428,18 +679,13 @@ foreach my $seqID ( $maskedDB->getIDs() ) {
 #
 # Step 2: comparison against database of transposon proteins
 #
-# blastx the simple-masked consensi vs the transposable element
-# protein database with the fasta line format
+# Search the six-frame translation of the simple-masked consensi
+# against the transposable element protein database with the fasta
+# line format
 #      >TWIFBIG#DNA/HAT-Ac
-# This name may be *immediately* followed by #ReverseORF to indicate
-# that the product is encoded on the opposite strand of the
-# transposable element. It needs to be right after it, otherwise it
-# may fall on the next line in the blastx output's hit description.
-#
-# BLASTX_PRGM parameters default with -W 2
-# Originally I had: -filter xnu -wordmask seg
-# but the masking of simple repeats and low_complexity at the DNA
-# level seems better (more real matches reported)
+# This name may be followed by #ReverseORF to indicate that the
+# product is encoded on the opposite strand of the transposable
+# element.
 
 print "  - Looking for similarity to known repeat proteins..\n";
 
@@ -451,33 +697,58 @@ my $cutoffP = 0.001;
 # $masklevel 101 does not exist (same as masklevel 100)
 my $masklevel = 80;
 
-# initialize the search
-my $blastCmd;
-my $additionalOpts = "";
-$additionalOpts = "-num_threads $options{'threads'} " if ( $options{'threads'} );
-$blastCmd =
-      "$NCBIBLASTX_PRGM "
-    . "-db $TE_PROTEIN_LIB "
-    . $additionalOpts
-    . "-query tmpConsensi.fa.masked -word_size 2 > tmpBlastXResults.out 2>&1";
+# Translate the masked consensi in all six frames.  Stop codons are
+# kept as 'X' so alignments can extend through them, as blastx
+# alignments do.  A frameshift still splits a match between frames;
+# nailAnalysis merges the pieces per subject protein, as the blastx
+# parser did.
+my $numORFs = &sixFrameTranslate( "tmpConsensi.fa.masked",
+                                  "tmpConsensiTranslated.fa", 20 );
 
-print "      + Running rmblastx vs TE Protein Database...\n" if ( $DEBUG );
-print "        o Running: $blastCmd\n" if ( $DEBUG );
+my $nailThreads = 1;
+$nailThreads = $options{'threads'} if ( $options{'threads'} );
+my $nailCmd =
+      "$NAIL_PRGM search "
+    . "-t $nailThreads "
+    . "--mmseqs-path $MMSEQS_PRGM "
+    . "--mmseqs-s $nailSensitivity "
+    . "--tmp-dir tmpNailWorkDir "
+    . "--tbl-out tmpNailResults.tbl --tbl-format blast -X "
+    . "-E 0.01 tmpConsensiTranslated.fa $TE_PROTEIN_LIB "
+    . "$cmdSuffix";
 
-system( $blastCmd );
+my $blastXResults = {};
+if ( $numORFs ) {
+  print "      + Running nail vs TE Protein Database...\n" if ( $DEBUG );
+  print "        o Running: $nailCmd\n" if ( $DEBUG );
 
-if ( !-s "tmpBlastXResults.out" ) {
-  die "Something went wrong while running blastX.  The tmpBlastXResults.out"
-      . " file was missing or is empty\n";
+  system( $nailCmd );
+
+  if ( $? || !-e "tmpNailResults.tbl" ) {
+    die "Something went wrong while running nail.  The tmpNailResults.tbl"
+        . " file was missing ( exit status = $? )\n";
+  }
+
+  # Read in the nail output
+  $blastXResults = &nailAnalysis(
+    fileName     => "tmpNailResults.tbl",
+    pValueCutoff => $cutoffP,
+    masklevel => $masklevel
+  );
 }
 
-# Reads in the blastx output
-# creates %pval; rest is written to files
-my $blastXResults = &blastxAnalysis(
-  fileName     => "tmpBlastXResults.out",
-  pValueCutoff => $cutoffP,
-  masklevel => $masklevel
-);
+# blastxAnalysis produced an entry for every query in the blastx
+# report, and the conflict resolution below relies on a hitless
+# consensus being marked "Unknown" ( see matchprotanddnaclass ).
+# nail only reports queries with hits, so fill in the rest.
+open MSKIN, "<tmpConsensi.fa.masked"
+    or die "Could not open tmpConsensi.fa.masked for reading!\n";
+while ( <MSKIN> ) {
+  next unless ( /^>(\S+)/ );
+  $blastXResults->{$1} = { 'class' => "Unknown", 'orient' => "", 'pVal' => "" }
+      if ( !defined $blastXResults->{$1} );
+}
+close MSKIN;
 
 # This leaves us with a modified fasta file (some classified, even
 # fewer orientation adjusted based on blastx comparison), which is
@@ -601,9 +872,14 @@ if ( $options{'stockholm'} ) {
 #   1) and 4) are true
 #   highest score vs repeatmasker library < 400
 
-unlink "tmpBlastXResults.out" if ( !$DEBUG && -e "tmpBlastXResults.out" );
-unlink "tmpBlastXResults.out.bxsummary"
-    if ( !$DEBUG && -e "tmpBlastXResults.out.bxsummary" );
+&evidence_write_files();
+
+unlink "tmpNailResults.tbl" if ( !$DEBUG && -e "tmpNailResults.tbl" );
+unlink "tmpNailResults.tbl.bxsummary"
+    if ( !$DEBUG && -e "tmpNailResults.tbl.bxsummary" );
+unlink "tmpConsensiTranslated.fa"
+    if ( !$DEBUG && -e "tmpConsensiTranslated.fa" );
+rmtree( "tmpNailWorkDir" ) if ( !$DEBUG && -d "tmpNailWorkDir" );
 unlink "tmpConsensi.fa.cat"    if ( !$DEBUG && -e "tmpConsensi.fa.cat" );
 unlink "tmpConsensi.fa.log"    if ( !$DEBUG && -e "tmpConsensi.fa.log" );
 unlink "tmpConsensi.fa.masked" if ( !$DEBUG && -e "tmpConsensi.fa.masked" );
@@ -616,191 +892,6 @@ exit;
 
 
 #-------------------- S U B R O U T I N E S ------------------------------#
-
-##---------------------------------------------------------------------##
-## Use: my $pValuesRef = &blastxAnalysis( fileName => "",
-##                                          pValueCutoff => #,
-##                                          seqDB => SeqDBI,
-##                                          masklevel => # );
-##
-##      fileName       : Reads in a blastx results file, interprets
-##                       matches and creates a semi-classified "tempoutfile".
-##
-##  Returns
-##
-##
-##---------------------------------------------------------------------##
-sub blastxAnalysis {
-  my %parameters = @_;
-
-  # Result file
-  die $CLASS . "::blastxAnalysis(): Bad or missing fileName parameter!"
-      if ( !defined $parameters{'fileName'} || !-s $parameters{'fileName'} );
-  my $summaryfile = $parameters{'fileName'} . ".bxsummary";
-  open BXTP, "<$parameters{'fileName'}"
-      || die $CLASS
-      . "::blastxAnalysis(): Could not open file $parameters{'fileName'}!\n";
-
-  die $CLASS . "::blastxAnalysis(): Missing pValueCutoff parameter!"
-      if ( !defined $parameters{'pValueCutoff'} );
-
-  die $CLASS . "::blastxAnalysis(): Missing output parameter!"
-      if ( !defined $parameters{'masklevel'} );
-  my $masklevel = $parameters{'masklevel'};
-
-  my $cutoffP = $parameters{'pValueCutoff'};
-
-  # Result datastructure which stores all the subject hits
-  # for a given query
-  #
-  #   $queryHits{ subjectID } -> { 'beg' => #,
-  #                                'end' => #,
-  #                                'or'  => "Minus",
-  #                                'p'   => #,
-  #                                'score' => #,
-  #                                'identical' => #,
-  #                                'aligned' => #,
-  #                                'positives' => # };
-  #   $queryHits{ 'query' }
-  #   $queryHits{ 'oppositestrand' }
-  #
-  my %bxResults = ();
-  my %queryHits = ();
-  my %pValues   = ();
-  my $on;
-  my $orientation;
-  my $sbjct;
-
-  open SUMR, ">$summaryfile" or die "Could not open summary file $summaryfile for writing!\n";
-
-  #
-  # Read in blastx results and for each queryHitSet call
-  # "chooseBestBlastX".
-  #
-  while ( <BXTP> ) {
-    chomp;
-    if ( /^Query=\s+(\S+)/ ) {
-      if ( defined $queryHits{'query'} ) {
-        my ( $class, $orient, $pVal ) = &chooseBestBlastX(
-                                                       queryHits => \%queryHits,
-                                                       pValues   => \%pValues,
-                                                       masklevel => $masklevel
-        );
-        $bxResults{ $queryHits{'query'} } = {
-                                              'class'  => $class,
-                                              'orient' => $orient,
-                                              'pVal'   => $pVal
-        };
-      }
-      %queryHits          = ();
-      $queryHits{'query'} = $1;
-      $on                 = 1;
-      $sbjct              = "";
-    }
-    elsif ( /^>\s*(\S+)/ ) {
-
-      # ab/ncbi blastx
-      $sbjct = $1;
-      if ( /\#ReverseORF/ ) {
-        $queryHits{'oppositestrand'} = 1;
-      }
-      else {
-        $queryHits{'oppositestrand'} = 0;
-      }
-    }
-    elsif ( /Frame\s*=\s*([-+])(\d+)/ ) {
-
-      # ncbi/ab blastx
-      # The Frame line follows the Score line in each HSP block, so the
-      # orientation is recorded here, for the HSP whose Score line was
-      # just accepted.  Recording it at the Score line, as this parser
-      # once did, stored the previous HSP's frame.
-      $orientation = $1;
-      $orientation = "Plus" if ( $orientation eq "+" );
-      $orientation = "Minus" if ( $orientation eq "-" );
-      $queryHits{$sbjct}->{'or'} = $orientation if ( $on && $sbjct );
-    }
-    if ( /^ Score\s*=\s*([\d\.]+) .+ Expect(?:\(\d+\))? = (\S+)/ ) {
-
-      # ncbi/ab blastx
-      # NOTE: The PValue and EValue are essentially identical
-      #       values below 0.001
-      if ( $2 <= $cutoffP ) {
-        if ( defined $queryHits{$sbjct} ) {
-          $queryHits{$sbjct}->{'score'} = $1
-              unless $queryHits{$sbjct}->{'score'} > $1;
-          $queryHits{$sbjct}->{'p'} = $2
-              unless $queryHits{$sbjct}->{'p'} < $2;
-        }
-        else {
-          $queryHits{$sbjct}->{'score'} = $1;
-          $queryHits{$sbjct}->{'p'}     = $2;
-        }
-        $on = 1;
-      }
-      else {
-        $on = 0;
-
-        # this and subsequent matches have a P value too high
-        # to consider
-      }
-    }
-    elsif ( $on && /^ Identities = (\d+)\/(\d+).+ Positives = (\d+)/ ) {
-
-      # ncbi/ab blastx
-      $queryHits{$sbjct}->{'identical'} += $1;
-      $queryHits{$sbjct}->{'aligned'}   += $2;
-      $queryHits{$sbjct}->{'positives'} += $3;
-
-      # we could consider extracting the number of Xs in the
-      # aligned portions of both the query and sbjct these can
-      # be subtracted from the mismatches to give a maximum
-      # identity and similarity. Currently an underestimate is
-      # given; calculation would involve checking for Xs
-      # opposite gaps though, so not so straight forward
-    }
-    elsif ( $on && /^Query:?\s+(\d+).*\s(\d+)\s*$/ ) {
-
-      # ncbi/ab blastx
-      my $beg = $1;
-      my $end = $2;
-      if ( $queryHits{$sbjct}->{'or'} eq "Minus" ) {
-        $beg = $2;
-        $end = $1;
-      }
-      if (    !defined $queryHits{$sbjct}
-           || !defined $queryHits{$sbjct}->{'beg'}
-           || $queryHits{$sbjct}->{'beg'} > $beg )
-      {
-        $queryHits{$sbjct}->{'beg'} = $beg;
-      }
-      if (    !defined $queryHits{$sbjct}
-           || !defined $queryHits{$sbjct}->{'end'}
-           || $queryHits{$sbjct}->{'end'} < $beg )
-      {
-        $queryHits{$sbjct}->{'end'} = $end;
-      }
-    }
-  }
-
-  # Trailing case
-  if ( defined $queryHits{'query'} ) {
-    my ( $class, $orient, $pVal ) = &chooseBestBlastX(
-                                                       queryHits => \%queryHits,
-                                                       pValues   => \%pValues,
-                                                       masklevel => $masklevel
-    );
-    $bxResults{ $queryHits{'query'} } = {
-                                          'class'  => $class,
-                                          'orient' => $orient,
-                                          'pVal'   => $pVal
-    };
-  }
-
-  close BXTP;
-
-  return ( \%bxResults );
-}
 
 ##---------------------------------------------------------------------##
 ## Use: &pValMuchBetter( $pA, $pB );
@@ -839,6 +930,8 @@ sub chooseBestBlastX {
 
   my $q              = $queryHits->{'query'};
   my $oppositestrand = $queryHits->{'oppositestrand'};
+
+  &evidence_begin_query( $q ) if ( $EVIDENCE_ON );
 
   my @pastscore     = ( 0 );
   my @pastend       = ( 0 );
@@ -941,6 +1034,10 @@ SUBJECTS:
         # are found for example in Gypsy retrotransposons and MuDR
         # DNA transposons. They're indicated with the label
         # "#ReverseORF" right after the name
+        if ( $queryHits->{$subj}->{'oppositestrand'} ) {
+          $queryHits->{$subj}->{'or'}        =~ s/Minus/Plus/
+              || $queryHits->{$subj}->{'or'} =~ s/Plus/Minus/;
+        }
         print SUMR "$q\t$queryHits->{ $subj }->{ 'beg' } "
             . "$queryHits->{ $subj }->{ 'end' }\t$name\t$class\t"
             . "$queryHits->{ $subj }->{ 'or' }\t"
@@ -951,6 +1048,23 @@ SUBJECTS:
             . "$queryHits->{ $subj }->{ 'aligned' }\t"
             . "$queryHits->{ $subj }->{ 'p' }\n";
         $class =~ s/-gene$//;
+
+        # Record the hit as it stands after overlap filtering, before
+        # any clash resolution below rewrites $class.
+        &evidence_protein_add_hit(
+                       $q,
+                       { 'subject'   => $name,
+                         'class'     => $class,
+                         'beg'       => $queryHits->{$subj}->{'beg'},
+                         'end'       => $queryHits->{$subj}->{'end'},
+                         'orient'    => $queryHits->{$subj}->{'or'},
+                         'score'     => $queryHits->{$subj}->{'score'},
+                         'identical' => $queryHits->{$subj}->{'identical'},
+                         'aligned'   => $queryHits->{$subj}->{'aligned'},
+                         'positives' => $queryHits->{$subj}->{'positives'},
+                         'p'         => $queryHits->{$subj}->{'p'} }
+        ) if ( $EVIDENCE_ON );
+
         my $pCur         = $queryHits->{$subj}->{'p'};
         my $keepLastPVal = 0;
         if ( $lastclass && $class !~ /^$lastclass/ && $lastclass !~ /^$class/ )
@@ -962,15 +1076,22 @@ SUBJECTS:
           # the other ( at least 10 orders of magnitude, see
           # pValMuchBetter ), that class wins the clash.  Disable with
           # -no_clash_rule to fall back on merging to a common root.
+          my $clashKept    = "";
+          my $clashDropped = "";
+          my $clashRule    = "";
           if ( !$options{'no_clash_rule'}
                && &pValMuchBetter( $pCur, $lastPVal ) )
           {
 
             # the current subject's class stands
+            ( $clashKept, $clashDropped, $clashRule ) =
+                ( $class, $lastclass, 'PVAL_MUCH_BETTER_CURRENT' );
           }
           elsif ( !$options{'no_clash_rule'}
                   && &pValMuchBetter( $lastPVal, $pCur ) )
           {
+            ( $clashKept, $clashDropped, $clashRule ) =
+                ( $lastclass, $class, 'PVAL_MUCH_BETTER_PREVIOUS' );
             $class        = $lastclass;
             $keepLastPVal = 1;
           }
@@ -978,21 +1099,28 @@ SUBJECTS:
 
             # there are some proteins in the database of
             # mosaic elements combining the three families
+            ( $clashKept, $clashDropped, $clashRule ) =
+                ( "LTR/ERV", "$lastclass vs $class", 'MERGED_TO_LTR_ERV' );
             $class = "LTR/ERV";
           }
           else {
+            my $clashOther = $class;
             $lastclass =~ s/\/.+//;    # deleting backslash and stuff after it
             if ( $class =~ /^$lastclass/ ) {
+              ( $clashKept, $clashDropped, $clashRule ) =
+                  ( $lastclass, $clashOther, 'MERGED_TO_COMMON_ROOT' );
               $class = $lastclass;
             }
             else {
+              ( $clashKept, $clashDropped, $clashRule ) =
+                  ( "Unknown", "$lastclass vs $clashOther",
+                    'UNRESOLVED_CLASH' );
               ++$classunknown;
             }
           }
-        }
-        if ( $queryHits->{$subj}->{'$oppositestrand'} ) {
-          $queryHits->{$subj}->{'or'}        =~ s/Minus/Plus/
-              || $queryHits->{$subj}->{'or'} =~ s/Plus/Minus/;
+          &evidence_protein_add_clash( $q, $clashKept, $clashDropped,
+                                       $clashRule )
+              if ( $EVIDENCE_ON );
         }
         if ( $lastori && $queryHits->{$subj}->{'or'} ne $lastori ) {
           print "      ! Clashing orientations: $q\n"
@@ -1029,10 +1157,14 @@ SUBJECTS:
     print
         "ChooseBestBlastX::Returning( $lastclass, $lastori, $mostSigPValue )\n"
         if ( $DEBUG );
+    &evidence_protein_set_resolved( $q, $lastclass, $lastori, $mostSigPValue )
+        if ( $EVIDENCE_ON );
     return ( $lastclass, $lastori, $mostSigPValue );
   }
   else {
     print "ChooseBestBlastX::Returning( Unknown )\n" if ( $DEBUG );
+    &evidence_protein_set_resolved( $q, "Unknown", "", "" )
+        if ( $EVIDENCE_ON );
     return ( "Unknown", "", "" );
   }
 }
@@ -1089,6 +1221,11 @@ sub vsRMlibAnalysis {
       ( $class{$query}, $ori{$query} ) =
           &conflictsolver( $query, $blastXResults, \@dnaclass, \@ori,
                            \%combscore, $queryLen );
+      if ( $EVIDENCE_ON ) {
+        &evidence_dna_set_buckets( $query,
+                              &evidence_buckets_for( $query, \%combscore ) );
+        &evidence_set_final( $query, $class{$query}, $ori{$query} );
+      }
       %combscore = @dnaclass = @ori = ();
       %idOverlaps = ();
       $queryLen   = 0;
@@ -1115,7 +1252,9 @@ sub vsRMlibAnalysis {
       my $overlapEnd = $endPos;
       $overlapEnd = $result->getQueryEnd()
           if ( $result->getQueryEnd() < $overlapEnd );
-      if ( ( $overlapEnd - $overlapStart ) < ( 0.9 * $endPos - $startPos ) ) {
+      if ( ( $overlapEnd - $overlapStart ) <
+           ( 0.9 * ( $endPos - $startPos ) ) )
+      {
         $combscore{$combination} += $result->getScore();
       }
     }
@@ -1134,6 +1273,11 @@ sub vsRMlibAnalysis {
     ( $class{$query}, $ori{$query} ) =
         &conflictsolver( $query, $blastXResults, \@dnaclass, \@ori, \%combscore,
                          $queryLen );
+    if ( $EVIDENCE_ON ) {
+      &evidence_dna_set_buckets( $query,
+                              &evidence_buckets_for( $query, \%combscore ) );
+      &evidence_set_final( $query, $class{$query}, $ori{$query} );
+    }
   }
 
   return ( \%class, \%ori );
@@ -1190,9 +1334,13 @@ sub conflictsolver {
   #print "  - Picked: $pickedClass ( compat?: $pickedClassCompat )\n";
 
   # Pick between highest scoring DNA match and highest scoring Protein match
-  &matchprotanddnaclass( $protClass, $protOrient, $pickedClass,
-                         $dnaScores, $protPVal,   $queryLen );
+  my @picked = &matchprotanddnaclass( $protClass, $protOrient, $pickedClass,
+                                      $dnaScores, $protPVal,   $queryLen );
 
+  # File the reasoning from that last call under the query it belongs to.
+  &evidence_commit_decision( $query ) if ( $EVIDENCE_ON );
+
+  return @picked;
 }
 
 sub matchprotanddnaclass {
@@ -1228,15 +1376,23 @@ sub matchprotanddnaclass {
   $dnaclass  =~ s/\?$//;
 
   # which one has the better score?
-  my $choice = "";
+  my $choice  = "";
+  my $ruleId  = 'NO_RULE_FIRED';
+  my @why     = ();
+  my $dnaSeen = $combscore{$comb} // 0;
+  my $pvalSeen = &evidence_num( $pval ) // ( $pval // "" );
   if ( defined $pval && $pval ne "" ) {
     if ( $combscore{$comb} < 333 && $pval < 0.00001 ) {
       $choice = $protclass;
       $ori    = $orient;
+      $ruleId = 'PREF_PROT_P_LT_1e-5_DNA_SCORE_LT_333';
+      push @why, "Protein p=$pvalSeen < 1e-5 and DNA score=$dnaSeen < 333";
     }
     elsif ( $combscore{$comb} >= 333 && $pval >= 0.00001 ) {
       $choice = $dnaclass;
       $ori    = $dnaori;
+      $ruleId = 'PREF_DNA_SCORE_GE_333_PROT_P_GE_1e-5';
+      push @why, "DNA score=$dnaSeen >= 333 and protein p=$pvalSeen >= 1e-5";
     }
     elsif (    $combscore{$comb} >= 250
             && $pval < 0.0001
@@ -1244,11 +1400,23 @@ sub matchprotanddnaclass {
     {
       $choice = $dnaclass;
       $ori    = $dnaori;
+      $ruleId = 'DNA_GE_250_PROT_P_LT_1e-4_CLASSES_AGREE';
+      push @why,
+          "DNA score=$dnaSeen >= 250, protein p=$pvalSeen < 1e-4, classes agree";
+    }
+    else {
+      push @why,
+          "Neither side decisive ( DNA score=$dnaSeen, protein p=$pvalSeen )";
     }
   }
   elsif ( $combscore{$comb} >= 250 ) {
     $choice = $dnaclass;
     $ori    = $dnaori;
+    $ruleId = 'DNA_ONLY_SCORE_GE_250';
+    push @why, "No protein evidence; DNA score=$dnaSeen >= 250";
+  }
+  else {
+    push @why, "No protein evidence and DNA score=$dnaSeen < 250";
   }
   print $CLASS . "::matchprotanddnaclass(): choice = $choice orient=$ori\n"
       if ( $DEBUG );
@@ -1369,6 +1537,7 @@ sub matchprotanddnaclass {
   }
 
   #print "matchprotanddnaclass RETURNING class=$class, orient=$ori, noconflict=$noconflict\n" if ( $DEBUG );
+  &evidence_stash_decision( $ruleId, \@why ) if ( $EVIDENCE_ON );
   return ( $class, $ori, $noconflict );
 }
 
@@ -1718,7 +1887,7 @@ my %rmToDfamClass = (
 ## Dies if no writable location can be found or the build fails everywhere.
 ##
 sub resolve_reference_libraries {
-  my ( $famdb_dir, $version, $makeblastdb, $searchEngine, $input_file ) = @_;
+  my ( $famdb_dir, $version, $searchEngine, $input_file ) = @_;
 
   my $prot_label = "PROT-Dfam_$version";
   my $cons_label = "CONS-Dfam_$version";
@@ -1733,14 +1902,16 @@ sub resolve_reference_libraries {
     my $prot_lib = "$base/$prot_label/repeatpeps.lib";
     my $cons_lib = "$base/$cons_label/reference.fa";
 
+    # nail searches the protein FASTA as it is, so a library the blastx
+    # classifier built, with its .p* index beside it, works here too.
     return ( $prot_lib, $cons_lib )
-        if -s "$prot_lib.psq" && $searchEngine->isSubjectPrepared( $cons_lib );
+        if -s $prot_lib && $searchEngine->isSubjectPrepared( $cons_lib );
 
     next unless _can_write_dir( $base );
 
     print "\nBuilding FamDB $version reference libraries (one-time step)...\n";
     print "  Location: $base\n";
-    if ( _build_reference_libraries( $famdb_dir, $makeblastdb, $searchEngine,
+    if ( _build_reference_libraries( $famdb_dir, $searchEngine,
                                      "$base/$prot_label",
                                      "$base/$cons_label" ) ) {
       return ( $prot_lib, $cons_lib );
@@ -1767,7 +1938,7 @@ sub _can_write_dir {
 }
 
 sub _build_reference_libraries {
-  my ( $famdb_dir, $makeblastdb, $searchEngine, $prot_dir, $cons_dir ) = @_;
+  my ( $famdb_dir, $searchEngine, $prot_dir, $cons_dir ) = @_;
 
   for my $dir ( $prot_dir, $cons_dir ) {
     eval { make_path($dir) };
@@ -1793,17 +1964,6 @@ sub _build_reference_libraries {
     return 0;
   }
 
-  print "  Building protein BLAST database...\n";
-  system(   "$makeblastdb -dbtype prot "
-          . "-in \"$prot_dir/repeatpeps.lib\" "
-          . "-out \"$prot_dir/repeatpeps.lib\" "
-          . "-blastdb_version 4 2>/dev/null" );
-  unless ( -s "$prot_dir/repeatpeps.lib.psq" ) {
-    rmtree($prot_dir);
-    warn "  Failed to build protein BLAST database.\n";
-    return 0;
-  }
-
   print "  Preparing consensus library for the search engine...\n";
   my $prepared = eval {
     $searchEngine->prepareSubject( "$cons_dir/reference.fa", dbVersion => 4 );
@@ -1816,6 +1976,220 @@ sub _build_reference_libraries {
 
   print "  Done.\n";
   return 1;
+}
+
+
+##---------------------------------------------------------------------##
+## Use: my $numORFs = &sixFrameTranslate( $inFile, $outFile, $minLen );
+##
+##      Translate each sequence in $inFile in all six frames, writing
+##      the peptides of each frame ( split at X runs of 10 or more,
+##      keeping pieces of at least $minLen residues ) to $outFile.
+##      Stop codons and ambiguous codons are emitted as 'X'.
+##      The peptide identifiers encode what is needed to map alignment
+##      coordinates back to the DNA:
+##
+##          <seqID>|<strand><frame>|<dnaStart>-<dnaEnd>
+##
+##      where dnaStart/dnaEnd are the 1-based forward-strand bounds of
+##      the translated frame.  Returns the number of peptides written.
+##---------------------------------------------------------------------##
+sub sixFrameTranslate {
+  my ( $inFile, $outFile, $minLen ) = @_;
+
+  my %codonTable;
+  {
+    my @bases = qw( T C A G );
+    my $aas =
+        "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG";
+    my $i = 0;
+    for my $b1 ( @bases ) {
+      for my $b2 ( @bases ) {
+        for my $b3 ( @bases ) {
+          $codonTable{"$b1$b2$b3"} = substr( $aas, $i++, 1 );
+        }
+      }
+    }
+  }
+
+  open SFIN, "<$inFile"
+      or die $CLASS . "::sixFrameTranslate(): Could not open $inFile!\n";
+  open SFOUT, ">$outFile"
+      or die $CLASS . "::sixFrameTranslate(): Could not open $outFile!\n";
+
+  my $numORFs = 0;
+  my $procSeq = sub {
+    my ( $id, $dna ) = @_;
+    return unless ( defined $id && $dna );
+    my $seqLen = length $dna;
+    for my $strand ( '+', '-' ) {
+      my $s = $dna;
+      if ( $strand eq '-' ) {
+        $s = reverse $s;
+        $s =~ tr/ACGT/TGCA/;
+      }
+      for my $f ( 0 .. 2 ) {
+        my $prot = "";
+        for ( my $i = $f ; $i + 2 < $seqLen ; $i += 3 ) {
+          $prot .= $codonTable{ substr( $s, $i, 3 ) } // 'X';
+        }
+        $prot =~ tr/*/X/;
+
+        # A long X run comes from masked DNA and cannot contribute to
+        # an alignment, but nail has no equivalent of the seg filter
+        # blastx applies and will chain marginal alignments across it.
+        # Split there; single stops and short masked stretches remain
+        # so that alignments can still extend through them.
+        my $aaOffset = 0;
+        for my $seg ( split( /(X{10,})/, $prot ) ) {
+          my $segLen = length( $seg );
+          if ( $seg !~ /^X{10,}$/ && $segLen >= $minLen ) {
+            my ( $beg, $end ) =
+                ( $f + 1 + 3 * $aaOffset, $f + 3 * ( $aaOffset + $segLen ) );
+            ( $beg, $end ) = ( $seqLen - $end + 1, $seqLen - $beg + 1 )
+                if ( $strand eq '-' );
+            print SFOUT ">$id|$strand" . ( $f + 1 ) . "|$beg-$end\n$seg\n";
+            $numORFs++;
+          }
+          $aaOffset += $segLen;
+        }
+      }
+    }
+  };
+
+  my ( $id, $seq );
+  while ( <SFIN> ) {
+    chomp;
+    if ( /^>(\S+)/ ) {
+      $procSeq->( $id, $seq );
+      $id  = $1;
+      $seq = "";
+    }
+    else {
+      $seq .= uc $_;
+    }
+  }
+  $procSeq->( $id, $seq );
+  close SFIN;
+  close SFOUT;
+
+  return $numORFs;
+}
+
+##---------------------------------------------------------------------##
+## Use: my $pValuesRef = &nailAnalysis( fileName => "",
+##                                      pValueCutoff => #,
+##                                      masklevel => # );
+##
+##      fileName : nail "--tbl-format blast" tabular results from
+##                 searching the six-frame translated consensi
+##                 against the TE protein library.
+##
+##      The counterpart of blastxAnalysis for nail results.  Hits are
+##      aggregated per consensus/protein pair ( merging HSPs from
+##      different frames, as the blastx parser does ), peptide
+##      coordinates are mapped back to consensus DNA coordinates, and
+##      each consensus hit set is passed to chooseBestBlastX.
+##---------------------------------------------------------------------##
+sub nailAnalysis {
+  my %parameters = @_;
+
+  die $CLASS . "::nailAnalysis(): Bad or missing fileName parameter!"
+      if ( !defined $parameters{'fileName'} || !-e $parameters{'fileName'} );
+  my $summaryfile = $parameters{'fileName'} . ".bxsummary";
+
+  die $CLASS . "::nailAnalysis(): Missing pValueCutoff parameter!"
+      if ( !defined $parameters{'pValueCutoff'} );
+  my $cutoffP = $parameters{'pValueCutoff'};
+
+  die $CLASS . "::nailAnalysis(): Missing masklevel parameter!"
+      if ( !defined $parameters{'masklevel'} );
+  my $masklevel = $parameters{'masklevel'};
+
+  open NLTP, "<$parameters{'fileName'}"
+      or die $CLASS
+      . "::nailAnalysis(): Could not open file $parameters{'fileName'}!\n";
+  open SUMR, ">$summaryfile"
+      or die "Could not open summary file $summaryfile for writing!\n";
+
+  # %hits{ query }{ subject } accumulates the same per-subject record
+  # that blastxAnalysis builds ( see its comments ), plus each query's
+  # 'oppositestrand' flag.
+  my %hits;
+  my %opposite;
+
+  while ( <NLTP> ) {
+    next if ( /^#/ || !/\S/ );
+    my ( $qfull, $sbjct, $pid, $alnLen, $mismatch, $gapOpen,
+         $qStart, $qEnd, $sStart, $sEnd, $eVal, $score ) = split;
+    next unless ( defined $score );
+    $eVal = "1$eVal" if ( $eVal =~ /^e/ );
+    next if ( $eVal > $cutoffP );
+
+    # Decode the DNA mapping from the peptide identifier
+    my ( $query, $strandFrame, $frameRange ) = split( /\|/, $qfull );
+    my ( $strand ) = $strandFrame =~ /^([+-])/;
+    my ( $frameBeg, $frameEnd ) = split( /-/, $frameRange );
+    my ( $beg, $end );
+    if ( $strand eq '+' ) {
+      $beg = $frameBeg + 3 * ( $qStart - 1 );
+      $end = $frameBeg + 3 * $qEnd - 1;
+    }
+    else {
+      $end = $frameEnd - 3 * ( $qStart - 1 );
+      $beg = $frameEnd - 3 * $qEnd + 1;
+    }
+    my $orient = ( $strand eq '+' ) ? "Plus" : "Minus";
+
+    $opposite{$query} = 1 if ( $sbjct =~ /\#ReverseORF/ );
+
+    my $identical = sprintf( "%.0f", $pid * $alnLen / 100 );
+    my $rec = $hits{$query}{$sbjct};
+    if ( !defined $rec ) {
+      $hits{$query}{$sbjct} = {
+                                'beg'       => $beg,
+                                'end'       => $end,
+                                'or'        => $orient,
+                                'p'         => $eVal,
+                                'score'     => $score,
+                                'identical' => $identical,
+                                'aligned'   => $alnLen,
+                                'positives' => $identical,
+                                'oppositestrand' =>
+                                    ( $sbjct =~ /\#ReverseORF/ ) ? 1 : 0
+      };
+    }
+    else {
+      # Orientation follows the highest-scoring HSP
+      $rec->{'or'}    = $orient if ( $score > $rec->{'score'} );
+      $rec->{'score'} = $score if ( $score > $rec->{'score'} );
+      $rec->{'p'}     = $eVal if ( $eVal < $rec->{'p'} );
+      $rec->{'beg'}   = $beg if ( $beg < $rec->{'beg'} );
+      $rec->{'end'}   = $end if ( $end > $rec->{'end'} );
+      $rec->{'identical'} += $identical;
+      $rec->{'aligned'}   += $alnLen;
+      $rec->{'positives'} += $identical;
+    }
+  }
+  close NLTP;
+
+  my %bxResults = ();
+  foreach my $query ( sort keys %hits ) {
+    my %queryHits = %{ $hits{$query} };
+    $queryHits{'query'}          = $query;
+    $queryHits{'oppositestrand'} = $opposite{$query} || 0;
+    my ( $class, $orient, $pVal ) = &chooseBestBlastX(
+                                                   queryHits => \%queryHits,
+                                                   masklevel => $masklevel
+    );
+    $bxResults{$query} = {
+                           'class'  => $class,
+                           'orient' => $orient,
+                           'pVal'   => $pVal
+    };
+  }
+
+  return ( \%bxResults );
 }
 
 1;

@@ -129,7 +129,6 @@ use Time::HiRes qw( gettimeofday tv_interval);
 
 # RepeatMasker Libraries
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use SearchResult;
 use SearchResultCollection;
 use NCBIBlastSearchEngine;

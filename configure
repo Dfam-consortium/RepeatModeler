@@ -187,6 +187,7 @@ print_banner();
 configure_repeatmasker();
 configure_famdb();
 configure_rmblast();
+configure_nail();
 configure_ncbiblast();
 configure_repeatscout();
 configure_recon();
@@ -594,9 +595,10 @@ sub configure_ncbiblast {
   my $opt_key = $config->{$key}->{'command_line_override'};
 
   section_header("$label  (optional)");
-  print "\n  RepeatClassifier needs blastx and makeblastdb, and the LTR\n";
-  print "  pipeline needs blastn, from the NCBI BLAST+ toolkit.  A 2.x\n";
-  print "  RMBlast installation already provides them.\n";
+  print "\n  Only the LTR structural pipeline needs this, for the blastn\n";
+  print "  and makeblastdb that LTR_retriever runs.  Skip it if you do not\n";
+  print "  use -LTRStruct.  A 2.x RMBlast installation already provides\n";
+  print "  them.\n";
   print "  https://blast.ncbi.nlm.nih.gov/\n\n";
 
   if ( $opts{$opt_key} ) {
@@ -606,7 +608,7 @@ sub configure_ncbiblast {
     }
     if ( $no_prompt ) {
       die "\n  ERROR: $label path '$opts{$opt_key}' is not valid.\n"
-        . "         Expected blastx, blastn and makeblastdb in that directory.\n\n";
+        . "         Expected blastn and makeblastdb in that directory.\n\n";
     }
     status_warn("Specified $label path is not valid: $opts{$opt_key}");
     print "\n";
@@ -623,17 +625,17 @@ sub configure_ncbiblast {
   }
 
   # Nothing to do when the RMBlast directory or PATH already has the tools.
-  my $blastx = RepModelConfig::findNCBIProgram("blastx");
-  if ( $blastx ) {
+  my $blastn = RepModelConfig::findNCBIProgram("blastn");
+  if ( $blastn ) {
     $config->{$key}->{'value'} = "";
-    status_ok( "$label: found in " . dirname($blastx) );
+    status_ok( "$label: found in " . dirname($blastn) );
     return;
   }
 
   if ( $no_prompt ) {
     $config->{$key}->{'value'} = "";
-    status_warn("$label not found. RepeatClassifier and the LTR pipeline "
-              . "will not run until -$opt_key is set.");
+    status_warn("$label not found. The LTR structural pipeline will not "
+              . "run until -$opt_key is set.");
     return;
   }
 
@@ -641,8 +643,8 @@ sub configure_ncbiblast {
     my $dir = prompt( "Path to $label bin directory (Enter to skip)", "" );
     if ( !$dir ) {
       $config->{$key}->{'value'} = "";
-      status_warn("$label not configured. RepeatClassifier and the LTR "
-                . "pipeline will not run until it is.");
+      status_warn("$label not configured. The LTR structural pipeline "
+                . "will not run until it is.");
       return;
     }
     $config->{$key}->{'value'} = $dir;
@@ -650,7 +652,7 @@ sub configure_ncbiblast {
       status_ok("$label: $dir");
       return;
     }
-    print "\n  Could not find blastx, blastn and makeblastdb in '$dir'.\n\n";
+    print "\n  Could not find blastn and makeblastdb in '$dir'.\n\n";
   }
 }
 
@@ -725,6 +727,27 @@ sub configure_cdhit {
     label => 'CD-HIT',
     desc  => 'CD-HIT clusters sequences to reduce redundancy.',
     url   => 'https://github.com/weizhongli/cdhit',
+  );
+}
+
+##
+## Configure nail and MMseqs2 (required).  RepeatClassifier runs nail for
+## its protein search, and nail seeds with mmseqs.
+##
+sub configure_nail {
+  _configure_dir(
+    key   => 'NAIL_DIR',
+    label => 'nail',
+    desc  => 'RepeatClassifier searches the TE protein library with nail, '
+           . 'in place of the NCBI blastx it once used.',
+    url   => 'https://github.com/TravisWheelerLab/nail',
+  );
+  _configure_dir(
+    key   => 'MMSEQS_DIR',
+    label => 'MMseqs2',
+    desc  => 'nail seeds its search with MMseqs2.  nail will absorb it in '
+           . 'a future release, and this setting goes with it.',
+    url   => 'https://github.com/soedinglab/MMseqs2',
   );
 }
 

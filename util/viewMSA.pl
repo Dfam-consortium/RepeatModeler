@@ -123,15 +123,10 @@ use RepModelConfig;
 use MultAln;
 
 # RepeatMasker Libraries
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use SequenceSimilarityMatrix;
 use CrossmatchSearchEngine;
 use FastaDB;
 use SeqDBI;
-
-#
-# Hopefully crossmatch is defined here
-use RepeatMaskerConfig;
 
 #
 # Version
@@ -251,13 +246,13 @@ elsif ( !$options{'malign'} && !$options{'stockholm'} ) {
   }
   $refSeqFile = $options{'ref_sequence'};
 
-  if ( !-s $RepeatMaskerConfig::CROSSMATCH_PRGM ) {
-    die "Could not find the crossmatch program.  Perhaps RepeatModeler\n"
-        . "hasn't been configured yet?\n";
-  }
+  my $crossmatchPrgm = RepModelConfig::findProgramOnPath( "cross_match" );
+  die RepModelConfig::programMissingMessage( "cross_match",
+                                     "aligns the sequences against the reference" )
+      if ( !defined $crossmatchPrgm );
   my $cmCmd =
-        "$RepeatMaskerConfig::CROSSMATCH_PRGM $compSeqFile $refSeqFile "
-      . "-matrix $RepModelConfig::REPEATMODELER_DIR/Matrices"
+        "$crossmatchPrgm $compSeqFile $refSeqFile "
+      . "-matrix $FindBin::RealBin/../Matrices"
       . "/crossmatch/comparison.matrix "
       . "-gap_init -25 -del_gap_ext -5 -ins_gap_ext -5 "
       . "-minscore 150 -minmatch 7 -alignments -masklevel 80  2> /dev/null "

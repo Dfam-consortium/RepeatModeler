@@ -124,7 +124,6 @@ use Carp;
 use lib $FindBin::RealBin;
 use lib "$FindBin::RealBin/..";
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use MultAln;
 use SeedAlignment;
 
@@ -132,7 +131,6 @@ use SeedAlignment;
 use RepeatUtil;
 use SearchResult;
 use SearchResultCollection;
-use WUBlastSearchEngine;
 use NCBIBlastSearchEngine;
 use CrossmatchSearchEngine;
 use FastaDB;

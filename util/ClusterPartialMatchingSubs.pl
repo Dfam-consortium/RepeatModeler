@@ -162,7 +162,6 @@ use File::Basename;
 use File::Temp qw/ tempfile tempdir /;
 #
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use NCBIBlastSearchEngine;
 use SearchResult;
 use SearchResultCollection;

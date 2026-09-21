@@ -140,7 +140,6 @@ use Time::HiRes qw( gettimeofday tv_interval);
 
 # RepeatModeler Libraries
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use RepeatUtil;
 use SeedAlignment;
 use SeedAlignmentCollection;
@@ -150,7 +149,6 @@ use TwoBitDB;
 # RepeatMasker Libraries
 use SearchResult;
 use SearchResultCollection;
-use WUBlastSearchEngine;
 use NCBIBlastSearchEngine;
 use SeqDBI;
 use SimpleBatcher;
@@ -260,9 +258,6 @@ RepModelConfig::resolveConfiguration( \%options );
 my $config           = $RepModelConfig::configuration;
 my $DUSTMASKER_PRGM = $config->{'RMBLAST_DIR'}->{'value'} . "/dustmasker";
 my $RMBLASTN_PRGM   = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
-my $XDFORMAT_PRGM   = $config->{'ABBLAST_DIR'}->{'value'} . "/xdformat";
-my $XDGET_PRGM      = $config->{'ABBLAST_DIR'}->{'value'} . "/xdget";
-my $WUBLASTN_PRGM   = $config->{'ABBLAST_DIR'}->{'value'} . "/blastn";
 my $TRF_DIR         = $config->{'TRF_DIR'}->{'value'};
 my $RSCOUT_DIR      = $config->{'RSCOUT_DIR'}->{'value'};
 my $RECON_DIR       = $config->{'RECON_DIR'}->{'value'};
@@ -279,20 +274,24 @@ foreach my $param ( "RMBLAST_DIR", "TRF_DIR", "RSCOUT_DIR", "RECON_DIR",
   }
 }
 
-# LTRPipeline dependencies
+# LTRPipeline dependencies.  With LTR_FORAGE_DIR set, ltr-forage replaces
+# GenomeTools and LTR_retriever, and the perl threads LTR_retriever needs.
 if ( $options{'LTRStruct'} ) {
-  foreach my $param (
-                      "GENOMETOOLS_DIR", "LTR_RETRIEVER_DIR",
-                      "MAFFT_DIR",       "NINJA_DIR",
-                      "CDHIT_DIR"
-      )
+  my $useForage = ( $config->{'LTR_FORAGE_DIR'}->{'value'} ne "" );
+  my @ltrDeps = ( "MAFFT_DIR", "NINJA_DIR", "CDHIT_DIR" );
+  if ( $useForage ) {
+    push @ltrDeps, "LTR_FORAGE_DIR";
+  } else {
+    push @ltrDeps, "GENOMETOOLS_DIR", "LTR_RETRIEVER_DIR";
+  }
+  foreach my $param ( @ltrDeps )
   {
     if ( !RepModelConfig::validateParam( $param ) ) {
       die
 "\n  LTRPipeline dependency missing or incorrectly set for $param!\n   Rerun ./configure or check your command line to ensure that RepeatModeler\n  has access to and the correct version of this dependency.\n\n";
     }
   }
-  unless ( eval "require threads;" ) 
+  unless ( $useForage || eval "require threads;" ) 
   {
     die "LTRRetriever used in the LTRPipeline depends on perl threads.  This version of\n".
         "perl does not appear to be compiled with the thread option.\n";

@@ -72,7 +72,6 @@ use RepModelConfig;
 use MultAln;
 
 # RepeatMasker Libraries
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use SequenceSimilarityMatrix;
 use CrossmatchSearchEngine;
 use FastaDB;
@@ -80,7 +79,6 @@ use SeqDBI;
 
 #
 # Hopefully crossmatch is defined here
-use RepeatMaskerConfig;
 
 #
 # Version

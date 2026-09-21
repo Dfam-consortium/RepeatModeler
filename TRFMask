@@ -39,6 +39,25 @@ The options are:
 
 =over 4
 
+=item -mode <trf|repeatmasker>
+
+Which masking recipe to use.  Defaults to "trf".
+
+In "trf" mode TRFMask runs one TRF pass with a wide period range and keeps
+hits with a period above one and more than four copies.
+
+In "repeatmasker" mode it follows the simple-repeat masking that
+"RepeatMasker -noint" performs: two TRF passes, one tuned for young tandem
+repeats and one for older ones, each rescored against the simple1 matrix.
+This masks considerably more sequence than "trf" mode and costs a second TRF
+run.  On a 1.2Mb test it masked 29,401 bases where "trf" mode masked 9,622.
+
+RepeatMasker excises the young-repeat hits before its interspersed search.
+There is no interspersed search here and this mode excises nothing, but it
+applies RepeatMasker's excision filter anyway to stay closer to what
+RepeatMasker masks.  The two do not agree exactly: on the same 1.2Mb test
+this mode masked every base RepeatMasker did bar one, and 488 it did not.
+
 =item -h(elp)
 
 Detailed help
@@ -76,14 +95,11 @@ use Getopt::Long;
 
 # RepeatModeler Libraries
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use TRF;
 use TRFSearchResult;
-
-# RepeatMasker Libraries
-use FastaDB;
-use SearchEngineI;
-use SimpleBatcher;
+use Matrix;
+use SearchResult;
+use SearchResultCollection;
 
 #
 # Class Globals & Constants
@@ -95,13 +111,56 @@ my $config   = $RepModelConfig::configuration;
 my $TRF_PRGM = $config->{'TRF_DIR'}->{'value'} . "/trf";
 
 #
+# The two TRF passes RepeatMasker runs when masking simple repeats.  Parameters
+# and score statistics come from runTRFStage() in RepeatMasker.
+#
+my @RM_STAGES = (
+  {
+    name          => "PERFECT",
+    matchWeight   => 2,
+    mismatch      => 7,
+    delta         => 7,
+    pm            => 80,
+    pi            => 10,
+    minScore      => 50,
+    maxPeriod     => 10,
+    minCopyNumber => 4,
+    lambda        => 0.41,
+    mu     => [ 8.51, 1.04, 6.26, 8.65, 10.36, 7.19, 8.81, 10.84, 12.97, 15.07 ],
+    maskLevelFilter => 1,
+    simpleFilter    => 1,
+  },
+  {
+    name            => "DIVERGED",
+    matchWeight     => 2,
+    mismatch        => 3,
+    delta           => 5,
+    pm              => 75,
+    pi              => 20,
+    minScore        => 33,
+    maxPeriod       => 7,
+    minCopyNumber   => 5,
+    lambda          => 0.32,
+    mu              => [ 0.79, 1.00, 4.78, 6.94, 8.68, 9.84, 11.94 ],
+    maskLevelFilter => 0,
+  },
+);
+
+# Rescoring parameters, from runTRFStage()
+my $RM_SIMPLE_MATRIX  = "$FindBin::RealBin/Matrices/crossmatch/simple1.matrix";
+my $RM_GAP_OPEN       = -30;
+my $RM_GAP_EXT        = -15;
+my $RM_XDROP          = 500;
+my $RM_MIN_RESCORE    = 20;
+
+#
 # Option processing
 #  e.g.
 #   -t: Single letter binary option
 #   -t=s: String parameters
 #   -t=i: Number paramters
 #
-my @opts = qw( help );
+my @opts = qw( help mode=s );
 
 #
 # Get the supplied command line options, and set flags
@@ -123,6 +182,10 @@ if ( $options{'help'} ) {
   die;
 }
 
+my $mode = lc( $options{'mode'} || "trf" );
+die $CLASS . ": Unknown -mode '$mode'.  Use 'trf' or 'repeatmasker'.\n"
+    if ( $mode ne "trf" && $mode ne "repeatmasker" );
+
 die $CLASS . ": Missing fasta file!\n"
     if ( !defined $ARGV[ 0 ] || -z $ARGV[ 0 ] );
 my $fastaFile = $ARGV[ 0 ];
@@ -132,9 +195,7 @@ $wrkDir = "." if ( $wrkDir eq "" );
 print "Working directory = $wrkDir\n" if ( $DEBUG );
 
 print "Masking $fastaFile\n" if ( $DEBUG );
-my $maskedFile = $fastaFile . ".masked";
 
-# TODO....determine if we should use /tmp or not?
 my $ver = `$TRF_PRGM -v 2>&1`;
 ( $ver ) = ( $ver =~ /Tandem Repeats Finder, Version (\S+)/ );
 if ( $ver < 4.09 ) {
@@ -142,77 +203,428 @@ if ( $ver < 4.09 ) {
 }
 print "Running: $TRF_PRGM  ( version = $ver )\n" if ( $DEBUG );
 
-my $cmd = "$TRF_PRGM $wrkDir/$fastaFile 2 7 7 80 10 50 500 -ngs -h";
-open IN, "$cmd |" or die "TRFMask: Could not run command $cmd\n";
-print "Running $cmd\n" if ( $DEBUG );
-my %results;
-my $id = "";
-while ( <IN> ) {
+my $results;
+if ( $mode eq "repeatmasker" ) {
+  $results = &collectRepeatMaskerIntervals( "$wrkDir/$fastaFile", $wrkDir );
+}
+else {
+  $results = &collectTRFIntervals( "$wrkDir/$fastaFile" );
+}
+
+my $repeatsMasked =
+    &writeMaskedFasta( "$wrkDir/$fastaFile", "$wrkDir/$fastaFile.masked",
+                       $results );
+
+print "       $repeatsMasked Tandem Repeats Masked\n";
+
+1;
+
+##-------------------------------------------------------------------------##
+
+=head2 collectTRFIntervals()
+
+  Use: my $results = collectTRFIntervals( $fastaFile );
+
+  Run a single TRF pass over $fastaFile and return the intervals to mask as
+  a hash keyed on sequence identifier, each value an array of [start, end]
+  pairs in 1-based coordinates.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub collectTRFIntervals {
+  my $inputFile = shift;
+
+  my %results = ();
+  my $id      = "";
+
+  my $cmd = "$TRF_PRGM $inputFile 2 7 7 80 10 50 500 -ngs -h";
+  open IN, "$cmd |" or die "TRFMask: Could not run command $cmd\n";
+  print "Running $cmd\n" if ( $DEBUG );
+  while ( <IN> ) {
 
 # @gi|521 gi|579970:1-422
 # 224 268 22 2.0 22 87 8 65 13 20 37 28 1.90 TCAGTAGTCGTGCTGCATGGGC TCAGTAGCTGTGCTGCATGGGCTCAGTAGTCGTGGTGCATGGGCT ATTGTGGTGGCTTCTCTTATTGCTGAACATAGGCTCGAGGCACCCAGACT TATGTGCCCCAGCATGCGGGATCTTCCTAGACAGGGATTGAAAGAACCCA
-  if ( /^@(\S+)/ ) {
-    $id = $1;
-  }
-  elsif ( /^(\d+)\s+(\d+)\s+(\d+)\s+([\d\.]+)/ ) {
+    if ( /^@(\S+)/ ) {
+      $id = $1;
+    }
+    elsif ( /^(\d+)\s+(\d+)\s+(\d+)\s+([\d\.]+)/ ) {
 
-    # $1 startPos
-    # $2 endPos
-    # $3 period
-    # $4 copies
-    if ( $3 > 1 && $4 > 4 ) {
-      push @{ $results{$id} }, [ $1, $2 ];
+      # $1 startPos
+      # $2 endPos
+      # $3 period
+      # $4 copies
+      if ( $3 > 1 && $4 > 4 ) {
+        push @{ $results{$id} }, [ $1, $2 ];
+      }
     }
   }
+  close IN;
+
+  return \%results;
 }
-close IN;
 
-open IN, "<$wrkDir/$fastaFile"
-    or die "TRFMask: Could not open $fastaFile for reading!\n";
-open OUT, ">$wrkDir/$fastaFile.masked"
-    or die "TRFMask: Could not open $wrkDir/$fastaFile.masked for writing!\n";
-my $seq;
-my $id;
-my $fullHDR;
-my $repeatsMasked = 0;
-while ( <IN> ) {
+##-------------------------------------------------------------------------##
 
-  if ( /^>(\S+)/ ) {
-    my $tmpID  = $1;
-    my $tmpHDR = $_;
-    if ( $seq ) {
-      if ( exists $results{$id} ) {
-        foreach my $result ( @{ $results{$id} } ) {
-          my $len = $result->[ 1 ] - $result->[ 0 ] + 1;
-          substr( $seq, $result->[ 0 ] - 1, $len ) = "N" x $len;
-          $repeatsMasked++;
+=head2 collectRepeatMaskerIntervals()
+
+  Use: my $results = collectRepeatMaskerIntervals( $fastaFile, $workDir );
+
+  Run the two TRF passes that "RepeatMasker -noint" uses and return the
+  intervals to mask, in the same form as collectTRFIntervals().
+
+  Each pass discards hits below its copy-number threshold, rescores the
+  remainder against the simple1 matrix, and drops anything scoring below
+  $RM_MIN_RESCORE.  Rescoring also yields the divergence figures, and splits
+  a hit into fragments when it finds more than one well-aligned region.  The
+  raw scores become bit scores, which is what RepeatMasker reports and what
+  applySimpleFilter() expects to compare against.
+
+  The first pass also goes through applySimpleFilter(), matching what
+  RepeatMasker does with its young tandem repeats.
+
+  Both passes read the original sequence.  RepeatMasker runs the second pass
+  over the output of the first, so where it has excised a young repeat the
+  second pass sees different sequence than it does here.  Combining the
+  intervals from both passes covers nearly the same bases either way; see the
+  figures under -mode above.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub collectRepeatMaskerIntervals {
+  my $inputFile = shift;
+  my $workDir   = shift;
+
+  die "$CLASS: Could not find the simple repeat matrix $RM_SIMPLE_MATRIX\n"
+      if ( !-s $RM_SIMPLE_MATRIX );
+  my $matrix = Matrix->new( fileName => $RM_SIMPLE_MATRIX );
+
+  my %results = ();
+  foreach my $stage ( @RM_STAGES ) {
+
+    my $trf = TRF->new( pathToEngine => $TRF_PRGM,
+                        workDir      => $workDir );
+    $trf->setMatchWeight( $stage->{'matchWeight'} );
+    $trf->setMismatchPenalty( $stage->{'mismatch'} );
+    $trf->setDelta( $stage->{'delta'} );
+    $trf->setPm( $stage->{'pm'} );
+    $trf->setPi( $stage->{'pi'} );
+    $trf->setMinScore( $stage->{'minScore'} );
+    $trf->setMaxPeriod( $stage->{'maxPeriod'} );
+
+    print "Running TRF stage " . $stage->{'name'} . "\n" if ( $DEBUG );
+    my ( $retCode, $trfResults, $trfOutFile, $trfErrFile ) =
+        $trf->search( sequenceFile => $inputFile,
+                      workDir      => $workDir );
+
+    if ( defined $trfErrFile && $trfErrFile ne "" ) {
+      my $signal  = $retCode & 127;
+      my $prgcode = $retCode >> 8;
+      die "$CLASS: TRF returned an error in the "
+          . $stage->{'name'}
+          . " stage ( return code = $prgcode, signal = $signal )\n"
+          . "TRF parameters: "
+          . $trf->getParameters() . "\n";
+    }
+
+    next if ( !defined $trfResults );
+    print "  TRF returned " . $trfResults->size() . " results\n" if ( $DEBUG );
+
+    my $keptResults = SearchResultCollection->new();
+    for ( my $i = $trfResults->size() - 1 ; $i >= 0 ; $i-- ) {
+      my $result = $trfResults->get( $i );
+      bless $result, "TRFSearchResult";
+
+      next if ( $result->getCopyNumber() <= $stage->{'minCopyNumber'} );
+
+      my ( $newScore, $kimura, $CpGSites, $percIns, $percDel, $scoreArray,
+           $goodRegions )
+          = $result->rescoreAlignment( scoreMatrix    => $matrix,
+                                       gapOpenPenalty => $RM_GAP_OPEN,
+                                       gapExtPenalty  => $RM_GAP_EXT,
+                                       xDrop          => $RM_XDROP );
+
+      next if ( $newScore < $RM_MIN_RESCORE );
+
+      my $period = $result->getPeriod();
+      if ( $period >= 1 && $period <= scalar( @{ $stage->{'mu'} } ) ) {
+        my $bitScore =
+            sprintf( "%.0d",
+                     $result->rawToBitScore( $stage->{'lambda'},
+                                             $stage->{'mu'}->[ $period - 1 ] )
+            );
+        $result->setScore( $bitScore );
+      }
+
+      $result->setPctDiverge( sprintf( "%0.2f", $kimura ) );
+      $result->setPctInsert( sprintf( "%0.2f",  $percIns ) );
+      $result->setPctDelete( sprintf( "%0.2f",  $percDel ) );
+
+      if ( $#{$goodRegions} > 1 ) {
+        my $frags = $result->fragmentSearchResult( regionList => $goodRegions );
+        foreach my $frag ( @{$frags} ) {
+          $keptResults->add( $frag );
         }
       }
-      $seq =~ s/(.{50})/$1\n/g;
-      print OUT "$fullHDR$seq\n";
+      else {
+        $keptResults->add( $result );
+      }
     }
-    $id      = $tmpID;
-    $fullHDR = $tmpHDR;
-    $seq     = "";
-    next;
-  }
-  s/[\n\r\s]+//g;
-  $seq .= $_;
-}
-if ( $seq ) {
-  if ( exists $results{$id} ) {
-    foreach my $result ( @{ $results{$id} } ) {
-      my $len = $result->[ 1 ] - $result->[ 0 ] + 1;
-      substr( $seq, $result->[ 0 ] - 1, $len ) = "N" x $len;
-      $repeatsMasked++;
-    }
-  }
-  $seq =~ s/(.{50})/$1\n/g;
-  print OUT "$fullHDR$seq\n";
-}
-close IN;
-close OUT;
 
-print "       $repeatsMasked Tandem Repeats Masked\n";
+    if ( $stage->{'maskLevelFilter'} ) {
+      $keptResults->maskLevelFilter( value => 1 );
+    }
+    if ( $stage->{'simpleFilter'} ) {
+      &applySimpleFilter( $keptResults );
+    }
+    print "  Kept " . $keptResults->size() . " results\n" if ( $DEBUG );
+
+    for ( my $i = 0 ; $i < $keptResults->size() ; $i++ ) {
+      my $result = $keptResults->get( $i );
+      push @{ $results{ $result->getQueryName() } },
+          [ $result->getQueryStart(), $result->getQueryEnd() ];
+    }
+  }
+
+  return \%results;
+}
+
+##-------------------------------------------------------------------------##
+
+=head2 applySimpleFilter()
+
+  Use: applySimpleFilter( $searchResultCollection );
+
+  Apply the filter RepeatMasker runs over the young tandem repeats, ported
+  from the "simple" class of filterResults() in RepeatMasker.
+
+  RepeatMasker excises these hits before its interspersed search, so the
+  filter decides what it may safely cut out: it drops poly-A tracts and
+  satellites, and keeps the rest only where divergence is low enough for the
+  complexity of the repeat unit.  This mode cuts out nothing, but runs the
+  filter anyway to stay closer to what RepeatMasker masks.
+
+  The filter also trims an overlapping hit back to the end of the one before
+  it, and drops a hit the preceding one already covers.  It modifies and
+  removes results in place.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub applySimpleFilter {
+  my $searchResults = shift;
+
+  my @deleteList    = ();
+  my $undelPrevious = undef;
+  my $previous;
+
+  for ( my $i = 0 ; $i < $searchResults->size() ; $i++ ) {
+    my $current = $searchResults->get( $i );
+    my $name    = $current->getSubjName();
+    my $score   = $current->getScore();
+
+    # NHMMSCAN can report insertion percentages that drive this to zero or
+    # below, so fall back to the raw divergence in that case.
+    my $diverge;
+    if ( ( 100 - $current->getPctInsert() ) <= 0 ) {
+      $diverge = $current->getPctDiverge();
+    }
+    else {
+      $diverge = 100 *
+          ( $current->getPctDiverge() / ( 100 - $current->getPctInsert() ) );
+    }
+    my $gaps = $current->getPctDelete() + $current->getPctInsert();
+
+    # Only consider the preceding element when it sits in the same sequence
+    # and has not itself been marked for deletion.
+    my $havePreviousElement = 0;
+    if ( $i > 0 ) {
+      $havePreviousElement = 1;
+      $previous            = $searchResults->get( $i - 1 );
+      if ( $current->getQueryName() ne $previous->getQueryName()
+           || ( @deleteList && $deleteList[ $#deleteList ] == $i - 1 ) )
+      {
+        $havePreviousElement = 0;
+        $previous            = undef;
+      }
+    }
+
+    if ( $name !~ /AAAAA|\(A\)n/ && $name !~ /Satellite/ ) {
+
+      # The divergence a repeat is allowed depends on how complex its unit
+      # is: a low complexity unit has to be a closer match to be kept.
+      my ( $length, $complex ) = &calcSimpleRepeatComplexityFromName( $name );
+      my $cutoff = 16 - 3 * ( $length - $complex );
+
+      # RepeatMasker trims here because excising two overlapping repeats cuts
+      # some bases out twice and takes flanking DNA with them.
+      if (    $havePreviousElement
+           && $previous->getQueryEnd() >= $current->getQueryStart() )
+      {
+        $current->setQueryStart( $previous->getQueryEnd() + 1 );
+      }
+      unless (    $name !~ /\([GA]*\)/ && $diverge + $gaps / 1.5 <= $cutoff
+               || $diverge + $gaps < ( $score - 200 ) / 50
+               || $diverge + $gaps <= 5 )
+      {
+        print "Deleting annotation ($i): Filter #18.\n" if ( $DEBUG );
+        push @deleteList, $i;
+      }
+    }
+    else {
+      print "Deleting annotation ($i): Filter #19.\n" if ( $DEBUG );
+      push @deleteList, $i;
+    }
+
+    # Drop anything wholly contained within the previous surviving element.
+    if (
+         ( !@deleteList || $deleteList[ $#deleteList ] != $i )
+         && $undelPrevious
+         && $current->getQueryName() eq $undelPrevious->getQueryName()
+         && $undelPrevious->getQueryEnd() >= $current->getQueryEnd()
+        )
+    {
+      print "Deleting annotation ($i): Filter #26 - Contained by filter\n"
+          if ( $DEBUG );
+      push @deleteList, $i;
+    }
+
+    $undelPrevious = $current
+        if ( !@deleteList
+             || $deleteList[ $#deleteList ] != $i );
+  }
+
+  if ( @deleteList ) {
+    my %seen           = ();
+    my @uniqDeleteList = grep { !$seen{$_}++ } @deleteList;
+    foreach my $index ( sort { $b <=> $a } @uniqDeleteList ) {
+      $searchResults->remove( $index );
+    }
+  }
+}
+
+##-------------------------------------------------------------------------##
+
+=head2 calcSimpleRepeatComplexityFromName()
+
+  Use: my ( $length, $complexity ) =
+             calcSimpleRepeatComplexityFromName( $name );
+
+  Return the length of the repeat unit named in a simple repeat annotation
+  such as "(AAAT)n#Simple_repeat", and its Shannon entropy over A/C/G/T
+  scaled by that length and measured in base-4 units.  A unit of uniform
+  composition scores its own length; a homopolymer scores zero.  Ported from
+  RepeatMasker.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub calcSimpleRepeatComplexityFromName {
+  my %num  = ( "A", 0, "C", 0, "G", 0, "T", 0 );
+  my %log  = ( "A", 0, "C", 0, "G", 0, "T", 0 );
+  my $name = shift;
+  $name =~ s/^\((\w+).*/$1/;
+  my $length = length $name;
+  my @bases = split( //, $name );
+  foreach my $base ( @bases ) {
+    ++$num{$base};
+  }
+  $log{A} = $num{A} * log( $num{A} ) if $num{A};
+  $log{C} = $num{C} * log( $num{C} ) if $num{C};
+  $log{G} = $num{G} * log( $num{G} ) if $num{G};
+  $log{T} = $num{T} * log( $num{T} ) if $num{T};
+  my $complex =
+      ( $log{A} + $log{C} + $log{G} + $log{T} - $length * log( $length ) ) / -
+      log( 4 );
+  return ( $length, $complex );
+}
+
+##-------------------------------------------------------------------------##
+
+=head2 writeMaskedFasta()
+
+  Use: my $count = writeMaskedFasta( $inputFile, $outputFile, $results );
+
+  Write $inputFile to $outputFile with every interval in $results replaced by
+  N.  Returns the number of intervals masked.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub writeMaskedFasta {
+  my $inputFile  = shift;
+  my $outputFile = shift;
+  my $results    = shift;
+
+  open IN, "<$inputFile"
+      or die "TRFMask: Could not open $inputFile for reading!\n";
+  open OUT, ">$outputFile"
+      or die "TRFMask: Could not open $outputFile for writing!\n";
+
+  my $seq;
+  my $id;
+  my $fullHDR;
+  my $repeatsMasked = 0;
+
+  while ( <IN> ) {
+
+    if ( /^>(\S+)/ ) {
+      my $tmpID  = $1;
+      my $tmpHDR = $_;
+      if ( $seq ) {
+        $repeatsMasked += &maskSequence( \$seq, $results->{$id} );
+        $seq =~ s/(.{50})/$1\n/g;
+        print OUT "$fullHDR$seq\n";
+      }
+      $id      = $tmpID;
+      $fullHDR = $tmpHDR;
+      $seq     = "";
+      next;
+    }
+    s/[\n\r\s]+//g;
+    $seq .= $_;
+  }
+  if ( $seq ) {
+    $repeatsMasked += &maskSequence( \$seq, $results->{$id} );
+    $seq =~ s/(.{50})/$1\n/g;
+    print OUT "$fullHDR$seq\n";
+  }
+  close IN;
+  close OUT;
+
+  return $repeatsMasked;
+}
+
+##-------------------------------------------------------------------------##
+
+=head2 maskSequence()
+
+  Use: my $count = maskSequence( \$seq, $intervalList );
+
+  Replace each [start, end] interval in $intervalList with N.  Intervals are
+  1-based and may overlap.  Returns the number of intervals applied.
+
+=cut
+
+##-------------------------------------------------------------------------##
+sub maskSequence {
+  my $seqRef       = shift;
+  my $intervalList = shift;
+
+  return 0 if ( !defined $intervalList );
+
+  my $count = 0;
+  foreach my $interval ( @{$intervalList} ) {
+    my ( $start, $end ) = @{$interval};
+    $end = length( $$seqRef ) if ( $end > length( $$seqRef ) );
+    next if ( $start < 1 || $end < $start );
+    my $len = $end - $start + 1;
+    substr( $$seqRef, $start - 1, $len ) = "N" x $len;
+    $count++;
+  }
+
+  return $count;
+}
 
 1;

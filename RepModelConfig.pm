@@ -102,6 +102,19 @@ BEGIN {
                                    'required' => 0,
                                    'value' => '/usr/local/LTR_retriever-2.9.0'
                                  },
+          'LTR_FORAGE_DIR' => {
+                                'command_line_override' => 'ltr_forage_dir',
+                                'description' => 'The path to the directory holding the ltr-forage and sufr programs.  When set, the LTR structural pipeline runs ltr-forage in place of GenomeTools LTRharvest and LTR_retriever, and GENOMETOOLS_DIR and LTR_RETRIEVER_DIR are not needed.',
+                                'environment_override' => 'LTR_FORAGE_DIR',
+                                'expected_binaries' => [
+                                                         'ltr-forage',
+                                                         'sufr'
+                                                       ],
+                                'expected_files' => [],
+                                'param_type' => 'directory',
+                                'required' => 0,
+                                'value' => ''
+                              },
           'MAFFT_DIR' => {
                            'command_line_override' => 'mafft_dir',
                            'description' => 'The path to the installation of the MAFFT multiple alignment program.',
@@ -114,6 +127,43 @@ BEGIN {
                            'required' => 0,
                            'value' => '/usr/local/mafft/bin'
                          },
+          'MMSEQS_DIR' => {
+                            'command_line_override' => 'mmseqs_dir',
+                            'description' => 'The path to the bin directory of the MMseqs2 installation.  nail uses mmseqs to seed its protein search.  nail will absorb mmseqs in a future release, and this setting goes with it.',
+                            'environment_override' => 'MMSEQS_DIR',
+                            'expected_binaries' => [
+                                                     'mmseqs'
+                                                   ],
+                            'expected_files' => [],
+                            'param_type' => 'directory',
+                            'required' => 1,
+                            'value' => '/usr/local/MMseqs2-18/bin'
+                          },
+          'NAIL_DIR' => {
+                          'command_line_override' => 'nail_dir',
+                          'description' => 'The path to the directory holding the nail program.  RepeatClassifier uses nail for its protein search, in place of the NCBI blastx it once called.',
+                          'environment_override' => 'NAIL_DIR',
+                          'expected_binaries' => [
+                                                   'nail'
+                                                 ],
+                          'expected_files' => [],
+                          'param_type' => 'directory',
+                          'required' => 1,
+                          'value' => '/usr/local/nail-v0.7.1'
+                        },
+          'NCBIBLAST_DIR' => {
+                               'command_line_override' => 'ncbiblast_dir',
+                               'description' => 'The path to the bin directory of the NCBI BLAST+ toolkit.  The LTR structural pipeline needs it, for the blastn and makeblastdb that LTR_retriever runs, and RepeatModeler needs its blastdbcmd only to convert a database an earlier release built.  Leave it unset otherwise.  Leave unset also to look in RMBLAST_DIR and then on PATH; a 2.x RMBlast installation ships the toolkit, so this only needs setting alongside a 3.x RMBlast.',
+                               'environment_override' => 'NCBIBLAST_DIR',
+                               'expected_binaries' => [
+                                                        'blastn',
+                                                        'makeblastdb'
+                                                      ],
+                               'expected_files' => [],
+                               'param_type' => 'directory',
+                               'required' => 0,
+                               'value' => ''
+                             },
           'NINJA_DIR' => {
                            'command_line_override' => 'ninja_dir',
                            'description' => 'The path to the installation of the Ninja phylogenetic analysis package.',
@@ -163,20 +213,6 @@ BEGIN {
                                   'required' => 1,
                                   'value' => '/home/rhubley/projects/Claude/RepeatMasker'
                                 },
-          'NCBIBLAST_DIR' => {
-                               'command_line_override' => 'ncbiblast_dir',
-                               'description' => 'The path to the bin directory of the NCBI BLAST+ toolkit.  RepeatClassifier needs its blastx and makeblastdb, and the LTR structural pipeline needs its blastn for LTR_retriever.  Leave unset to look in RMBLAST_DIR and then on PATH; a 2.x RMBlast installation ships the toolkit, so this only needs setting alongside a 3.x RMBlast.',
-                               'environment_override' => 'NCBIBLAST_DIR',
-                               'expected_binaries' => [
-                                                        'blastx',
-                                                        'blastn',
-                                                        'makeblastdb'
-                                                      ],
-                               'expected_files' => [],
-                               'param_type' => 'directory',
-                               'required' => 0,
-                               'value' => ''
-                             },
           'RMBLAST_DIR' => {
                              'command_line_override' => 'rmblast_dir',
                              'description' => 'The path to the bin directory of RMBlast (2.17.1 or higher, including the 3.x series).',
@@ -608,6 +644,34 @@ BEGIN {
         . "environment variable, or pass -ncbiblast_dir ).\n";
   }
 
+  #
+  # Locate a program RepeatModeler does not configure a directory for, such
+  # as cross_match or nhmmer.  Searches PATH and returns the full path, or
+  # undef if it finds nothing executable.
+  #
+  sub findProgramOnPath {
+    my $name = shift;
+
+    foreach my $dir ( split( /:/, $ENV{'PATH'} // "" ) ) {
+      next if ( $dir eq "" );
+      my $path = "$dir/$name";
+      return $path if ( -x $path && !-d $path );
+    }
+    return undef;
+  }
+
+  #
+  # The message to die with when findProgramOnPath() comes up empty.
+  #
+  sub programMissingMessage {
+    my $name    = shift;
+    my $purpose = shift;
+
+    return "Could not find the program '$name', which $purpose.\n"
+        . "It is not on your PATH.  Install it and add its directory to\n"
+        . "your PATH.\n";
+  }
+
   sub getDependencyVersion {
     my $param = shift;
 
@@ -691,6 +755,12 @@ BEGIN {
       #Compile flags:  -g -Wall -Wunused-parameter -pipe -fPIC -Wpointer-arith -Wno-unknown-pragmas -O3 -Werror
       $tmpStr = `$value/gt -version 2>&1`;
       $tmpStr =~ /\(GenomeTools\)\s+(\d+\.\d+\.\d+)/;
+      $version = $1;
+    }elsif ( $param eq "LTR_FORAGE_DIR" ) {
+      # ltr-forage --version
+      # ltr-forage 0.1.0
+      $tmpStr = `$value/ltr-forage --version 2>&1`;
+      $tmpStr =~ /ltr-forage\s+(\d+\.\d+\.\d+)/;
       $version = $1;
     }elsif ( $param eq "LTR_RETRIEVER_DIR" ) {
       # More complex.  Older versions only printed the version in the

@@ -32,9 +32,15 @@ LTRPipeline - Run a structural LTR finder on the genome and polish the results
 
 =head1 SYNOPSIS
 
-  LTRPipeline [-version] [-threads #] <input_sequence.fa>
+  LTRPipeline [-version] [-threads #] [-ltr_hmm <file>] <input_sequence.fa>
 
 =head1 DESCRIPTION
+
+Finds LTR retrotransposon candidates in the input sequence, keeps the ones
+with structural or protein evidence, and builds families from them.  With
+LTR_FORAGE_DIR configured, ltr-forage does the finding, the boundary
+re-extension, the protein-domain search and the filtering in one run.
+Without it, the earlier path runs GenomeTools LTRharvest and LTR_retriever.
 
 The options are:
 
@@ -43,6 +49,12 @@ The options are:
 =item -version
 
 Displays the version of the program
+
+=item -ltr_hmm <file>
+
+HMMER3 profile file for the protein-domain search when ltr-forage runs.
+Defaults to Libraries/TEfam.hmm under the RepeatModeler directory, then to
+database/TEfam.hmm under LTR_RETRIEVER_DIR.
 
 =back
 
@@ -116,6 +128,7 @@ my @getopt_args = (
                     '-giToID=s',
                     '-LTRMaxSeqLen=i',
                     '-threads=i',
+                    '-ltr_hmm=s',
 );
 
 # Add configuration parameters as additional command-line options
@@ -175,6 +188,7 @@ my $config = $RepModelConfig::configuration;
 #my $LTR_DETECTOR_DIR = $config->{'LTR_DETECTOR_DIR'}->{'value'};
 my $LTR_DETECTOR_DIR;
 my $LTR_RETRIEVER_DIR = $config->{'LTR_RETRIEVER_DIR'}->{'value'};
+my $LTR_FORAGE_DIR    = $config->{'LTR_FORAGE_DIR'}->{'value'};
 my $MAFFT_DIR         = $config->{'MAFFT_DIR'}->{'value'};
 my $NINJA_DIR         = $config->{'NINJA_DIR'}->{'value'};
 my $GENOMETOOLS_DIR   = $config->{'GENOMETOOLS_DIR'}->{'value'};
@@ -220,7 +234,28 @@ elapsedTime( "runtime" );    # Setup the timers
 
 # Run LTR Detector
 elapsedTime( "step" );
-if ( $useLtrDet ) {
+if ( $LTR_FORAGE_DIR ) {
+  print "Running ltr-forage...";
+  my $ltrHmm = $options{'ltr_hmm'};
+  if ( !$ltrHmm ) {
+    foreach my $cand ( "$FindBin::RealBin/Libraries/TEfam.hmm",
+                       "$LTR_RETRIEVER_DIR/database/TEfam.hmm" ) {
+      if ( -s $cand ) { $ltrHmm = $cand; last; }
+    }
+  }
+  die "LTRPipeline: No profile HMM file for the domain search.  Pass -ltr_hmm <file>\n"
+      . "             or place TEfam.hmm in $FindBin::RealBin/Libraries.\n"
+      if ( !$ltrHmm || !-s $ltrHmm );
+  my $ltrCount = &runLtrForage( $LTR_FORAGE_DIR, $inputFile, $ltrHmm,
+                                "$tempDir/LtrRetriever-redundant-results.fa",
+                                $threads, $ltrSeqLimit, $tempDir );
+  if ( $ltrCount == 0 || ! -s "$tempDir/LtrRetriever-redundant-results.fa" ) {
+    print "LTRPipeline: No elements kept by ltr-forage.\n";
+    exit;
+  }
+  print "     : " . elapsedTime( "step" ) . "\n";
+}
+elsif ( $useLtrDet ) {
   print "Running LtrDetector...";
   my $numAnnots =
       &runLtrDetector( $LTR_DETECTOR_DIR, $inputFile,
@@ -244,24 +279,26 @@ else {
     exit;
   }
 }
-print "     : " . elapsedTime( "step" ) . "\n";
 
-# Postprocess results using LTR_Retriever
-elapsedTime( "step" );
-print "Running Ltr_retriever...";
-my $ltrCount = &runLtrRetriever(
-                  $LTR_RETRIEVER_DIR,
-                  $inputFile,
-                  "$tempDir/raw-struct-results.txt",
-                  "$tempDir/LtrRetriever-redundant-results.fa",
-                  $threads,
-                  $ltrSeqLimit
-);
-if ( $ltrCount == 0 || ! -s "$tempDir/LtrRetriever-redundant-results.fa" ) {
-  print "LTRPipeline: No results after LTR_Retriever filtering.\n";
-  exit;
+# Postprocess results using LTR_Retriever ( not needed after ltr-forage )
+if ( !$LTR_FORAGE_DIR ) {
+  print "     : " . elapsedTime( "step" ) . "\n";
+  elapsedTime( "step" );
+  print "Running Ltr_retriever...";
+  my $ltrCount = &runLtrRetriever(
+                    $LTR_RETRIEVER_DIR,
+                    $inputFile,
+                    "$tempDir/raw-struct-results.txt",
+                    "$tempDir/LtrRetriever-redundant-results.fa",
+                    $threads,
+                    $ltrSeqLimit
+  );
+  if ( $ltrCount == 0 || ! -s "$tempDir/LtrRetriever-redundant-results.fa" ) {
+    print "LTRPipeline: No results after LTR_Retriever filtering.\n";
+    exit;
+  }
+  print "  : " . elapsedTime( "step" ) . "\n";
 }
-print "  : " . elapsedTime( "step" ) . "\n";
 
 #
 # Filter out sequences greater than LTRMaxSeqLen if requested
@@ -567,6 +604,121 @@ sub runMafft {
     rmtree( $tmpDir );
   }
 
+}
+
+##-------------------------------------------------------------------------##
+## Use: my $count = runLtrForage( $binDir, $seqFile, $hmmFile, $outFile,
+##                                $threads, $ltrSeqLimit, $wrkDir );
+##
+##   Build a sufr index of the sequence file and run ltr-forage on it with
+##   boundary re-extension, the protein-domain search against $hmmFile and
+##   the standard evidence rule.  ltr-forage writes the kept elements as a
+##   library (left LTR, internal region, right LTR per element); this
+##   rewrites the identifiers to "seq:start..end_LTR" and "seq:start..end_INT"
+##   for the family-building steps, which key on the _LTR and _INT suffixes.
+##   Sequences are in genome orientation.  When the library holds more than
+##   $ltrSeqLimit sequences it is clustered with cd-hit-est at LTR_retriever's
+##   settings (80% identity over 90% of both sequences), as the old path
+##   fell back to LTR_retriever's clustered library at the same limit.
+##   Returns the number of records written divided by three, as an element
+##   count (the library holds two LTRs and one internal region per element).
+##
+##-------------------------------------------------------------------------##
+sub runLtrForage {
+  my $binDir      = shift;
+  my $seqFile     = shift;
+  my $hmmFile     = shift;
+  my $outFile     = shift;
+  my $threads     = shift;
+  my $ltrSeqLimit = shift;
+  my $wrkDir      = shift;
+
+  die "LTRPipeline::runLtrForage : Could not find input file $seqFile\n"
+      if ( !-s $seqFile );
+
+  my $errorFlag = 0;
+  my $tmpDir;
+  if ( !defined $wrkDir || !-d $wrkDir ) {
+    $tmpDir = &createTempDir( [ dirname( $seqFile ), cwd() ], "LFOR" );
+  }
+  else {
+    $tmpDir = &createTempDir( [ $wrkDir ], "LFOR" );
+  }
+  print "LTRPipeline::runLtrForage : tmpdir = $tmpDir\n" if ( $DEBUG );
+
+  my $full_seqFile = File::Spec->rel2abs( $seqFile );
+  my $cmd = "$binDir/sufr create --dna -o $tmpDir/seq.sufr $full_seqFile "
+          . "> $tmpDir/sufr.log 2>&1";
+  print "LTRPipeline::runLtrForage : Running $cmd\n" if ( $DEBUG );
+  if ( system( $cmd ) != 0 ) {
+    warn "LTRPipeline: sufr failed to build the suffix array. Error code: "
+        . ( $? >> 8 ) . "  See $tmpDir/sufr.log\n";
+    $errorFlag = 1;
+  }
+
+  my $count = 0;
+  if ( !$errorFlag ) {
+    $cmd = "$binDir/ltr-forage $tmpDir/seq.sufr --reextend"
+         . " --domain-hmm $hmmFile --keep standard"
+         . " --library $tmpDir/library.fa --format tsv"
+         . " -j $threads"
+         . " > $tmpDir/candidates.tsv 2> $tmpDir/ltr-forage.log";
+    print "LTRPipeline::runLtrForage : Running $cmd\n" if ( $DEBUG );
+    if ( system( $cmd ) != 0 ) {
+      warn "LTRPipeline: ltr-forage failed. Error code: " . ( $? >> 8 )
+          . "  See $tmpDir/ltr-forage.log\n";
+      $errorFlag = 1;
+    }
+  }
+
+  if ( !$errorFlag && -s "$tmpDir/library.fa" ) {
+    my $numSeqs = 0;
+    open IN, "<$tmpDir/library.fa" or die;
+    while ( <IN> ) { $numSeqs++ if ( /^>/ ); }
+    close IN;
+    if ( $numSeqs > $ltrSeqLimit ) {
+      $cmd = "$CDHIT_DIR/cd-hit-est -c 0.8 -G 0.8 -s 0.9 -aL 0.9 -aS 0.9 -M 0"
+           . " -T $threads -i $tmpDir/library.fa -o $tmpDir/library.nr.fa"
+           . " > $tmpDir/cd-hit.log 2>&1";
+      print "LTRPipeline::runLtrForage : $numSeqs sequences exceed the limit of $ltrSeqLimit; running $cmd\n" if ( $DEBUG );
+      if ( system( $cmd ) != 0 || ! -s "$tmpDir/library.nr.fa" ) {
+        warn "LTRPipeline: cd-hit-est failed on the ltr-forage library. Error code: " . ( $? >> 8 )
+            . "  See $tmpDir/cd-hit.log\n";
+        $errorFlag = 1;
+      }
+      else {
+        rename( "$tmpDir/library.fa", "$tmpDir/library.redundant.fa" );
+        rename( "$tmpDir/library.nr.fa", "$tmpDir/library.fa" );
+      }
+    }
+  }
+
+  if ( !$errorFlag && -s "$tmpDir/library.fa" ) {
+    open IN, "<$tmpDir/library.fa"
+        or die "LTRPipeline::runLtrForage : Could not open $tmpDir/library.fa!";
+    open OUT, ">$outFile"
+        or die "LTRPipeline::runLtrForage : Could not open $outFile for writing!";
+    while ( <IN> ) {
+      # >chr22:7291483..7292450_LTR#LTR/Gypsy domain,tsd6,tgca
+      if ( /^>(\S+?):(\d+)\.\.(\d+)_(LTR|INT)\S*\s*(.*)$/ ) {
+        $count++;
+        print OUT ">$1:$2..$3_$4 [forward] $5\n";
+      }
+      else {
+        print OUT $_;
+      }
+    }
+    close IN;
+    close OUT;
+    # Three records per element before clustering
+    $count = int( ( $count + 2 ) / 3 );
+  }
+
+  unless ( $DEBUG || $errorFlag ) {
+    rmtree( $tmpDir );
+  }
+  print "LTRPipeline::runLtrForage : Returning $count elements.\n" if ( $DEBUG );
+  return $count;
 }
 
 sub runLtrRetriever {

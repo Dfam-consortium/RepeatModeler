@@ -176,7 +176,6 @@ use SeedAlignment;
 
 # RepeatMasker Libraries
 use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
 use SearchResultCollection;
 
 use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION);
@@ -2538,11 +2537,14 @@ sub _alignFromSearchResultCollection {
     $start += $totalGaps[ $start ];
     $object->setAlignedStart( $l, $start );
     my $seq = '';
-    my $len = length( $result->$instSeq() );
+    # Fetch both strings once, not through a method call per base
+    my $instStr = $result->$instSeq();
+    my $refStr  = $result->$refSeq();
+    my $len = length( $instStr );
     my $k   = $result->$refStart() - $tMin;    # position in ungapped ref
     foreach $j ( 0 .. $len ) {
-      my $n = substr( $result->$instSeq(), $j, 1 );
-      my $a = substr( $result->$refSeq(),  $j, 1 );
+      my $n = substr( $instStr, $j, 1 );
+      my $a = substr( $refStr,  $j, 1 );
       if ( $a ne '-' ) {
         if ( $useOldBuggyVersion || ($j > 0 && $j < $len) ) {
           my $numgaps = $refGapPattern[ $k ];
@@ -5827,7 +5829,7 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
   Plants in particular also methylate the cytosine at additional sites:
   Cp[ACT]pG and Cp[ACT]p[ACT].
 
-  Colot, Vincent, and Jean¿Luc Rossignol. "Eukaryotic DNA methylation as an evolutionary device." Bioessays 21.5 (1999): 402-411.
+  Colot, Vincent, and Jeanï¿½Luc Rossignol. "Eukaryotic DNA methylation as an evolutionary device." Bioessays 21.5 (1999): 402-411.
 
 
 
@@ -5969,6 +5971,7 @@ sub buildConsensusFromArray {
   #   go through the consensus and consider changing each dinucleotide
   #   to a 'CG'
   #
+  my $upperCased = 0;
 FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
     next if ( substr( $consensus, $i, 1 ) eq '-' );
     my $CGscore = 0;
@@ -5984,8 +5987,13 @@ FLOOP: foreach $i ( 0 .. length( $consensus ) - 2 ) {
       last FLOOP if ( $k >= length( $consensus ) );
     }
     my $consDNRight = substr( $consensus, $k, 1 );
+    # Uppercase the sequences once, on first use.  This changes the
+    # caller's array, which callers may rely on.
+    if ( !$upperCased ) {
+      $_ = uc( $_ ) foreach ( @{$sequences} );
+      $upperCased = 1;
+    }
     foreach ( @{$sequences} ) {
-      $_ = uc($_);
       my $j = $i;
       next if ( $j >= length( $_ ) );
       my $hitDNLeft = substr( $_, $j, 1 );
@@ -6846,7 +6854,7 @@ sub createGreedyTilingPath {
  #
  # Sort hitIDArray by hitArrayCollection start position
  #
- #@newHitArrayCollection = sort { $a->[0] <=> $b->[0] } @newHitArrayCollection;·
+ #@newHitArrayCollection = sort { $a->[0] <=> $b->[0] } @newHitArrayCollection;ï¿½
  #return (\@newHitArrayCollection);
 
 }

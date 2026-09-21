@@ -71,8 +71,8 @@ use Data::Dumper;
 use Carp;
 use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION);
 
-use RepModelConfig;
-use lib $RepModelConfig::configuration->{'REPEATMASKER_DIR'}->{'value'};
+use FindBin;
+use lib $FindBin::RealBin;
 require ArrayList;
 require Exporter;
 
