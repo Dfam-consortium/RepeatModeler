@@ -224,7 +224,7 @@ BEGIN {
                              'expected_files' => [],
                              'param_type' => 'directory',
                              'required' => 1,
-                             'value' => '/usr/local/rmblast/bin'
+                             'value' => '/usr/local/rmblast-3.0.9/bin'
                            },
           'RSCOUT_DIR' => {
                             'command_line_override' => 'rscout_dir',
@@ -239,6 +239,18 @@ BEGIN {
                             'required' => 1,
                             'value' => '/home/rhubley/projects/RepeatScout-1.0.7'
                           },
+          'TE_COMPOSER_DIR' => {
+                                  'command_line_override' => 'te_composer_dir',
+                                  'description' => 'The path to the directory holding the te-composer program.  RepeatModeler builds and extends family consensi with te-composer, in place of the Refiner script it once ran.',
+                                  'environment_override' => 'TE_COMPOSER_DIR',
+                                  'expected_binaries' => [
+                                                           'te-composer'
+                                                         ],
+                                  'expected_files' => [],
+                                  'param_type' => 'directory',
+                                  'required' => 1,
+                                  'value' => '/home/rhubley/projects/Claude/dfam-curator/target/release'
+                                },
           'TRF_DIR' => {
                          'command_line_override' => 'trf_dir',
                          'description' => 'The full path to TRF program.  TRF must be named "trf". ( 4.0.9 or higher )',
@@ -672,6 +684,90 @@ BEGIN {
         . "your PATH.\n";
   }
 
+  #
+  # Locate the mmseqs binary nail uses for seeding: MMSEQS_DIR first
+  # ( config file, MMSEQS_DIR environment variable or -mmseqs_dir ),
+  # then PATH.  Returns the full path, or undef.
+  #
+  sub findMMseqs {
+    my $dir = $configuration->{'MMSEQS_DIR'}->{'value'};
+    if ( defined $dir && $dir ne "" ) {
+      my $path = "$dir/mmseqs";
+      return $path if ( -x $path && !-d $path );
+    }
+    return findProgramOnPath( "mmseqs" );
+  }
+
+  #
+  # Check that an mmseqs binary runs on this machine.  The MMseqs2 cmake
+  # build uses -march=native by default, and mmseqs does not check the CPU
+  # at run time, so a copy built on a newer CPU dies with SIGILL on an
+  # older one.  main() has no AVX instructions, so "mmseqs version" can
+  # succeed on a CPU the build does not support.  This runs a one-sequence
+  # search instead, which goes through the prefilter and alignment where
+  # the SIMD code is.  It takes about three seconds.
+  #
+  # Returns "" if the search succeeds, otherwise a message explaining the
+  # failure.
+  #
+  sub checkMMseqs {
+    my $mmseqs = shift;
+
+    require File::Temp;
+    my $tmpDir = File::Temp::tempdir( "mmseqsCheck-XXXXXX", TMPDIR => 1,
+                                      CLEANUP => 1 );
+    my $query = "$tmpDir/query.fa";
+    open my $FA, ">", $query or return "Could not write $query: $!\n";
+    print $FA ">test\n"
+        . "MKVLAAGIVGLLLAQSAFAEETPKWRCSHHHNLLQEGVRDLCRKAGLYGDPVEYSIVFV\n";
+    close $FA;
+
+    # Fork and exec rather than go through a shell, so a SIGILL shows up
+    # in $? as the signal.  The child works inside $tmpDir so any core
+    # file is removed with it.
+    my $pid = fork();
+    return "Could not fork to run $mmseqs: $!\n" unless ( defined $pid );
+    if ( $pid == 0 ) {
+      chdir $tmpDir;
+      open STDOUT, ">", "$tmpDir/check.log";
+      open STDERR, ">&", \*STDOUT;
+      exec $mmseqs, "easy-search", $query, $query, "$tmpDir/out.m8",
+          "$tmpDir/tmp", "--threads", "1";
+      exit 127;
+    }
+    waitpid( $pid, 0 );
+    my $status = $?;
+    return "" if ( $status == 0 && -e "$tmpDir/out.m8" );
+
+    # If a wrapper script runs mmseqs without exec, the shell reports the
+    # SIGILL as exit code 132 ( 128 + 4 ).
+    my $signal = $status & 127;
+    my $exit   = $status >> 8;
+    if ( $signal == 4 || $exit == 132 ) {
+      return "$mmseqs died with an illegal instruction ( SIGILL ).  It\n"
+          . "was built for CPU features this machine lacks, most likely AVX2 or\n"
+          . "AVX-512 from a -march=native build on a newer CPU.  Either\n"
+          . "install a build that runs on every machine you use ( the\n"
+          . "mmseqs-linux-sse41 release, or build with cmake\n"
+          . "-DHAVE_SSE4_1=1 ), or install one build per CPU\n"
+          . "type behind a wrapper script that picks the right one from\n"
+          . "/proc/cpuinfo.\n";
+    }
+    if ( $exit == 127 ) {
+      return "Could not run $mmseqs.\n";
+    }
+
+    my $log = "";
+    if ( open my $LOG, "<", "$tmpDir/check.log" ) {
+      my @lines = <$LOG>;
+      close $LOG;
+      $log = join( "", @lines > 10 ? @lines[ -10 .. -1 ] : @lines );
+    }
+    return "A test search with $mmseqs failed ( "
+        . ( $signal ? "signal $signal" : "exit status $exit" ) . " ).\n"
+        . ( $log ? "Last lines of its output:\n$log" : "" );
+  }
+
   sub getDependencyVersion {
     my $param = shift;
 
@@ -802,6 +898,12 @@ BEGIN {
       #ExtendAlign Version 0.0.4 - build 436 date 20201118
       $tmpStr = `$value/RAMExtend -h 2>&1`;
       $tmpStr =~ /Version\s+(\d+\.\d+\.\d+)/;
+      $version = $1;
+    }elsif ( $param eq "TE_COMPOSER_DIR" ) {
+      #te-composer --version
+      #te-composer 0.6.6
+      $tmpStr = `$value/te-composer --version 2>&1`;
+      $tmpStr =~ /te-composer\s+(\d+\.\d+\.\d+)/;
       $version = $1;
     }
     return $version;

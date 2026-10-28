@@ -96,6 +96,7 @@ use lib $FindBin::RealBin;
 use RepModelConfig;
 use SeedAlignment;
 use SeedAlignmentCollection;
+use RepeatUtil;
 
 #
 # Magic numbers/constants here
@@ -430,14 +431,13 @@ foreach my $cluster ( sort keys %clusters ) {
   my $famType = "LTR";
   $famType = "INT" if ( $intCount > $ltrCount );
 
-  # Run Refiner on the seeds
-  my $additionalOpts = "";
-  $additionalOpts .= "-giToID " . $options{'giToID'} if ( $options{'giToID'} );
-  my $cmd =
-"$FindBin::RealBin/Refiner $additionalOpts -name ltr-1_family-$idx $tempDir/ltr-1_family-$idx.fa";
-  $cmd .= " -quiet" unless ( $DEBUG );
-  print "LTRPipeline: Running $cmd\n" if ( $DEBUG );
-  system( $cmd );
+  # Build the consensus for the cluster
+  RepeatUtil::refineFamily(
+                        instancesFile => "$tempDir/ltr-1_family-$idx.fa",
+                        name          => "ltr-1_family-$idx",
+                        translation   => $options{'giToID'},
+                        quiet         => ( $DEBUG ? 0 : 1 ),
+                        debug         => $DEBUG );
 
   # family-72.fa.refiner.stk
   if ( -s "$tempDir/ltr-1_family-$idx.fa.refiner_cons" ) {

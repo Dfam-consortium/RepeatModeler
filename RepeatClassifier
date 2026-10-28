@@ -54,6 +54,15 @@ with evidence at least 10 orders of magnitude more significant wins.
 This option disables that rule; clashing classes then merge to a
 common root or become Unknown, as before.
 
+=item -dna_min_cov # and -dna_min_frac #
+
+A class can only be taken from the consensus library comparison when the
+hits to it ( on one strand ) cover at least -dna_min_cov bp of the
+family ( default 100 ) or at least -dna_min_frac of its length ( default
+0.1 ).  Short matches near the score cutoff carry the class of whatever
+they hit, and with no close relative in the library they are often
+wrong.  Set both to 0 to accept any match, as before.
+
 =item -nail_dir <path>
 
 Directory containing the nail binary.  Defaults to the NAIL_DIR
@@ -62,7 +71,8 @@ environment variable, then /usr/local/nail-v0.7.1.
 =item -mmseqs <path>
 
 Path to the MMseqs2 binary, which nail uses for seeding.  Defaults to
-the MMSEQS_PRGM environment variable, then mmseqs on the PATH.
+the MMSEQS_PRGM environment variable, then mmseqs in MMSEQS_DIR, then
+mmseqs on the PATH.
 
 =item -nail_sensitivity #
 
@@ -146,7 +156,8 @@ my $version = $RepModelConfig::VERSION;
 #   -t=i: Number paramters
 #
 my @opts = qw( help consensi=s stockholm=s debug preserve_class threads=s no_clash_rule
-               nail_dir=s mmseqs=s nail_sensitivity=s evidence=s );
+               nail_dir=s mmseqs=s nail_sensitivity=s evidence=s
+               dna_min_cov=i dna_min_frac=f );
 
 # Add configuration parameters as additional command-line options
 push @opts, RepModelConfig::getCommandLineOptions();
@@ -300,7 +311,18 @@ sub evidence_dna_set_buckets {
   my ( $q, $buckets ) = @_;
   return if ( !$EVIDENCE_ON );
   $EVIDENCE{$q} ||= {};
-  $EVIDENCE{$q}->{'dna'} = { 'buckets' => $buckets };
+  $EVIDENCE{$q}->{'dna'}->{'buckets'} = $buckets;
+}
+
+#
+# Each DNA hit, in the order vsRMlibAnalysis() saw it, so a run's
+# decisions can be replayed and audited hit by hit.
+#
+sub evidence_dna_add_hit {
+  my ( $q, $hit ) = @_;
+  return if ( !$EVIDENCE_ON );
+  $EVIDENCE{$q} ||= {};
+  push @{ $EVIDENCE{$q}->{'dna'}->{'hits'} }, $hit;
 }
 
 sub evidence_set_final {
@@ -436,11 +458,11 @@ sub evidence_write_files {
 my $NAIL_PRGM =
     ( $options{'nail_dir'} || $ENV{'NAIL_DIR'} || "/usr/local/nail-v0.7.1" )
     . "/nail";
-my $MMSEQS_PRGM = $options{'mmseqs'} || $ENV{'MMSEQS_PRGM'} || "";
-if ( !$MMSEQS_PRGM ) {
-  $MMSEQS_PRGM = `which mmseqs 2>/dev/null`;
-  chomp $MMSEQS_PRGM;
-}
+my $MMSEQS_PRGM =
+       $options{'mmseqs'}
+    || $ENV{'MMSEQS_PRGM'}
+    || RepModelConfig::findMMseqs()
+    || "";
 my $nailSensitivity = 10;
 $nailSensitivity = $options{'nail_sensitivity'}
     if ( defined $options{'nail_sensitivity'} );
@@ -448,8 +470,15 @@ die $CLASS . ": Could not find the nail program ( looked for $NAIL_PRGM ).\n"
     . "Use -nail_dir or set NAIL_DIR.\n"
     unless ( -x $NAIL_PRGM );
 die $CLASS . ": Could not find the mmseqs program, which nail requires.\n"
-    . "Use -mmseqs or set MMSEQS_PRGM.\n"
+    . "Set MMSEQS_DIR ( rerun ./configure, or use -mmseqs_dir ), or put\n"
+    . "mmseqs on your PATH.\n"
     unless ( $MMSEQS_PRGM && -x $MMSEQS_PRGM );
+
+# On a cluster this node may lack CPU features the mmseqs build assumes.
+# nail runs with its output sent to /dev/null, so a failure there would
+# only report an exit status.
+my $mmseqsProblem = RepModelConfig::checkMMseqs( $MMSEQS_PRGM );
+die $CLASS . ": $mmseqsProblem" if ( $mmseqsProblem );
 
 my $cmdSuffix = "> /dev/null 2>&1";
 $cmdSuffix = "" if ( $DEBUG );
@@ -802,8 +831,17 @@ if ( $status ) {
   die $CLASS . ": ERROR from search engine (", $? >> 8, ") \n";
 }
 
+my $dnaMinCov  = 100;
+$dnaMinCov = $options{'dna_min_cov'} if ( defined $options{'dna_min_cov'} );
+my $dnaMinFrac = 0.1;
+$dnaMinFrac = $options{'dna_min_frac'}
+    if ( defined $options{'dna_min_frac'} );
+
 my ( $classref, $oriref ) = &vsRMlibAnalysis( searchResults => $searchResultCol,
-                                              blastXResults => $blastXResults );
+                                              blastXResults => $blastXResults,
+                                              queryDB       => $maskedDB,
+                                              minCoverage   => $dnaMinCov,
+                                              minFraction   => $dnaMinFrac );
 
 # 2.0 change. If family originates from the LTR pipeline
 # assume that it's at least an LTR/Unknown rather than Unknown.
@@ -1376,10 +1414,46 @@ sub vsRMlibAnalysis {
       if ( !defined $parameters{'blastXResults'} );
 
   my $blastXResults = $parameters{'blastXResults'};
+  my $queryDB       = $parameters{'queryDB'};
+  my $minCoverage   = $parameters{'minCoverage'} || 0;
+  my $minFraction   = $parameters{'minFraction'} || 0;
 
   ## WARNING: Overloaded variable names
   my ( %class, %ori ) = ();
   my ( %combscore, @dnaclass, @ori );
+
+  # A class/strand only counts if its hits cover enough of the family:
+  # minCoverage bp, or minFraction of the family's length.
+  my %tooShort = ();
+  if ( $minCoverage > 0 || $minFraction > 0 ) {
+    my %ranges = ();
+    for ( my $i = 0 ; $i < $resultCol->size() ; $i++ ) {
+      my $result = $resultCol->get( $i );
+      next if ( $result->getSubjName() =~ /\#buffer/ );
+      my $key = &dnaHitKey( $result );
+      push @{ $ranges{$key} },
+          [ $result->getQueryStart(), $result->getQueryEnd() ];
+    }
+    foreach my $key ( keys %ranges ) {
+      my $covered = 0;
+      my $lastEnd = -1;
+      foreach my $r ( sort { $a->[ 0 ] <=> $b->[ 0 ] } @{ $ranges{$key} } ) {
+        if ( $r->[ 0 ] > $lastEnd ) {
+          $covered += $r->[ 1 ] - $r->[ 0 ] + 1;
+          $lastEnd = $r->[ 1 ];
+        }
+        elsif ( $r->[ 1 ] > $lastEnd ) {
+          $covered += $r->[ 1 ] - $lastEnd;
+          $lastEnd = $r->[ 1 ];
+        }
+      }
+      my ( $q ) = split /\#/, $key;
+      my $qLen = $queryDB ? $queryDB->getSeqLength( $q ) : 0;
+      $tooShort{$key} = 1
+          if ( $covered < $minCoverage
+               && !( $minFraction > 0 && $covered >= $minFraction * $qLen ) );
+    }
+  }
 
   # Initialize ds with bx results
   foreach my $bxResultsKey ( keys( %{$blastXResults} ) ) {
@@ -1401,6 +1475,21 @@ sub vsRMlibAnalysis {
       # Ignore buffer matches
       next;
     }
+
+    my $hitKey = &dnaHitKey( $result );
+    if ( $EVIDENCE_ON ) {
+      my ( $hitQuery, $hitClass, $hitOrient ) = split /\#/, $hitKey;
+      my ( $hitId ) = ( $result->getSubjName() =~ /^(\S+)\#\S+$/ );
+      &evidence_dna_add_hit( $hitQuery,
+                             { 'subject'   => $hitId,
+                               'class'     => $hitClass,
+                               'orient'    => $hitOrient,
+                               'qstart'    => $result->getQueryStart() + 0,
+                               'qend'      => $result->getQueryEnd() + 0,
+                               'score'     => $result->getScore() + 0,
+                               'too_short' => ( $tooShort{$hitKey} ? 1 : 0 ) } );
+    }
+    next if ( $tooShort{$hitKey} );
 
     if ( $query && $result->getQueryName() ne $query ) {
       # see if there were conflicts for the last query
@@ -1473,6 +1562,17 @@ sub vsRMlibAnalysis {
 
 }
 
+#
+# The "query#class#orientation" key vsRMlibAnalysis() scores a DNA hit
+# under.
+#
+sub dnaHitKey {
+  my ( $result ) = @_;
+  my ( $dnaclass ) = ( $result->getSubjName() =~ /^\S+\#(\S+)$/ );
+  my $orient = ( $result->getOrientation() eq "C" ) ? "Minus" : "Plus";
+  return $result->getQueryName() . "\#$dnaclass\#$orient";
+}
+
 sub conflictsolver {
   my $query         = shift;
   my $blastXResults = shift;
@@ -1485,6 +1585,16 @@ sub conflictsolver {
   my $protOrient = $blastXResults->{$query}->{'orient'};
   my $protClass  = $blastXResults->{$query}->{'class'};
   my $protPVal   = $blastXResults->{$query}->{'pVal'};
+
+  # chooseBestBlastX() leaves the protein strand blank when the protein
+  # hits disagree on it.  Rather than let any DNA hit take the class
+  # outright, treat the protein as lying on the strand of the strongest
+  # DNA match and weigh the two as usual.
+  if ( !$protOrient && $protClass !~ /Unknown/ && %{$dnaScores} ) {
+    my ( $topMatch ) = sort { $dnaScores->{$b} <=> $dnaScores->{$a}
+                                || $a cmp $b } keys %{$dnaScores};
+    $protOrient = ( split /\#/, $topMatch )[ -1 ];
+  }
 
   my $pickedClass       = "";
   my $pickedClassCompat = undef;
@@ -1552,11 +1662,6 @@ sub matchprotanddnaclass {
   #is $protclass and the orientation is $protori, so if blastx based
   #identification wins or blastn based classification is
   #inconclusive, the classification and orientation do not change
-  my $dnaroot;
-  ( $dnaroot = $dnaclass ) =~ /\/.*/;
-  my $protroot;
-  ( $protroot = $protclass ) =~ /\/.*/;
-
   # some classifications of repeatmasker entries are uncertain
   # themselves and indicate with a question mark. I'm just removing
   # them now, to allow easier merging, but should consider them as
@@ -1593,6 +1698,17 @@ sub matchprotanddnaclass {
       push @why,
           "DNA score=$dnaSeen >= 250, protein p=$pvalSeen < 1e-4, classes agree";
     }
+    elsif ( $combscore{$comb} >= 333 && $pval < 0.00001 ) {
+
+      # Both sides are strong.  Only matters when they are on opposite
+      # strands, where the protein evidence has proven the more reliable.
+      $choice = $protclass;
+      $ori    = $orient;
+      $ruleId = 'PREF_PROT_BOTH_STRONG';
+      push @why,
+          "Both strong ( DNA score=$dnaSeen >= 333, protein p=$pvalSeen < 1e-5 ); "
+          . "protein preferred";
+    }
     else {
       push @why,
           "Neither side decisive ( DNA score=$dnaSeen, protein p=$pvalSeen )";
@@ -1620,7 +1736,7 @@ sub matchprotanddnaclass {
     # Why do I still catch simple / low ? Shouldn't be there
     # anymore (working with a simple/low masked file , but they
     # still are.
-    if ( $dnaroot !~ /^Unknown|^Satellite|^Other|^Low_|^Simple/ ) {
+    if ( $dnaclass !~ /^Unknown|^Satellite|^Other|^Low_|^Simple/ ) {
       $class = $dnaclass;
       $ori   = $dnaori;
     }
@@ -1629,58 +1745,18 @@ sub matchprotanddnaclass {
     # the consensus will be reverse-complimented if $ori is "Minus"
   }
   elsif ( $orient eq $dnaori ) {
-    if ( $protclass !~ /^$dnaclass/i ) {
 
-      # different nomenclature in protein database as current
-      # repeatmasker library will fix repeatmasker library;
-      # nomenclature will also change over time
-      if ( $protroot eq $dnaroot ) {
-        if ( $protroot eq 'DNA' ) {
-          if (    $protclass =~ /^DNA\/DDE-(\S+)/ && $dnaclass =~ /$1$/
-               || $protclass =~ /^DNA\/HAT-(\S+)/ && $dnaclass  =~ /$1$/
-               || $dnaclass  =~ /AcHobo$/         && $protclass =~ /\/HAT/
-               || $dnaclass  =~ /Charlie$/        && $protclass =~ /Charlie$/
-               || $dnaclass  =~ /En-Spm$/         && $protclass =~ /EnSpm$/
-               || $dnaclass  =~ /hAT_Tol2$/       && $protclass =~ /HAT-Tol2/
-               || $dnaclass  =~ /MER1_type$/      && $protclass =~ /Charlie$/
-               || $dnaclass  =~ /MER2_type$/      && $protclass =~ /Tigger$/ )
-          {
-
-            # should consider refinement for if protein class
-            # is HAT and DNA is AcHobo or charlie etc. (also for DDE)
-            $noconflict = 1;
-          }
-          else {
-            $class = $choice;
-            $class = 'DNA' unless $class;
-          }
-        }
-        elsif ( $dnaclass eq 'LINE/BovB' && $protclass eq 'LINE/RTE' ) {
-          $class      = 'LINE/RTE';
-          $noconflict = 1;
-        }
-        elsif ( $dnaclass =~ /^$protclass/ ) {
-          $class      = $dnaclass;
-          $noconflict = 1;
-        }
-        elsif ( $dnaclass =~ /^LTR\/ERV/ && $protclass =~ /^LTR\/ERV/ ) {
-          $class = 'LTR/ERV';
-        }
-        else {
-          $class = $choice;
-          $class = $protroot unless $class;
-        }
-      }
-      elsif ( $dnaclass =~ /^Unknown|^Satellite/ ) {
-        $class = $protclass;
-      }
-    }
-    else {
+    # Same strand: the protein class stands unless the two agree.
+    if ( $protclass =~ /^$dnaclass/i ) {
       $noconflict = 1;
+    }
+    elsif ( $dnaclass =~ /^Unknown|^Satellite/ ) {
+      $class = $protclass;
     }
   }
   else {
-    die "$q $protclass $dnaclass $dnaori\n" unless $pval;
+    die "$q $protclass $dnaclass $dnaori\n"
+        unless ( defined $pval && $pval ne "" );
 
     # we have an orientational problem check if either the protein
     # match p value (the global variable %score{consensus_name} )

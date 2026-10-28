@@ -22,8 +22,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - NCBIBLAST_DIR, an optional setting naming an NCBI BLAST+ bin directory for
   RepeatClassifier's blastx and LTR_retriever's blastn. When unset, RepeatModeler
   looks in RMBLAST_DIR and then on PATH.
+- TE_COMPOSER_DIR, the directory holding the te-composer program. configure
+  prompts for it and RepeatModeler prints its version in the startup banner.
 
 ### Changed
+- RepeatModeler and LTRPipeline build each family's consensus with te-composer
+  rather than the Refiner script, through the new RepeatUtil::refineFamily.
+  te-composer runs its own genome extension, so refineFamily no longer calls
+  RAMExtend. It writes the same two files the rest of the pipeline reads,
+  <family>.fa.refiner_cons and <family>.fa.refiner.stk, and the seed alignments
+  now carry te-composer's provenance in their ** lines. Refiner is still in the
+  distribution but nothing calls it.
+- refineFamily hands te-composer a Smitten identifier for each instance
+  (gi|1:112772-112877_-) in place of the range RepeatModeler and LTR_Retriever
+  each wrote into the defline their own way. It measures the range against the
+  sequence it labels, so the length te-composer looks up in the genome is the
+  length of the sequence it was given.
 - generateSeedAlignments.pl filters families while parsing the alignment file,
   so whole-genome input with -families no longer loads or validates every
   alignment. Instance selection stops scanning once the sample budget and

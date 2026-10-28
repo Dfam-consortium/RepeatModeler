@@ -203,6 +203,9 @@ my @getopt_args = (
                     '-onlyIns',                     # For internal use only
                     '-recon_batch_size=i',          # For debugging only 
                     '-recon_sample_size_start=i',   # For debugging only
+                    '-sampleMask=s',                # Experimental (P-Clouds)
+                    '-sampleMaskRounds=s',          # Experimental (P-Clouds)
+                    '-sampleMaskRelease',           # Experimental (P-Clouds)
 );
 
 # Add configuration parameters as additional command-line options
@@ -493,6 +496,36 @@ my $genomeTwoBit = resolveGenomeTwoBit( $genomeDB, $tmpDir );
 my $genomeSeqDB  = TwoBitDB->new( fileName => $genomeTwoBit,
                                   tempDir  => $tmpDir );
 
+# Experimental: the rounds named by -sampleMaskRounds ("N" for rounds 1-N,
+# or "A-B") take their sample from a copy of the genome with the same
+# coordinates in which non-repetitive sequence (e.g. outside P-Clouds
+# regions) is replaced by N.  Blocks are still chosen from the unmasked
+# genome, and everything else uses it.  A masked round's sample size counts
+# the unmasked bases left in the masked copy, so it gathers more blocks.
+# With -sampleMaskRelease a masked RECON round hands its blocks back and is
+# left out of the sampled total, so later rounds still cover the whole
+# genome; the sample size schedule still grows from it.
+my $sampleMaskSeqDB;
+my ( $sampleMaskFirst, $sampleMaskLast ) = ( 0, -1 );
+if ( $options{'sampleMask'} ) {
+  die "Could not find -sampleMask file: $options{'sampleMask'}\n"
+      unless ( -s $options{'sampleMask'} );
+  $sampleMaskSeqDB  = TwoBitDB->new( fileName => $options{'sampleMask'},
+                                     tempDir  => $tmpDir );
+  my $spec = $options{'sampleMaskRounds'} // "3";
+  if ( $spec =~ /^(\d+)$/ ) {
+    ( $sampleMaskFirst, $sampleMaskLast ) = ( 1, $1 );
+  }
+  elsif ( $spec =~ /^(\d+)-(\d+)$/ ) {
+    ( $sampleMaskFirst, $sampleMaskLast ) = ( $1, $2 );
+  }
+  else {
+    die "-sampleMaskRounds must be N or A-B, not '$spec'\n";
+  }
+  log_print( "Sample mask = $options{'sampleMask'} ( rounds $sampleMaskFirst-$sampleMaskLast"
+             . ( $options{'sampleMaskRelease'} ? ", blocks released" : "" ) . " )\n" );
+}
+
 # print to screen and log
 sub log_print {
   my $string = shift;
@@ -509,7 +542,7 @@ log_print "=" x length( $title ) . "\n";
 log_print "Using output directory = $tmpDir\n";
 log_print "Search Engine = $engine $engineVersion\n";
 log_print "Threads = " . $options{'threads'} . "\n" if ( $options{'threads'} );
-log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_DIR") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . ", RepeatAfterMe " . RepModelConfig::getDependencyVersion("REPEATAFTERME_DIR") . "\n";
+log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_DIR") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . ", RepeatAfterMe " . RepModelConfig::getDependencyVersion("REPEATAFTERME_DIR") . ", te-composer " . RepModelConfig::getDependencyVersion("TE_COMPOSER_DIR") . "\n";
 if ( $options{'LTRStruct'} ) {
   log_print "LTR Structural Analysis: Enabled ( " . 
       "GenomeTools " . RepModelConfig::getDependencyVersion("GENOMETOOLS_DIR") . ", " .
@@ -881,12 +914,20 @@ while ( 1 ) {
 
   # Sample from the input database
   my $usedBlockIndex = ();
+  my $sampleSeqDB = ( $sampleMaskSeqDB && $round >= $sampleMaskFirst
+                                       && $round <= $sampleMaskLast )
+      ? $sampleMaskSeqDB : $genomeSeqDB;
+  my $sampleCountDB = ( $sampleMaskSeqDB && $sampleSeqDB == $sampleMaskSeqDB )
+      ? $sampleMaskSeqDB : undef;
+  my $releaseBlocks = ( $sampleCountDB && $options{'sampleMaskRelease'}
+                        && $round > 1 );
   if ( $round == 1 ) {
     log_print "   - Gathering up to $rsSampleSize bp\n";
     $usedBlockIndex = &sampleFromDB(
                                      sampleSizeMax  => $rsSampleSize,
                                      dbSourceBlocks => $dbSourceList,
-                                     genomeSeqDB    => $genomeSeqDB,
+                                     genomeSeqDB    => $sampleSeqDB,
+                                     countSeqDB     => $sampleCountDB,
                                      fastaFile      => $sampleFastaFile,
                                      prohibitX      => 1
     );
@@ -909,13 +950,17 @@ while ( 1 ) {
     }
     else {
       log_print "   - Gathering up to $sampleSize bp\n";
-      &sampleFromDB(
+      my $usedBlocks = &sampleFromDB(
                      sampleSizeMax  => $sampleSize,
                      dbSourceBlocks => $dbSourceList,
-                     genomeSeqDB    => $genomeSeqDB,
+                     genomeSeqDB    => $sampleSeqDB,
+                     countSeqDB     => $sampleCountDB,
                      fastaFile      => $sampleFastaFile
       );
-
+      if ( $releaseBlocks ) {
+        $_->{'used_cnt'}-- foreach ( values %{$usedBlocks} );
+        log_print "   - Masked sample: blocks released for later rounds\n";
+      }
     }
   }
 
@@ -1149,7 +1194,7 @@ while ( 1 ) {
                                                       dbVersion   => 4,
                                                       force       => 1 );
 
-  $totSampledBP += $sampleDBLen;
+  $totSampledBP += $sampleDBLen unless ( $releaseBlocks );
   log_print " -- Input Database Coverage: $totSampledBP bp out of $dbSize bp ( "
       . sprintf( "%0.2f", ( $totSampledBP / $dbSize ) * 100 )
       . " % )\n";
@@ -2667,7 +2712,7 @@ sub buildRSConsensiMT {
   my $jobIdx = 0;
   for my $rsID ( sort keys %families ) {
     my $familyID = $families{$rsID}->{'famNum'};
-    # This currently uses the RAMExtend feature of Refiner
+    # te-composer extends the consensus against the genome here
     $tsk->addJob( name => "refiner-job-$jobIdx",
                 function => \&refineOneFamily,
                 parameters => ["$workDir/family-$familyID.fa", $genomeDB, $genomeTwoBit, $workDir, 1, $DEBUG] );
@@ -2728,7 +2773,7 @@ sub buildRSConsensiMT {
       }
       close INREF;
     }else {
-      print "  WARNING: Refiner did not return a consensus for $workDir/family-$famNum.fa.\n";
+      print "  WARNING: te-composer did not return a consensus for $workDir/family-$famNum.fa.\n";
     }
 
     if ( $cons ne "" ) {
@@ -3113,7 +3158,7 @@ sub buildReconConsensiMT {
       close INREF;
     }
     else {
-      print "  WARNING: Refiner did not return a consensus for $workDir/family-$familyID.fa.\n";
+      print "  WARNING: te-composer did not return a consensus for $workDir/family-$familyID.fa.\n";
     }
 
     if ( $cons ne "" ) {
@@ -3262,14 +3307,16 @@ sub refineOneFamily {
   my $threads = shift;
   my $DEBUG = shift;
   
-  my $cmd = "$FindBin::RealBin/Refiner -giToID $genomeDB.translation";
-  $cmd .= " -threads $threads " if ( $threads );
-  $cmd .= " -extTwoBit $genomeTwoBit " if ( $genomeTwoBit ne "" );
-  $cmd .= " -quiet" unless ( $DEBUG );
-  $cmd .= " $instancesFile";
-  #print "CWD: " . `pwd` . "\n";
-  #print "Running: $cmd\n";
-  system( $cmd );
+  RepeatUtil::refineFamily( instancesFile => $instancesFile,
+                            translation   => "$genomeDB.translation",
+                            twoBit        => $genomeTwoBit,
+                            threads       => $threads,
+                            quiet         => ( $DEBUG ? 0 : 1 ),
+                            debug         => $DEBUG );
+
+  # ThreadedTaskSimple reads the return value as the child's exit status,
+  # and retries anything non-zero.
+  return 0;
 }
 
  
@@ -3467,6 +3514,10 @@ sub sampleFromDB {
   my $prohibitX       = $parameters{'prohibitX'};
   my $withReplacement = $parameters{'withReplacement'};
 
+  # When set, block sizes count the non-ambiguous bases of this database
+  # instead (a masked genome), so sampleSizeMax is unmasked bases sampled.
+  my $countSeqDB      = $parameters{'countSeqDB'};
+
   my $sampleSeqSize   = 0;
   my %usedBlocksIndex = ();
   my @blocks          = ();
@@ -3476,6 +3527,8 @@ sub sampleFromDB {
     my $end          = $sampleSourceBlock->{'end'};
     my $seqSize      = $sampleSourceBlock->{'length'};
     my $nonAmbigSize = $sampleSourceBlock->{'non_ambig_len'};
+    $nonAmbigSize = $countSeqDB->getSubtLengthInRange( $seqID, $start, $end )
+        if ( $countSeqDB );
 
     if ( defined $withReplacement
          || $sampleSourceBlock->{'used_cnt'} == 0 )

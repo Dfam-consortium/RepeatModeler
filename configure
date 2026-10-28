@@ -192,6 +192,7 @@ configure_ncbiblast();
 configure_repeatscout();
 configure_recon();
 configure_repeatafterme();
+configure_te_composer();
 configure_trf();
 configure_cdhit();
 configure_ucsctools();
@@ -706,6 +707,19 @@ sub configure_repeatafterme {
 }
 
 ##
+## Configure te-composer (required).
+##
+sub configure_te_composer {
+  _configure_dir(
+    key   => 'TE_COMPOSER_DIR',
+    label => 'te-composer',
+    desc  => 'te-composer builds and extends the consensus for each family, '
+           . 'in place of the Refiner script RepeatModeler once ran.',
+    url   => 'https://github.com/Dfam-consortium/dfam-curator',
+  );
+}
+
+##
 ## Configure TRF (required).
 ##
 sub configure_trf {
@@ -748,6 +762,12 @@ sub configure_nail {
     desc  => 'nail seeds its search with MMseqs2.  nail will absorb it in '
            . 'a future release, and this setting goes with it.',
     url   => 'https://github.com/soedinglab/MMseqs2',
+    version_check => sub {
+      my $val     = $config->{'MMSEQS_DIR'}->{'value'};
+      my $problem = RepModelConfig::checkMMseqs("$val/mmseqs");
+      die "\n  ERROR: $problem\n" if $problem;
+      status_info("Test search ran on this machine");
+    },
   );
 }
 
@@ -896,6 +916,7 @@ sub print_summary {
     [ 'RSCOUT_DIR',       'RepeatScout'    ],
     [ 'RECON_DIR',        'RECON'          ],
     [ 'REPEATAFTERME_DIR','RepeatAfterMe'  ],
+    [ 'TE_COMPOSER_DIR',  'te-composer'    ],
     [ 'TRF_DIR',          'TRF'            ],
     [ 'CDHIT_DIR',        'CD-HIT'         ],
     [ 'UCSCTOOLS_DIR',    'UCSC TwoBit'    ],

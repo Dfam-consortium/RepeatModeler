@@ -83,6 +83,11 @@ Source Distribution Installation
     This is available for download at: https://github.com/Dfam-consortium/RepeatAfterMe.
     We recommend 0.0.6 or higher.
 
+  te-composer - Builds and extends the consensus for each family discovered.
+    Part of the dfam-curator toolkit, available for download at:
+    https://github.com/Dfam-consortium/dfam-curator.
+    We recommend 0.6.6 or higher.
+
   UCSC genome browser command-line utilities - Some tools included with
     RepeatModeler work with files in the 'twobit' file format using
     these programs: twoBitToFa, faToTwoBit, and twoBitInfo.

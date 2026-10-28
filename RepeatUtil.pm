@@ -674,6 +674,349 @@ sub openAsMultAln{
 }
 
 
+
+##---------------------------------------------------------------------##
+
+=head2 refineFamily()
+
+  Use: my $maSize = refineFamily(
+                        instancesFile => "/jo/bob/round-3/family-7.fa",
+                        [name => "family-7"],
+                        [twoBit => "/jo/bob/genome.2bit"],
+                        [translation => "/jo/bob/genome.translation"],
+                        [threads => 4],
+                        [quiet => 1],
+                        [debug => 0] );
+
+  Build a consensus for one family of instances with te-composer, and
+  write the two files the rest of RepeatModeler reads:
+
+     <instancesFile>.refiner_cons   consensus, one unwrapped FASTA record
+     <instancesFile>.refiner.stk    seed alignment, Stockholm
+
+  Returns the number of rows in the final alignment, or 0 if no
+  consensus was produced.  Both files are removed on entry, so a stale
+  pair from an earlier attempt is never mistaken for this run's result.
+
+  te-composer places an instance in the genome by reading a Smitten
+  identifier off its defline, such as "gi|1:112772-112877_-".  The
+  instance files RepeatModeler and LTRPipeline write carry the range
+  somewhere else: in the description ("gi|4 gi|1:112877-112772 R=1"), or
+  in an LTR_Retriever name ("gi-1:11224114..11230723_INT#LTR/Gypsy").
+  This routine writes a temporary copy with Smitten deflines, and
+  translates the identifiers back through the BuildDatabase translation
+  table afterwards, so both callers keep the file formats they already
+  write and read.
+
+  Pass twoBit to run te-composer's extension pass, which reads flanking
+  sequence from the genome.  Without it, the consensus comes from the
+  instances as handed over.
+
+=cut
+
+##---------------------------------------------------------------------##
+sub refineFamily {
+  my %parameters = @_;
+
+  my $fName = "refineFamily";
+
+  my $instancesFile = $parameters{'instancesFile'};
+  die $CLASS . "::$fName(): Missing instancesFile parameter!\n"
+      if ( !defined $instancesFile );
+
+  my $debug = $parameters{'debug'} || 0;
+  my $quiet = defined $parameters{'quiet'} ? $parameters{'quiet'} : 1;
+
+  my $name = $parameters{'name'};
+  if ( !defined $name || $name eq "" ) {
+    $name = basename( $instancesFile );
+    $name =~ s/\.(fa|fasta)$//i;
+  }
+
+  my $consFile = "$instancesFile.refiner_cons";
+  my $stkFile  = "$instancesFile.refiner.stk";
+  unlink( $consFile ) if ( -e $consFile );
+  unlink( $stkFile )  if ( -e $stkFile );
+
+  return 0 if ( !-s $instancesFile );
+
+  my %giToID = ();
+  if ( $parameters{'translation'} && -s $parameters{'translation'} ) {
+    open my $IN, "<$parameters{'translation'}"
+        or die $CLASS
+        . "::$fName(): Could not open $parameters{'translation'} for reading!\n";
+    while ( <$IN> ) {
+      if ( /^(\S+)\s+(\d+)/ ) {
+        $giToID{"gi|$2"} = $1;
+
+        # LTR_Retriever will not carry a "|" through its pipeline, so the
+        # same sequence arrives back as "gi-#".
+        $giToID{"gi-$2"} = $1;
+      }
+    }
+    close $IN;
+  }
+
+  my @instances = _readInstances( $instancesFile );
+  return 0 if ( !@instances );
+
+  # One instance is not a family, and te-composer will not call a
+  # consensus with no supporting rows left once the reference is dropped.
+  # Refiner wrote out the sequence itself here, and both callers expect a
+  # file back either way.
+  if ( @instances == 1 ) {
+    my ( $id, $seq ) = @{ $instances[ 0 ] };
+    $id = _translateSeqID( $id, \%giToID );
+    open my $OUTS, ">$stkFile"
+        or die $CLASS . "::$fName(): Could not open $stkFile for writing!\n";
+    print $OUTS "# STOCKHOLM 1.0\n";
+    print $OUTS "#=GF ID    $name\n";
+    print $OUTS "#=GF SQ    1\n";
+    printf $OUTS "%-20s %s\n", $id, uc( $seq );
+    printf $OUTS "%-20s %s\n", "#=GC RF", uc( $seq );
+    print $OUTS "//\n";
+    close $OUTS;
+
+    _writeConsensus( $consFile, $name, uc( $seq ), 1, undef );
+    return 1;
+  }
+
+  my $tcDir = $config->{'TE_COMPOSER_DIR'}->{'value'};
+  die $CLASS
+      . "::$fName(): te-composer is not configured.  Run ./configure or "
+      . "set TE_COMPOSER_DIR.\n"
+      if ( !defined $tcDir || !-x "$tcDir/te-composer" );
+
+  my $tcInput = "$instancesFile.te-composer.fa";
+  my $tcStk   = "$instancesFile.te-composer.stk";
+  open my $OUTF, ">$tcInput"
+      or die $CLASS . "::$fName(): Could not open $tcInput for writing!\n";
+  for my $instance ( @instances ) {
+    print $OUTF ">" . $instance->[ 0 ] . "\n" . $instance->[ 1 ] . "\n";
+  }
+  close $OUTF;
+
+  my $cmd = "$tcDir/te-composer --name $name";
+  $cmd .= " --threads $parameters{'threads'}" if ( $parameters{'threads'} );
+  $cmd .= " --genome $parameters{'twoBit'}"
+      if ( $parameters{'twoBit'} && $parameters{'twoBit'} ne "" );
+  $cmd .= " --silent" if ( $quiet );
+  $cmd .= " $tcInput $tcStk";
+
+  print "$CLASS\::$fName(): Running $cmd\n" if ( $debug );
+  system( $cmd );
+  my $status = $? >> 8;
+
+  my $maSize = 0;
+  if ( $status == 0 && -s $tcStk ) {
+    $maSize = _translateStockholm( $tcStk, $stkFile, $consFile, $name, \%giToID );
+  }
+  else {
+    warn "$CLASS\::$fName(): te-composer returned $status for "
+        . "$instancesFile.\n";
+  }
+
+  unless ( $debug ) {
+    unlink( $tcInput ) if ( -e $tcInput );
+    unlink( $tcStk )   if ( -e $tcStk );
+  }
+
+  return $maSize;
+}
+
+##
+## Read a family's instances, converting each defline into the Smitten
+## identifier te-composer needs to place the instance in the genome.
+##
+## RepeatModeler writes the range in the description and reverses it to
+## mark the minus strand:
+##
+##   >gi|4 gi|1:112877-112772 R=1
+##
+## LTR_Retriever names carry it instead, with a class suffix that is not
+## part of the range:
+##
+##   >gi-1:11224114..11230723_INT#LTR/Gypsy
+##
+## Any other name is passed through untouched.  te-composer treats a name
+## it cannot parse as a sequence with no genomic location.
+##
+## Two instances covering the same range would get the same Smitten
+## identifier, so the second one is dropped.
+##
+sub _readInstances {
+  my $file = shift;
+
+  my @instances = ();
+  my %seen      = ();
+  my ( $name, $desc, $seq ) = ( "", "", "" );
+
+  # Build the identifier only once the sequence has been read: its length
+  # fixes the far end of the range.
+  my $save = sub {
+    return if ( $name eq "" || $seq eq "" );
+    my $id = _smittenID( $name, $desc, length( $seq ) );
+    return if ( $seen{$id}++ );
+    push @instances, [ $id, $seq ];
+  };
+
+  open my $IN, "<$file"
+      or die $CLASS . "::_readInstances(): Could not open $file for reading!\n";
+  while ( <$IN> ) {
+    if ( /^>\s*(\S+)\s*(.*)$/ ) {
+      $save->();
+      ( $name, $desc, $seq ) = ( $1, $2, "" );
+      next;
+    }
+    s/[\n\r\s]+//g;
+    $seq .= $_;
+  }
+  close $IN;
+  $save->();
+
+  return @instances;
+}
+
+##
+## Build a Smitten identifier from a defline's name and description.
+##
+sub _smittenID {
+  my $name = shift;
+  my $desc = shift;
+  my $len  = shift;
+
+  my ( $seqID, $start, $end );
+  if ( $desc =~ /^\s*((?:\S+:)?\S+):(\d+)-(\d+)(?:\s|$)/ ) {
+    ( $seqID, $start, $end ) = ( $1, $2, $3 );
+  }
+  elsif ( $name =~ /^(\S+?):(\d+)\.\.(\d+)/ ) {
+    ( $seqID, $start, $end ) = ( $1, $2, $3 );
+  }
+  else {
+    return $name;
+  }
+
+  # $start is the one-based position of the instance's first base, and the
+  # range runs backwards from it when the instance came off the minus
+  # strand.  Measure the far end off the sequence instead of reading the
+  # defline's own end coordinate, which is one past the last base in
+  # RepeatModeler and the last base in LTR_Retriever.  te-composer leaves
+  # an instance out of the extension when its range length and its
+  # sequence length do not match.
+  if ( $end < $start ) {
+    my $low = $start - $len + 1;
+    return "$seqID:$low-${start}_-";
+  }
+  my $high = $start + $len - 1;
+  return "$seqID:$start-${high}_+";
+}
+
+##
+## Put a sequence identifier back in the assembly's own naming.
+##
+## BuildDatabase renames every sequence "gi|#" before it builds the 2bit,
+## so that is the name te-composer sees and reports.  The translation
+## table maps it back.
+##
+sub _translateSeqID {
+  my $id     = shift;
+  my $mapRef = shift;
+
+  return $id if ( !%{$mapRef} );
+  if ( $id =~ /^([^:]+)(:.*)$/ && exists $mapRef->{$1} ) {
+    return $mapRef->{$1} . $2;
+  }
+  return $mapRef->{$id} if ( exists $mapRef->{$id} );
+  return $id;
+}
+
+##
+## Rewrite te-composer's Stockholm into the seed alignment and consensus
+## RepeatModeler reads, and return the number of rows.
+##
+## The consensus here is the RF line with its gaps removed.  te-composer
+## will write one with --consensus, but it wraps at 60 columns and both
+## callers read the consensus as a single line.
+##
+sub _translateStockholm {
+  my $inFile   = shift;
+  my $outFile  = shift;
+  my $consFile = shift;
+  my $name     = shift;
+  my $mapRef   = shift;
+
+  my $maSize  = 0;
+  my $kimura  = undef;
+  my $gappedCons = "";
+  my @out     = ();
+
+  open my $IN, "<$inFile"
+      or die $CLASS
+      . "::_translateStockholm(): Could not open $inFile for reading!\n";
+  while ( <$IN> ) {
+    chomp;
+    if ( /^#=GF\s+SQ\s+(\d+)/ ) {
+      $maSize = $1;
+      push @out, $_;
+      next;
+    }
+    if ( /^#=GC\s+RF\s+(\S+)/ ) {
+      $gappedCons .= $1;
+      push @out, $_;
+      next;
+    }
+    if ( /^(#=GF\s+\*\*\s+TE-COMPOSER:\s+BOOTSTRAP-REF:\s+)(\S+)\s*$/ ) {
+      push @out, $1 . _translateSeqID( $2, $mapRef );
+      next;
+    }
+    if ( /^#=GF\s+\*\*\s+TE-COMPOSER:\s+DIVERGENCE:\s+Kimura\s+([\d\.]+)%/ ) {
+      $kimura = $1;
+      push @out, $_;
+      next;
+    }
+    if ( /^(\S+)(\s+)(\S+)\s*$/ && !/^#/ && !/^\/\// ) {
+      push @out, _translateSeqID( $1, $mapRef ) . $2 . $3;
+      next;
+    }
+    push @out, $_;
+  }
+  close $IN;
+
+  return 0 if ( $maSize == 0 || $gappedCons eq "" );
+
+  open my $OUT, ">$outFile"
+      or die $CLASS
+      . "::_translateStockholm(): Could not open $outFile for writing!\n";
+  print $OUT join( "\n", @out ) . "\n";
+  close $OUT;
+
+  my $cons = uc( $gappedCons );
+  $cons =~ s/[\-\.]//g;
+  _writeConsensus( $consFile, $name, $cons, $maSize, $kimura );
+
+  return $maSize;
+}
+
+##
+## Write the consensus in the form both callers parse: the alignment size
+## in the defline, the sequence on one unwrapped line.
+##
+sub _writeConsensus {
+  my $file   = shift;
+  my $name   = shift;
+  my $cons   = shift;
+  my $maSize = shift;
+  my $kimura = shift;
+
+  open my $OUT, ">$file"
+      or die $CLASS . "::_writeConsensus(): Could not open $file for writing!\n";
+  print $OUT ">$name ( Final Multiple Alignment Size = $maSize";
+  print $OUT " , Avg Kimura = $kimura" if ( defined $kimura );
+  print $OUT " )\n";
+  print $OUT "$cons\n";
+  close $OUT;
+}
+
 1;
 
 
