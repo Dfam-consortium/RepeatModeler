@@ -38,9 +38,17 @@ LTRPipeline - Run a structural LTR finder on the genome and polish the results
 
 Finds LTR retrotransposon candidates in the input sequence, keeps the ones
 with structural or protein evidence, and builds families from them.  With
-LTR_FORAGE_DIR configured, ltr-forage does the finding, the boundary
-re-extension, the protein-domain search and the filtering in one run.
-Without it, the earlier path runs GenomeTools LTRharvest and LTR_retriever.
+LTR_FORAGE_DIR configured, ltr-forage's family-library driver
+(ltr_library.py) does all of it: detection, nested-insertion cleanup,
+families of one LTR and one internal model each, and a seed alignment per
+model (the model aligned to its best genome copies, unchanged, as #=GC RF).
+Without it, the earlier path runs GenomeTools LTRharvest and LTR_retriever
+and builds families with MAFFT, NINJA and te-composer.
+
+Writes <input>-ltrs.fa and <input>-ltrs.stk, one record per family model
+named ltr-1_family-#.  On the ltr-forage path it also writes
+<input>-ltrs.tsv: identifier, ltr-forage model, ltr-forage class and kind
+(LTR or INT), which RepeatModeler reads when it merges the families.
 
 The options are:
 
@@ -54,7 +62,8 @@ Displays the version of the program
 
 HMMER3 profile file for the protein-domain search when ltr-forage runs.
 Defaults to Libraries/TEfam.hmm under the RepeatModeler directory, then to
-database/TEfam.hmm under LTR_RETRIEVER_DIR.
+database/TEfam.hmm under LTR_RETRIEVER_DIR, then to the TEfam.hmm that
+ships with ltr-forage.
 
 =back
 
@@ -89,6 +98,7 @@ use Data::Dumper;
 use Pod::Text;
 use File::Path;
 use File::Basename;
+use File::Spec;
 use FindBin;
 use Cwd;
 use Time::HiRes qw( gettimeofday tv_interval);
@@ -197,6 +207,9 @@ my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
 my $RMBLAST_DIR = $config->{'RMBLAST_DIR'}->{'value'};
 my $CDHIT_DIR = $config->{'CDHIT_DIR'}->{'value'};
 my $TRF_DIR = $config->{'TRF_DIR'}->{'value'};
+my $TE_COMPOSER_DIR = $config->{'TE_COMPOSER_DIR'}->{'value'};
+my $NAIL_DIR = $config->{'NAIL_DIR'}->{'value'};
+my $MMSEQS_DIR = $config->{'MMSEQS_DIR'}->{'value'};
 my $UCSCTOOLS_DIR = $config->{'UCSCTOOLS_DIR'}->{'value'};
 
 my $ltrSeqLimit = 10000;
@@ -236,7 +249,7 @@ elapsedTime( "runtime" );    # Setup the timers
 # Run LTR Detector
 elapsedTime( "step" );
 if ( $LTR_FORAGE_DIR ) {
-  print "Running ltr-forage...";
+  print "Running ltr-forage ( ltr_library.py )...";
   my $ltrHmm = $options{'ltr_hmm'};
   if ( !$ltrHmm ) {
     foreach my $cand ( "$FindBin::RealBin/Libraries/TEfam.hmm",
@@ -244,17 +257,27 @@ if ( $LTR_FORAGE_DIR ) {
       if ( -s $cand ) { $ltrHmm = $cand; last; }
     }
   }
-  die "LTRPipeline: No profile HMM file for the domain search.  Pass -ltr_hmm <file>\n"
-      . "             or place TEfam.hmm in $FindBin::RealBin/Libraries.\n"
-      if ( !$ltrHmm || !-s $ltrHmm );
-  my $ltrCount = &runLtrForage( $LTR_FORAGE_DIR, $inputFile, $ltrHmm,
-                                "$tempDir/LtrRetriever-redundant-results.fa",
-                                $threads, $ltrSeqLimit, $tempDir );
-  if ( $ltrCount == 0 || ! -s "$tempDir/LtrRetriever-redundant-results.fa" ) {
-    print "LTRPipeline: No elements kept by ltr-forage.\n";
+  die "LTRPipeline: The profile HMM file $ltrHmm is missing or empty.\n"
+      if ( $ltrHmm && !-s $ltrHmm );
+  print "\nLTRPipeline: -LTRMaxSeqLen applies to the LTR_retriever path only; ignored.\n"
+      if ( $options{'LTRMaxSeqLen'} );
+  my $famCount = &runLtrLibrary( forageDir   => $LTR_FORAGE_DIR,
+                                 seqFile     => $inputFile,
+                                 hmmFile     => $ltrHmm,
+                                 threads     => $threads,
+                                 wrkDir      => $tempDir,
+                                 translation => $options{'giToID'},
+                                 outPrefix   => "$inputFile-ltrs" );
+  if ( $famCount == 0 ) {
+    print "\nLTRPipeline: No families built by ltr-forage.\n";
     exit;
   }
-  print "     : " . elapsedTime( "step" ) . "\n";
+  print " : $famCount family models, " . elapsedTime( "step" ) . "\n";
+  print "Program Time: " . elapsedTime( "runtime" ) . "\n";
+  unless ( $DEBUG ) {
+    rmtree( $tempDir );
+  }
+  exit;
 }
 elsif ( $useLtrDet ) {
   print "Running LtrDetector...";
@@ -607,118 +630,139 @@ sub runMafft {
 }
 
 ##-------------------------------------------------------------------------##
-## Use: my $count = runLtrForage( $binDir, $seqFile, $hmmFile, $outFile,
-##                                $threads, $ltrSeqLimit, $wrkDir );
+## Use: my $count = runLtrLibrary( forageDir   => $dir,
+##                                 seqFile     => $seqFile,
+##                                 hmmFile     => $hmmFile,
+##                                 threads     => #,
+##                                 wrkDir      => $dir,
+##                                 translation => $translationFile,
+##                                 outPrefix   => $prefix );
 ##
-##   Build a sufr index of the sequence file and run ltr-forage on it with
-##   boundary re-extension, the protein-domain search against $hmmFile and
-##   the standard evidence rule.  ltr-forage writes the kept elements as a
-##   library (left LTR, internal region, right LTR per element); this
-##   rewrites the identifiers to "seq:start..end_LTR" and "seq:start..end_INT"
-##   for the family-building steps, which key on the _LTR and _INT suffixes.
-##   Sequences are in genome orientation.  When the library holds more than
-##   $ltrSeqLimit sequences it is clustered with cd-hit-est at LTR_retriever's
-##   settings (80% identity over 90% of both sequences), as the old path
-##   fell back to LTR_retriever's clustered library at the same limit.
-##   Returns the number of records written divided by three, as an element
-##   count (the library holds two LTRs and one internal region per element).
+##   Run ltr-forage's family-library driver, ltr_library.py, on the sequence
+##   file and write its families as RepeatModeler families:
+##
+##     $prefix.fa   ">ltr-1_family-# [ Type=LTR|INT, ltr-forage=<model>,
+##                   Class=<class> ]", one record per model ( an LTR model
+##                   and an internal model for most families )
+##     $prefix.stk  the models' seed alignments, rows renamed from the
+##                   gi-# identifiers the sequence file carries back to the
+##                   assembly's own ( translation file from BuildDatabase )
+##     $prefix.tsv  identifier, model, class, kind
+##
+##   ltr_library.py is looked for in $dir, $dir/pipeline and, for binaries
+##   in a cargo target/release directory, $dir/../../pipeline.  It gets the
+##   ltr-forage and sufr binaries from $dir and te-composer, nail and mmseqs
+##   from RepeatModeler's configuration; rmblastn too when RMBLAST_DIR holds
+##   the Rust port ( 3.0.9 or later ), which it requires, and otherwise it
+##   finds its own.  Returns the number of models written.
 ##
 ##-------------------------------------------------------------------------##
-sub runLtrForage {
-  my $binDir      = shift;
-  my $seqFile     = shift;
-  my $hmmFile     = shift;
-  my $outFile     = shift;
-  my $threads     = shift;
-  my $ltrSeqLimit = shift;
-  my $wrkDir      = shift;
+sub runLtrLibrary {
+  my %p = @_;
 
-  die "LTRPipeline::runLtrForage : Could not find input file $seqFile\n"
-      if ( !-s $seqFile );
+  die "LTRPipeline::runLtrLibrary : Could not find input file $p{'seqFile'}\n"
+      if ( !-s $p{'seqFile'} );
 
-  my $errorFlag = 0;
-  my $tmpDir;
-  if ( !defined $wrkDir || !-d $wrkDir ) {
-    $tmpDir = &createTempDir( [ dirname( $seqFile ), cwd() ], "LFOR" );
+  my $script;
+  foreach my $cand ( "$p{'forageDir'}/ltr_library.py",
+                     "$p{'forageDir'}/pipeline/ltr_library.py",
+                     "$p{'forageDir'}/../../pipeline/ltr_library.py" ) {
+    if ( -s $cand ) { $script = $cand; last; }
   }
-  else {
-    $tmpDir = &createTempDir( [ $wrkDir ], "LFOR" );
-  }
-  print "LTRPipeline::runLtrForage : tmpdir = $tmpDir\n" if ( $DEBUG );
+  die "LTRPipeline: Could not find ltr_library.py in $p{'forageDir'}, its pipeline/\n"
+      . "             directory or $p{'forageDir'}/../../pipeline.\n"
+      if ( !$script );
 
-  my $full_seqFile = File::Spec->rel2abs( $seqFile );
-  my $cmd = "$binDir/sufr create --dna -o $tmpDir/seq.sufr $full_seqFile "
-          . "> $tmpDir/sufr.log 2>&1";
-  print "LTRPipeline::runLtrForage : Running $cmd\n" if ( $DEBUG );
+  my $outDir = "$p{'wrkDir'}/ltr_library";
+  my $cmd = "python3 $script " . File::Spec->rel2abs( $p{'seqFile'} )
+      . " -o $outDir -t $p{'threads'}"
+      . " --ltr-forage $p{'forageDir'}/ltr-forage --sufr-bin $p{'forageDir'}/sufr"
+      . " --te-composer $TE_COMPOSER_DIR/te-composer"
+      . " --nail $NAIL_DIR/nail --mmseqs $MMSEQS_DIR/mmseqs";
+  $cmd .= " --domain-hmm $p{'hmmFile'}" if ( $p{'hmmFile'} );
+  my $rmbVersion = `$RMBLAST_DIR/rmblastn -version 2>&1`;
+  if ( $rmbVersion =~ /rmblastn\s+(\d+)\.(\d+)\.(\d+)/
+       && ( $1 > 3 || ( $1 == 3 && ( $2 > 0 || $3 >= 9 ) ) ) ) {
+    $cmd .= " --rmblastn $RMBLAST_DIR/rmblastn";
+  }
+  $cmd .= " > $p{'wrkDir'}/ltr_library.log 2>&1";
+  print "LTRPipeline::runLtrLibrary : Running $cmd\n" if ( $DEBUG );
   if ( system( $cmd ) != 0 ) {
-    warn "LTRPipeline: sufr failed to build the suffix array. Error code: "
-        . ( $? >> 8 ) . "  See $tmpDir/sufr.log\n";
-    $errorFlag = 1;
+    warn "\nLTRPipeline: ltr_library.py failed. Error code: " . ( $? >> 8 )
+        . "  See $p{'wrkDir'}/ltr_library.log\n";
+    return 0;
   }
+  return 0 if ( !-s "$outDir/library.fa" );
+  die "LTRPipeline: ltr_library.py wrote no seed alignments ( $outDir/library.stk );\n"
+      . "             it needs ltr-forage with step 23b.\n"
+      if ( !-s "$outDir/library.stk" );
 
-  my $count = 0;
-  if ( !$errorFlag ) {
-    $cmd = "$binDir/ltr-forage $tmpDir/seq.sufr --reextend"
-         . " --domain-hmm $hmmFile --keep standard"
-         . " --library $tmpDir/library.fa --format tsv"
-         . " -j $threads"
-         . " > $tmpDir/candidates.tsv 2> $tmpDir/ltr-forage.log";
-    print "LTRPipeline::runLtrForage : Running $cmd\n" if ( $DEBUG );
-    if ( system( $cmd ) != 0 ) {
-      warn "LTRPipeline: ltr-forage failed. Error code: " . ( $? >> 8 )
-          . "  See $tmpDir/ltr-forage.log\n";
-      $errorFlag = 1;
+  # gi-# ( as RepeatModeler writes the sequence file ) back to the assembly's names
+  my %giMap = ();
+  if ( $p{'translation'} && -s $p{'translation'} ) {
+    open my $TR, "<$p{'translation'}"
+        or die "LTRPipeline: Could not open $p{'translation'}!\n";
+    while ( <$TR> ) {
+      $giMap{"gi-$2"} = $1 if ( /^(\S+)\t(\d+)/ );
     }
+    close $TR;
   }
 
-  if ( !$errorFlag && -s "$tmpDir/library.fa" ) {
-    my $numSeqs = 0;
-    open IN, "<$tmpDir/library.fa" or die;
-    while ( <IN> ) { $numSeqs++ if ( /^>/ ); }
-    close IN;
-    if ( $numSeqs > $ltrSeqLimit ) {
-      $cmd = "$CDHIT_DIR/cd-hit-est -c 0.8 -G 0.8 -s 0.9 -aL 0.9 -aS 0.9 -M 0"
-           . " -T $threads -i $tmpDir/library.fa -o $tmpDir/library.nr.fa"
-           . " > $tmpDir/cd-hit.log 2>&1";
-      print "LTRPipeline::runLtrForage : $numSeqs sequences exceed the limit of $ltrSeqLimit; running $cmd\n" if ( $DEBUG );
-      if ( system( $cmd ) != 0 || ! -s "$tmpDir/library.nr.fa" ) {
-        warn "LTRPipeline: cd-hit-est failed on the ltr-forage library. Error code: " . ( $? >> 8 )
-            . "  See $tmpDir/cd-hit.log\n";
-        $errorFlag = 1;
-      }
-      else {
-        rename( "$tmpDir/library.fa", "$tmpDir/library.redundant.fa" );
-        rename( "$tmpDir/library.nr.fa", "$tmpDir/library.fa" );
-      }
+  # Models in library order: fam0001_v1_LTR#LTR/Gypsy origin=...
+  my %newID = ();
+  my $num   = 0;
+  open my $IN,  "<$outDir/library.fa"
+      or die "LTRPipeline: Could not open $outDir/library.fa!\n";
+  open my $FA,  ">$p{'outPrefix'}.fa"
+      or die "LTRPipeline: Could not open $p{'outPrefix'}.fa for writing!\n";
+  open my $TSV, ">$p{'outPrefix'}.tsv"
+      or die "LTRPipeline: Could not open $p{'outPrefix'}.tsv for writing!\n";
+  while ( <$IN> ) {
+    if ( /^>(\S+)/ ) {
+      my ( $model, $class ) = split( /#/, $1, 2 );
+      $class = "LTR" if ( !$class );
+      my $kind = ( $model =~ /_INT$/ ? "INT" : "LTR" );
+      $num++;
+      $newID{$model} = "ltr-1_family-$num";
+      print $FA ">ltr-1_family-$num [ Type=$kind, ltr-forage=$model, Class=$class ]\n";
+      print $TSV "ltr-1_family-$num\t$model\t$class\t$kind\n";
+      next;
     }
+    print $FA $_;
   }
+  close $IN;
+  close $FA;
+  close $TSV;
 
-  if ( !$errorFlag && -s "$tmpDir/library.fa" ) {
-    open IN, "<$tmpDir/library.fa"
-        or die "LTRPipeline::runLtrForage : Could not open $tmpDir/library.fa!";
-    open OUT, ">$outFile"
-        or die "LTRPipeline::runLtrForage : Could not open $outFile for writing!";
-    while ( <IN> ) {
-      # >chr22:7291483..7292450_LTR#LTR/Gypsy domain,tsd6,tgca
-      if ( /^>(\S+?):(\d+)\.\.(\d+)_(LTR|INT)\S*\s*(.*)$/ ) {
-        $count++;
-        print OUT ">$1:$2..$3_$4 [forward] $5\n";
-      }
-      else {
-        print OUT $_;
-      }
+  open $IN, "<$outDir/library.stk"
+      or die "LTRPipeline: Could not open $outDir/library.stk!\n";
+  open my $STK, ">$p{'outPrefix'}.stk"
+      or die "LTRPipeline: Could not open $p{'outPrefix'}.stk for writing!\n";
+  my $id;
+  while ( <$IN> ) {
+    if ( /^#=GF\s+ID\s+(\S+)/ ) {
+      my $model = $1;
+      $id = $newID{$model}
+          or die "LTRPipeline: $model in library.stk is not in library.fa!\n";
+      print $STK "#=GF ID $id\n";
+      print $STK "#=GF DE RepeatModeler Generated - $id\n";
+      print $STK "#=GF CC LTR-Pipeline [ ltr-forage model $model ]\n";
+      next;
     }
-    close IN;
-    close OUT;
-    # Three records per element before clustering
-    $count = int( ( $count + 2 ) / 3 );
+    if ( /^(gi-\d+)(:\S+)(\s+\S+\s*)$/ && exists $giMap{$1} ) {
+      print $STK $giMap{$1} . $2 . $3;
+      next;
+    }
+    print $STK $_;
   }
+  close $IN;
+  close $STK;
 
-  unless ( $DEBUG || $errorFlag ) {
-    rmtree( $tmpDir );
+  unless ( $DEBUG ) {
+    rmtree( $outDir );
   }
-  print "LTRPipeline::runLtrForage : Returning $count elements.\n" if ( $DEBUG );
-  return $count;
+  print "LTRPipeline::runLtrLibrary : Returning $num models.\n" if ( $DEBUG );
+  return $num;
 }
 
 sub runLtrRetriever {

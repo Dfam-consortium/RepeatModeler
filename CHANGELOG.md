@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- -organelles <fasta>: organelle sequences for the -LTRStruct merge with
+  ltr-forage. BuildDatabase now also lists the sequences that look like
+  organelle genomes in <database>.organelles: those named chrM, MT, Pt, ChrC and
+  the like, and those whose description mentions a mitochondrion, chloroplast,
+  plastid, apicoplast, kinetoplast or plasmid.
 - generateSeedAlignments.pl records a ConsCmp line in each seed alignment giving
   the substitutions, insertions, deletions and ambiguous positions between the
   consensus called from the alignment and the consensus RepeatMasker used. With
@@ -26,6 +31,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   prompts for it and RepeatModeler prints its version in the startup banner.
 
 ### Changed
+- With LTR_FORAGE_DIR set, LTRPipeline runs ltr-forage's family-library driver
+  (ltr_library.py) in place of raw ltr-forage plus MAFFT, NINJA and te-composer.
+  Each family has one LTR model and one internal model. Each model gets a seed
+  alignment of its genome copies, with the model as the RF line. It writes
+  <input>-ltrs.tsv mapping each ltr-1_family-# to its ltr-forage model and class.
+  MAFFT, NINJA, CD-HIT, GenomeTools and LTR_retriever are no longer needed on this
+  path; te-composer (0.6.8 or higher for the seed alignments), nail and MMseqs2
+  are.
+- With LTR_FORAGE_DIR set, RepeatModeler merges the LTRPipeline families
+  differently. It no longer clusters with cd-hit-est. Instead:
+    - A RepeatScout/RECON family is dropped when it aligns to a single
+      ltr-forage model at 80% identity or better over 80% of the shorter of the
+      two. This is the cd-hit rule applied pair by pair.
+    - A RepeatScout/RECON family is dropped when organelle sequence covers 80% of
+      it.
+    - After RepeatClassifier, an ltr-forage model it did not call LTR keeps
+      ltr-forage's class.
+    - A RepeatScout/RECON family it did not call LTR takes the class of the
+      ltr-forage model covering most of it, when ltr-forage models cover 50% of
+      it, or 20% if it is Unknown.
+  The decisions are in ltr-merge.tsv in the working directory.
+  On rice (MSU7, Jiang 6.9 curated annotation, LTR masking, sensitivity /
+  precision) this scored 95.75 / 97.12. ltr-forage alone scored 93.63 / 98.42 and
+  RepeatScout/RECON alone 67.17 / 96.67. Pre-masking the RepeatScout/RECON
+  samples with ltr-forage families did worse (93.67 / 97.56).
+  The merge searches use the 20p<GC>g matrix for the subject's GC and
+  rmblastn gap 24/6, as ltr-forage's searches do; the 20p35g-20p53g matrices are
+  now in Matrices/ncbi/nt. With 20p41g and gap 20/5, rice scored 1.3 points lower,
+  because divergent internals fell under the 70% coverage identity.
 - RepeatModeler and LTRPipeline build each family's consensus with te-composer
   rather than the Refiner script, through the new RepeatUtil::refineFamily.
   te-composer runs its own genome extension, so refineFamily no longer calls

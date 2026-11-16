@@ -104,7 +104,7 @@ BEGIN {
                                  },
           'LTR_FORAGE_DIR' => {
                                 'command_line_override' => 'ltr_forage_dir',
-                                'description' => 'The path to the directory holding the ltr-forage and sufr programs.  When set, the LTR structural pipeline runs ltr-forage in place of GenomeTools LTRharvest and LTR_retriever, and GENOMETOOLS_DIR and LTR_RETRIEVER_DIR are not needed.',
+                                'description' => 'The path to the directory holding the ltr-forage and sufr programs, and ltr-forage\'s ltr_library.py ( in the directory itself, its pipeline/ subdirectory, or ../../pipeline for a cargo target/release directory ).  When set, the LTR structural pipeline builds its families with ltr-forage in place of GenomeTools LTRharvest, LTR_retriever, MAFFT and NINJA, and merges them without cd-hit.',
                                 'environment_override' => 'LTR_FORAGE_DIR',
                                 'expected_binaries' => [
                                                          'ltr-forage',

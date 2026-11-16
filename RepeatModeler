@@ -73,8 +73,34 @@ should be an integer number.
 
 =item -LTRStruct
 
-Run the LTR structural discovery pipeline ( LTR_Harvest and LTR_retreiver ) and 
-combine results with the RepeatScout/RECON pipeline. [optional]
+Run the LTR structural discovery pipeline and combine its families with the
+RepeatScout/RECON families. [optional]
+
+With LTR_FORAGE_DIR configured the pipeline is ltr-forage's family library
+( one LTR and one internal model per family, with seed alignments ), and the
+families are combined as follows:
+
+  - A RepeatScout/RECON family is dropped when it and some ltr-forage model
+    align at 80% identity or better over at least 80% of the shorter of the
+    two ( RepeatModeler's cd-hit rule, with the ltr-forage model kept ).
+  - A RepeatScout/RECON family is dropped when organelle sequence covers
+    80% of it at 80% identity or better ( -organelles, and the sequences
+    BuildDatabase listed in <database>.organelles ).
+  - After classification, an ltr-forage model that RepeatClassifier did not
+    call an LTR element keeps ltr-forage's class, and a RepeatScout/RECON
+    family that RepeatClassifier did not call an LTR element takes the
+    class of the ltr-forage model covering most of it when ltr-forage
+    models cover at least 50% of it ( 20% when it is Unknown ) at 70%
+    identity or better.
+
+The decisions are listed in ltr-merge.tsv in the working directory.  Without
+LTR_FORAGE_DIR the pipeline is GenomeTools LTRharvest and LTR_retriever, and
+its families are combined with cd-hit-est.
+
+=item -organelles <fasta>
+
+Organelle sequences ( mitochondrion, plastid ) for the -LTRStruct merge with
+ltr-forage, in addition to those BuildDatabase found by name or description.
 
 =item -genomeSampleSizeMax #
 
@@ -197,6 +223,7 @@ my @getopt_args = (
                     '-genomeSampleSizeMax=s',
                     '-LTRStruct',
                     '-LTRMaxSeqLen=i',
+                    '-organelles=s',
                     '-onlyRS',
                     '-skipRS',
                     '-disableRMBlastStat',
@@ -277,15 +304,18 @@ foreach my $param ( "RMBLAST_DIR", "TRF_DIR", "RSCOUT_DIR", "RECON_DIR",
   }
 }
 
-# LTRPipeline dependencies.  With LTR_FORAGE_DIR set, ltr-forage replaces
-# GenomeTools and LTR_retriever, and the perl threads LTR_retriever needs.
+# LTRPipeline dependencies.  With LTR_FORAGE_DIR set, ltr-forage's family
+# library replaces GenomeTools, LTR_retriever and the MAFFT/NINJA family
+# building ( and the perl threads LTR_retriever needs ), and the merge uses
+# rmblastn rather than cd-hit; it needs te-composer, nail and MMseqs2.
 if ( $options{'LTRStruct'} ) {
   my $useForage = ( $config->{'LTR_FORAGE_DIR'}->{'value'} ne "" );
-  my @ltrDeps = ( "MAFFT_DIR", "NINJA_DIR", "CDHIT_DIR" );
+  my @ltrDeps;
   if ( $useForage ) {
-    push @ltrDeps, "LTR_FORAGE_DIR";
+    @ltrDeps = ( "LTR_FORAGE_DIR", "TE_COMPOSER_DIR", "NAIL_DIR", "MMSEQS_DIR" );
   } else {
-    push @ltrDeps, "GENOMETOOLS_DIR", "LTR_RETRIEVER_DIR";
+    @ltrDeps = ( "MAFFT_DIR", "NINJA_DIR", "CDHIT_DIR", "GENOMETOOLS_DIR",
+                 "LTR_RETRIEVER_DIR" );
   }
   foreach my $param ( @ltrDeps )
   {
@@ -543,7 +573,11 @@ log_print "Using output directory = $tmpDir\n";
 log_print "Search Engine = $engine $engineVersion\n";
 log_print "Threads = " . $options{'threads'} . "\n" if ( $options{'threads'} );
 log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_DIR") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . ", RepeatAfterMe " . RepModelConfig::getDependencyVersion("REPEATAFTERME_DIR") . ", te-composer " . RepModelConfig::getDependencyVersion("TE_COMPOSER_DIR") . "\n";
-if ( $options{'LTRStruct'} ) {
+if ( $options{'LTRStruct'} && $config->{'LTR_FORAGE_DIR'}->{'value'} ne "" ) {
+  log_print "LTR Structural Analysis: Enabled ( ltr-forage "
+      . RepModelConfig::getDependencyVersion("LTR_FORAGE_DIR") . " )\n";
+}
+elsif ( $options{'LTRStruct'} ) {
   log_print "LTR Structural Analysis: Enabled ( " . 
       "GenomeTools " . RepModelConfig::getDependencyVersion("GENOMETOOLS_DIR") . ", " .
       "LTR_Retriever " . RepModelConfig::getDependencyVersion("LTR_RETRIEVER_DIR") . ",\n" .
@@ -1474,6 +1508,7 @@ log_print "\nRepeatScout/RECON discovery complete: $numModels families found\n";
 ##       abundance of families found in previous rounds.
 
 # Optionally perform LTR structural search
+my $ltrMerge;    # the ltr-forage merge's decisions, for the class transfer
 if ( $options{'LTRStruct'} ) {
   elapsedTime( 1 );
   log_print "\n\nLTR Structural Analysis\n";
@@ -1500,11 +1535,25 @@ if ( $options{'LTRStruct'} ) {
         if ( exists $options{'LTRMaxSeqLen'} );
     $optionalArgs .= " -threads $options{'threads'}" if ( exists $options{'threads'} );
     $optionalArgs .= " -debug"             if ( $DEBUG );
+    # Configuration given on the command line ( -ltr_forage_dir, -nail_dir ... )
+    for my $key ( keys %$config ) {
+      my $opt = $config->{$key}->{'command_line_override'} // next;
+      $optionalArgs .= " -$opt $options{$opt}" if exists $options{$opt};
+    }
     ## Run the LTR Pipeline
     print "Calling LTRPipeline as: $FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq\n" if ( $DEBUG );
     system( "$FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq" );
     unlink "$tmpDir/tmpInputSeq" unless ( $DEBUG );
-    if ( -s "$tmpDir/tmpInputSeq-ltrs.fa" ) {
+    if ( -s "$tmpDir/tmpInputSeq-ltrs.fa"
+         && $config->{'LTR_FORAGE_DIR'}->{'value'} ne "" ) {
+      log_print "  -- Merging the ltr-forage families with previous rounds...\n";
+      $ltrMerge = &mergeLtrForageFamilies(
+                                 workDir    => $tmpDir,
+                                 ltrPrefix  => "$tmpDir/tmpInputSeq-ltrs",
+                                 organelles => &collectOrganelles( $tmpDir ),
+                                 threads    => $threads );
+    }
+    elsif ( -s "$tmpDir/tmpInputSeq-ltrs.fa" ) {
 
       # Combine results between both pipelines
       # run CDhit
@@ -1762,6 +1811,8 @@ if ( $numModels > 0 ) {
   chdir( $origDir );
   print "\n";
   log_print "Classification Time: " . elapsedTime( 1 ) . "\n";
+  &transferLtrClasses( workDir => $tmpDir, merge => $ltrMerge )
+      if ( $ltrMerge );
 }
 
 log_print "\n\nProgram Time: " . elapsedTime( "runtime" ) . "\n";
@@ -2389,6 +2440,487 @@ sub runRepeatScout {
 #   search for satellite sequences (many overlapping off-diagonal matches)
 #   and or sequences contained fully-ish contained inside others.
 #
+##-------------------------------------------------------------------------##
+##
+## Use: my $orgFile = collectOrganelles( $workDir );
+##
+##   Write the organelle sequences for the ltr-forage merge to
+##   $workDir/organelles.fa: those BuildDatabase listed in
+##   <database>.organelles and those given with -organelles.  Returns the
+##   file name, or undef when there are none.
+##
+##-------------------------------------------------------------------------##
+sub collectOrganelles {
+  my $workDir = shift;
+
+  my $orgFile = "$workDir/organelles.fa";
+  my @found   = ();
+  open my $OUT, ">$orgFile"
+      or die "RepeatModeler: Could not open $orgFile for writing!\n";
+  if ( -s "$genomeDB.organelles" ) {
+    open my $IN, "<$genomeDB.organelles"
+        or die "RepeatModeler: Could not open $genomeDB.organelles!\n";
+    while ( <$IN> ) {
+      next unless ( /^(\S+)\t(\S+)/ );
+      my ( $gi, $id ) = ( $1, $2 );
+      next unless ( $genomeSeqDB->exists( $gi ) );
+      print $OUT ">$id\n" . $genomeSeqDB->getSequence( $gi ) . "\n";
+      push @found, $id;
+    }
+    close $IN;
+  }
+  elsif ( !-e "$genomeDB.organelles" ) {
+    log_print "       - No $genomeDBName.organelles ( database built before "
+        . "BuildDatabase listed\n"
+        . "         organelle sequences ); give -organelles to filter them.\n";
+  }
+  if ( $options{'organelles'} ) {
+    open my $IN, "<$options{'organelles'}"
+        or die "RepeatModeler: Could not open $options{'organelles'}!\n";
+    while ( <$IN> ) {
+      push @found, $1 if ( /^>(\S+)/ );
+      print $OUT $_;
+    }
+    close $IN;
+  }
+  close $OUT;
+  if ( !@found ) {
+    log_print "       - No organelle sequences to filter against\n";
+    unlink( $orgFile );
+    return undef;
+  }
+  log_print "       - Organelle sequences: " . join( ", ", @found ) . "\n";
+  return $orgFile;
+}
+
+##-------------------------------------------------------------------------##
+##
+## Use: my $hits = ltrMergeSearch( query => $fasta, subject => $fasta,
+##                                 workDir => $dir, threads => # );
+##
+##   rmblastn of the query against the subject, returning [ query, subject,
+##   qStart, qEnd, sStart, sEnd, identity ] per HSP, subject coordinates low
+##   to high.  The search and the identity are those the merge thresholds
+##   were tuned with ( ltr-forage's rmb_ava.sh ): the 20p<GC>g matrix for the
+##   subject's GC, rmblastn gap open 24 / extend 6, minimum score 225,
+##   complexity-adjusted, and identity as BLAST's pident from RepeatMasker's
+##   substitution and gap percentages ( mismatches at ambiguous consensus
+##   bases do not count ).  Small changes here move families across the
+##   70% and 80% thresholds: with 20p41g and gap 20 / 5 the rice merge lost
+##   1.2 points of LTR sensitivity.
+##
+##-------------------------------------------------------------------------##
+sub ltrMergeSearch {
+  my %parameters = @_;
+
+  my $searchEngineN =
+      NCBIBlastSearchEngine->new( pathToEngine => $RMBLASTN_PRGM );
+  $searchEngineN->setMatrix( "$FindBin::RealBin/Matrices/ncbi/nt/"
+                         . &gcMatrixName( $parameters{'subject'} ) );
+  $searchEngineN->setTempDir( $parameters{'workDir'} );
+  $searchEngineN->setMinScore( 225 );
+  $searchEngineN->setGenerateAlignments( 0 );
+  # rmblastn -gapopen 24 -gapextend 6 ( the engine passes init - ext )
+  $searchEngineN->setGapInit( -30 );
+  $searchEngineN->setInsGapExt( -6 );
+  $searchEngineN->setDelGapExt( -6 );
+  $searchEngineN->setMinMatch( 12 );
+  $searchEngineN->setCores( $parameters{'threads'} );
+  $searchEngineN->setScoreMode( SearchEngineI::complexityAdjustedScoreMode );
+
+  my $subject = $searchEngineN->prepareSubject( $parameters{'subject'},
+                                                parseSeqIDs => 1,
+                                                dbVersion   => 4,
+                                                force       => 1 );
+  $searchEngineN->setSubject( $subject );
+  $searchEngineN->setQuery( $parameters{'query'} );
+  my ( $status, $resultCollection ) = $searchEngineN->search();
+  die "RepeatModeler: rmblastn failed in the ltr-forage merge ( "
+      . ( $? >> 8 ) . " )\n"
+      if ( $status );
+
+  my @hits = ();
+  for ( my $k = 0 ; $k < $resultCollection->size() ; $k++ ) {
+    my $r = $resultCollection->get( $k );
+    my ( $s1, $s2 ) = ( $r->getSubjStart(), $r->getSubjEnd() );
+    ( $s1, $s2 ) = ( $s2, $s1 ) if ( $s1 > $s2 );
+    # Alignment columns = query span + gaps in the query; identity =
+    # columns less substitutions and gaps on either side.  pctDelete holds
+    # rmblastn's perc_query_gap and pctInsert its perc_db_gap.
+    my $qSpan = $r->getQueryEnd() - $r->getQueryStart() + 1;
+    my $sSpan = $s2 - $s1 + 1;
+    my $qGaps = int( $r->getPctDelete() * $qSpan / 100 + 0.5 );
+    my $sGaps = int( $r->getPctInsert() * $sSpan / 100 + 0.5 );
+    my $subs  = int( $r->getPctDiverge() * $qSpan / 100 + 0.5 );
+    my $cols  = $qSpan + $qGaps;
+    push @hits,
+        [
+          $r->getQueryName(), $r->getSubjName(), $r->getQueryStart(),
+          $r->getQueryEnd(),  $s1,               $s2,
+          100 * ( $cols - $subs - $qGaps - $sGaps ) / $cols
+        ];
+  }
+  if ( !$DEBUG ) {
+    foreach my $f ( glob( "$parameters{'subject'}.n*" ) ) { unlink( $f ); }
+  }
+  return \@hits;
+}
+
+# RepeatMasker's matrix for a sequence file's GC ( N excluded ): 20p<m>g with
+# m the odd number m-1 < GC <= m+1, within 35..53.
+sub gcMatrixName {
+  my $file = shift;
+  my ( $n, $gc, $ns ) = ( 0, 0, 0 );
+  open my $IN, "<$file" or die "RepeatModeler: Could not open $file!\n";
+  while ( <$IN> ) {
+    next if ( /^>/ );
+    s/\s+//g;
+    $n  += length( $_ );
+    $gc += tr/GCgc//;
+    $ns += tr/Nn//;
+  }
+  close $IN;
+  my $pct = ( $n > $ns ) ? 100 * $gc / ( $n - $ns ) : 41;
+  my $h   = $pct / 2;
+  my $c   = ( $h == int( $h ) ) ? $h : int( $h ) + 1;
+  my $m   = 2 * $c - 1;
+  $m = 35 if ( $m < 35 );
+  $m = 53 if ( $m > 53 );
+  return "20p${m}g.matrix";
+}
+
+# Bases covered by a list of [ start, end ] intervals.
+sub unionLength {
+  my @iv = sort { $a->[ 0 ] <=> $b->[ 0 ] } @_;
+  my $total = 0;
+  my ( $cs, $ce );
+  foreach my $i ( @iv ) {
+    if ( !defined $cs ) { ( $cs, $ce ) = @{$i}; }
+    elsif ( $i->[ 0 ] <= $ce + 1 ) { $ce = $i->[ 1 ] if ( $i->[ 1 ] > $ce ); }
+    else { $total += $ce - $cs + 1; ( $cs, $ce ) = @{$i}; }
+  }
+  $total += $ce - $cs + 1 if ( defined $cs );
+  return $total;
+}
+
+# Lengths of the records of a FASTA file, by identifier.
+sub fastaLengths {
+  my $file = shift;
+  my %len  = ();
+  my $id;
+  open my $IN, "<$file" or die "RepeatModeler: Could not open $file!\n";
+  while ( <$IN> ) {
+    if ( /^>(\S+)/ ) { $id = $1; $len{$id} = 0; next; }
+    s/\s+//g;
+    $len{$id} += length( $_ );
+  }
+  close $IN;
+  return \%len;
+}
+
+##-------------------------------------------------------------------------##
+##
+## Use: my $merge = mergeLtrForageFamilies( workDir => $dir,
+##                                          ltrPrefix => $prefix,
+##                                          organelles => $fastaOrUndef,
+##                                          threads => # );
+##
+##   Combine LTRPipeline's ltr-forage families ( $prefix.fa/.stk/.tsv ) with
+##   the RepeatScout/RECON families in $workDir/consensi.fa and
+##   families.stk, replacing both ( the originals are kept as
+##   *.recon_rscout_only ):
+##
+##     - a RepeatScout/RECON family is dropped when it and one ltr-forage
+##       model align at >= 80% identity over >= 80% of the shorter of the
+##       two: RepeatModeler's cd-hit rule ( -c 0.8 -aS 0.8, any cluster
+##       holding an ltr- member loses its rnd- members ) applied pair by
+##       pair, so a long family is not lost through a cluster
+##       representative that merely contains an LTR;
+##     - a RepeatScout/RECON family that organelle sequence covers >= 80%
+##       at >= 80% identity is dropped.
+##
+##   On rice, gorilla and mouse this ordering ( no pre-masking ) with the
+##   class transfer below gave the best LTR masking of the variants tried
+##   ( rice LTR sensitivity / precision 95.60 / 97.31 vs ltr-forage alone
+##   93.63 / 98.42 and RepeatModeler alone 67.17 / 96.67 ).
+##
+##   Returns what transferLtrClasses() needs: each kept family's coverage
+##   by ltr-forage models ( >= 70% identity ) and the model covering most of
+##   it, and ltr-forage's class for each model.
+##
+##-------------------------------------------------------------------------##
+sub mergeLtrForageFamilies {
+  my %parameters = @_;
+  my $workDir    = $parameters{'workDir'};
+  my $ltrPrefix  = $parameters{'ltrPrefix'};
+
+  my $rLen = &fastaLengths( "$workDir/consensi.fa" );
+  my $lLen = &fastaLengths( "$ltrPrefix.fa" );
+  my %ltrClass = ();
+  open my $TSV, "<$ltrPrefix.tsv"
+      or die "RepeatModeler: Could not open $ltrPrefix.tsv!\n";
+  while ( <$TSV> ) {
+    my @f = split( /\t/ );
+    $ltrClass{ $f[ 0 ] } = $f[ 2 ];
+  }
+  close $TSV;
+  log_print "       - "
+      . scalar( keys( %{$rLen} ) )
+      . " RepeatScout/RECON families\n";
+  log_print "       - " . scalar( keys( %{$lLen} ) ) . " ltr-forage models\n";
+
+  my %pairR  = ();    # rnd -> ltr -> rnd intervals at >= 80%
+  my %pairL  = ();    # rnd -> ltr -> ltr intervals at >= 80%
+  my %cover  = ();    # rnd -> intervals at >= 70%, any model
+  my %byLtr  = ();    # rnd -> ltr -> intervals at >= 70%
+  if ( keys( %{$rLen} ) ) {
+    my $hits = &ltrMergeSearch( query   => "$workDir/consensi.fa",
+                                subject => "$ltrPrefix.fa",
+                                workDir => $workDir,
+                                threads => $parameters{'threads'} );
+    foreach my $h ( @{$hits} ) {
+      my ( $r, $l, $qs, $qe, $ss, $se, $pid ) = @{$h};
+      if ( $pid >= 80 ) {
+        push @{ $pairR{$r}->{$l} }, [ $qs, $qe ];
+        push @{ $pairL{$r}->{$l} }, [ $ss, $se ];
+      }
+      if ( $pid >= 70 ) {
+        push @{ $cover{$r} }, [ $qs, $qe ];
+        push @{ $byLtr{$r}->{$l} }, [ $qs, $qe ];
+      }
+    }
+  }
+  my %drop = ();    # rnd -> reason
+  foreach my $r ( keys( %pairR ) ) {
+    foreach my $l ( keys( %{ $pairR{$r} } ) ) {
+      my $ok;
+      if ( $rLen->{$r} <= $lLen->{$l} ) {
+        $ok = &unionLength( @{ $pairR{$r}->{$l} } ) >= 0.8 * $rLen->{$r};
+      }
+      else {
+        $ok = &unionLength( @{ $pairL{$r}->{$l} } ) >= 0.8 * $lLen->{$l};
+      }
+      if ( $ok ) { $drop{$r} = "redundant with $l"; last; }
+    }
+  }
+  my $numRedundant = scalar( keys( %drop ) );
+
+  my $numOrganelle = 0;
+  if ( $parameters{'organelles'} && keys( %{$rLen} ) ) {
+    my $hits = &ltrMergeSearch( query   => "$workDir/consensi.fa",
+                                subject => $parameters{'organelles'},
+                                workDir => $workDir,
+                                threads => $parameters{'threads'} );
+    my %org = ();
+    foreach my $h ( @{$hits} ) {
+      push @{ $org{ $h->[ 0 ] } }, [ $h->[ 2 ], $h->[ 3 ] ] if ( $h->[ 6 ] >= 80 );
+    }
+    foreach my $r ( keys( %org ) ) {
+      next if ( exists $drop{$r} );
+      if ( &unionLength( @{ $org{$r} } ) >= 0.8 * $rLen->{$r} ) {
+        $drop{$r} = "organelle";
+        $numOrganelle++;
+      }
+    }
+  }
+
+  # Coverage of the families kept, for the class transfer
+  my %merge = ( ltrClass => \%ltrClass, cover => {}, top => {} );
+  open my $DEC, ">$workDir/ltr-merge.tsv"
+      or die "RepeatModeler: Could not open $workDir/ltr-merge.tsv!\n";
+  print $DEC "family\tlength\tdecision\tltr_forage_cover\ttop_ltr_model\n";
+  foreach my $r ( sort keys( %{$rLen} ) ) {
+    my $cv = $cover{$r} ? &unionLength( @{ $cover{$r} } ) / $rLen->{$r} : 0;
+    my ( $top, $topLen ) = ( "", 0 );
+    foreach my $l ( sort keys( %{ $byLtr{$r} } ) ) {
+      my $u = &unionLength( @{ $byLtr{$r}->{$l} } );
+      ( $top, $topLen ) = ( $l, $u ) if ( $u > $topLen );
+    }
+    printf $DEC "%s\t%d\t%s\t%.3f\t%s\n", $r, $rLen->{$r},
+        ( $drop{$r} // "kept" ), $cv, $top;
+    next if ( exists $drop{$r} );
+    $merge{'cover'}->{$r} = $cv;
+    $merge{'top'}->{$r}   = $top;
+  }
+  close $DEC;
+
+  # Rewrite consensi.fa and families.stk: the ltr-forage models, then the
+  # RepeatScout/RECON families kept
+  system( "mv $workDir/consensi.fa $workDir/consensi.fa.recon_rscout_only" );
+  system( "mv $workDir/families.stk $workDir/families.stk.recon_rscout_only" );
+  foreach my $pair ( [ "consensi.fa", "fa" ], [ "families.stk", "stk" ] ) {
+    my ( $file, $type ) = @{$pair};
+    open my $OUT, ">$workDir/$file"
+        or die "RepeatModeler: Could not open $workDir/$file for writing!\n";
+    open my $IN, "<$ltrPrefix.$type"
+        or die "RepeatModeler: Could not open $ltrPrefix.$type!\n";
+    while ( <$IN> ) { print $OUT $_; }
+    close $IN;
+    open $IN, "<$workDir/$file.recon_rscout_only"
+        or die "RepeatModeler: Could not open $workDir/$file.recon_rscout_only!\n";
+    my $keep = 1;
+    my $data = "";
+    while ( <$IN> ) {
+      if ( $type eq "fa" ) {
+        $keep = !exists $drop{$1} if ( /^>(\S+)/ );
+        print $OUT $_ if ( $keep );
+        next;
+      }
+      $data .= $_;
+      $keep = !exists $drop{$1} if ( /^#=GF\s+ID\s+(\S+)/ );
+      if ( /^\/\// ) {
+        print $OUT $data if ( $keep );
+        $data = "";
+        $keep = 1;
+      }
+    }
+    close $IN;
+    close $OUT;
+  }
+  log_print "       - Removed $numRedundant RepeatScout/RECON families redundant "
+      . "with ltr-forage models\n";
+  log_print "       - Removed $numOrganelle RepeatScout/RECON families of "
+      . "organelle sequence\n";
+  log_print "       - Final family count = "
+      . ( scalar( keys( %{$rLen} ) ) + scalar( keys( %{$lLen} ) ) -
+          scalar( keys( %drop ) ) )
+      . "\n";
+  return \%merge;
+}
+
+##-------------------------------------------------------------------------##
+##
+## Use: transferLtrClasses( workDir => $dir, merge => $merge );
+##
+##   After RepeatClassifier, in consensi.fa.classified and
+##   families-classified.stk:
+##
+##     - an ltr-forage model that RepeatClassifier did not call an LTR
+##       element takes ltr-forage's class ( its structure and domains are
+##       the stronger evidence );
+##     - a RepeatScout/RECON family that RepeatClassifier did not call an
+##       LTR element takes the class of the ltr-forage model covering most
+##       of it when ltr-forage models cover >= 50% of it, or >= 20% when it
+##       is Unknown ( at >= 70% identity ).
+##
+##   RepeatClassifier calls many LTR families Unknown, and some
+##   Helitron, LINE or DNA; on rice the transfer turned 3.7 Mb of curated
+##   LTR from Unknown masking back into LTR masking.
+##
+##-------------------------------------------------------------------------##
+sub transferLtrClasses {
+  my %parameters = @_;
+  my $workDir    = $parameters{'workDir'};
+  my $merge      = $parameters{'merge'};
+
+  my $faFile  = "$workDir/consensi.fa.classified";
+  my $stkFile = "$workDir/families-classified.stk";
+  return if ( !-s $faFile );
+
+  # Dfam classification strings for ltr-forage's classes ( as in
+  # RepeatClassifier's rmToDfamClass table )
+  my %dfamClass = (
+    "LTR" =>
+"Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element",
+    "LTR/Gypsy" =>
+"Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Gypsy-ERV;Gypsy",
+    "LTR/Copia" =>
+"Interspersed_Repeat;Transposable_Element;Class_I_Retrotransposition;Retrotransposon;Long_Terminal_Repeat_Element;Ty1-Copia"
+  );
+
+  my %class = ();
+  open my $IN, "<$faFile" or die "RepeatModeler: Could not open $faFile!\n";
+  while ( <$IN> ) {
+    $class{$1} = $2 if ( /^>([^#\s]+)#(\S+)/ );
+  }
+  close $IN;
+
+  my %newClass = ();
+  foreach my $id ( keys( %class ) ) {
+    next unless ( $id =~ /^ltr-/ && $class{$id} !~ /^LTR/ );
+    $newClass{$id} = $merge->{'ltrClass'}->{$id} // "LTR";
+  }
+  foreach my $id ( keys( %class ) ) {
+    next unless ( $id =~ /^rnd-/ && $class{$id} !~ /^LTR/ );
+    my $cv  = $merge->{'cover'}->{$id} // 0;
+    my $top = $merge->{'top'}->{$id};
+    next unless ( $top && exists $class{$top} );
+    next unless ( $cv >= 0.5 || ( $cv >= 0.2 && $class{$id} eq "Unknown" ) );
+    $newClass{$id} = $newClass{$top} // $class{$top};
+  }
+  return if ( !keys( %newClass ) );
+
+  # Dfam strings for the classes handed out, from the records that carry
+  # them when the table above lacks one ( e.g. LTR/ERVK )
+  my %tpOf  = ();
+  my $id;
+  open $IN, "<$stkFile" or die "RepeatModeler: Could not open $stkFile!\n";
+  while ( <$IN> ) {
+    $id = $1 if ( /^#=GF\s+ID\s+(\S+)/ );
+    $tpOf{ $class{$id} } //= $1
+        if ( /^#=GF\s+TP\s+(\S+)/ && defined $id && defined $class{$id} );
+  }
+  close $IN;
+
+  system( "mv $faFile $faFile.before_ltr_transfer" );
+  open $IN, "<$faFile.before_ltr_transfer"
+      or die "RepeatModeler: Could not open $faFile.before_ltr_transfer!\n";
+  open my $OUT, ">$faFile" or die "RepeatModeler: Could not open $faFile!\n";
+  while ( <$IN> ) {
+    if ( /^>([^#\s]+)#(\S+)(.*)$/s && exists $newClass{$1} ) {
+      $_ = ">$1#$newClass{$1}$3";
+    }
+    print $OUT $_;
+  }
+  close $IN;
+  close $OUT;
+
+  if ( -s $stkFile ) {
+    system( "mv $stkFile $stkFile.before_ltr_transfer" );
+    open $IN, "<$stkFile.before_ltr_transfer"
+        or die "RepeatModeler: Could not open $stkFile.before_ltr_transfer!\n";
+    open $OUT, ">$stkFile" or die "RepeatModeler: Could not open $stkFile!\n";
+    my @rec = ();
+    while ( <$IN> ) {
+      push @rec, $_;
+      next unless ( /^\/\// );
+      my ( $rid ) = map { /^#=GF\s+ID\s+(\S+)/ ? $1 : () } @rec;
+      if ( defined $rid && exists $newClass{$rid} ) {
+        my $tp = $dfamClass{ $newClass{$rid} } // $tpOf{ $newClass{$rid} };
+        if ( defined $tp ) {
+          my $done = 0;
+          foreach my $line ( @rec ) {
+            if ( $line =~ /^#=GF\s+TP\s/ ) {
+              $line = "#=GF TP    $tp\n";
+              $done = 1;
+            }
+          }
+          if ( !$done ) {
+            @rec = map { /^#=GF\s+SQ\s/ ? ( "#=GF TP    $tp\n", $_ ) : $_ } @rec;
+          }
+        }
+      }
+      print $OUT @rec;
+      @rec = ();
+    }
+    print $OUT @rec;
+    close $IN;
+    close $OUT;
+  }
+
+  my $nLtr = grep { /^ltr-/ } keys( %newClass );
+  my $nRnd = grep { /^rnd-/ } keys( %newClass );
+  open my $DEC, ">>$workDir/ltr-merge.tsv"
+      or die "RepeatModeler: Could not open $workDir/ltr-merge.tsv!\n";
+  print $DEC "# class transfer\n";
+  foreach my $c ( sort keys( %newClass ) ) {
+    print $DEC "$c\t$class{$c}\t->\t$newClass{$c}\n";
+  }
+  close $DEC;
+  log_print "LTR class transfer: $nLtr ltr-forage models kept as LTR, "
+      . "$nRnd RepeatScout/RECON families relabeled from ltr-forage coverage\n";
+}
+
 ##-------------------------------------------------------------------------##
 sub identifySatelliteAndContained {
   my %parameters = @_;
