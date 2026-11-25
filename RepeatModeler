@@ -307,12 +307,12 @@ foreach my $param ( "RMBLAST_DIR", "TRF_DIR", "RSCOUT_DIR", "RECON_DIR",
 # LTRPipeline dependencies.  With LTR_FORAGE_DIR set, ltr-forage's family
 # library replaces GenomeTools, LTR_retriever and the MAFFT/NINJA family
 # building ( and the perl threads LTR_retriever needs ), and the merge uses
-# rmblastn rather than cd-hit; it needs te-composer, nail and MMseqs2.
+# rmblastn rather than cd-hit; it needs sufr, te-composer, nail and MMseqs2.
 if ( $options{'LTRStruct'} ) {
   my $useForage = ( $config->{'LTR_FORAGE_DIR'}->{'value'} ne "" );
   my @ltrDeps;
   if ( $useForage ) {
-    @ltrDeps = ( "LTR_FORAGE_DIR", "TE_COMPOSER_DIR", "NAIL_DIR", "MMSEQS_DIR" );
+    @ltrDeps = ( "LTR_FORAGE_DIR", "SUFR_DIR", "TE_COMPOSER_DIR", "NAIL_DIR", "MMSEQS_DIR" );
   } else {
     @ltrDeps = ( "MAFFT_DIR", "NINJA_DIR", "CDHIT_DIR", "GENOMETOOLS_DIR",
                  "LTR_RETRIEVER_DIR" );
@@ -575,7 +575,8 @@ log_print "Threads = " . $options{'threads'} . "\n" if ( $options{'threads'} );
 log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_DIR") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . ", RepeatAfterMe " . RepModelConfig::getDependencyVersion("REPEATAFTERME_DIR") . ", te-composer " . RepModelConfig::getDependencyVersion("TE_COMPOSER_DIR") . "\n";
 if ( $options{'LTRStruct'} && $config->{'LTR_FORAGE_DIR'}->{'value'} ne "" ) {
   log_print "LTR Structural Analysis: Enabled ( ltr-forage "
-      . RepModelConfig::getDependencyVersion("LTR_FORAGE_DIR") . " )\n";
+      . RepModelConfig::getDependencyVersion("LTR_FORAGE_DIR") . ", sufr "
+      . RepModelConfig::getDependencyVersion("SUFR_DIR") . " )\n";
 }
 elsif ( $options{'LTRStruct'} ) {
   log_print "LTR Structural Analysis: Enabled ( " . 

@@ -29,6 +29,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   looks in RMBLAST_DIR and then on PATH.
 - TE_COMPOSER_DIR, the directory holding the te-composer program. configure
   prompts for it and RepeatModeler prints its version in the startup banner.
+- SUFR_DIR, the directory holding sufr (0.8.0 or higher). The ltr-forage LTR
+  pipeline indexes the genome with it; with LTR_FORAGE_DIR set, -LTRStruct needs
+  it, and the startup banner prints its version. LTR_FORAGE_DIR now needs to hold
+  only ltr-forage, such as the bin/ directory of an ltr-forage release.
 
 ### Changed
 - With LTR_FORAGE_DIR set, LTRPipeline runs ltr-forage's family-library driver
@@ -39,6 +43,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   MAFFT, NINJA, CD-HIT, GenomeTools and LTR_retriever are no longer needed on this
   path; te-composer (0.6.8 or higher for the seed alignments), nail and MMseqs2
   are.
+- LTRPipeline needs ltr-forage 0.2.0 or higher, which reads sufr 0.8.0's index
+  format and turns each model to its element's coding strand. Its protein
+  profiles default to ltr-forage's own (data/TEdomains.hmm), not a TEfam.hmm in
+  Libraries/. -debug also keeps ltr_library.py's intermediate files.
 - With LTR_FORAGE_DIR set, RepeatModeler merges the LTRPipeline families
   differently. It no longer clusters with cd-hit-est. Instead:
     - A RepeatScout/RECON family is dropped when it aligns to a single

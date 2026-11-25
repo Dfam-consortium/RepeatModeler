@@ -104,11 +104,10 @@ BEGIN {
                                  },
           'LTR_FORAGE_DIR' => {
                                 'command_line_override' => 'ltr_forage_dir',
-                                'description' => 'The path to the directory holding the ltr-forage and sufr programs, and ltr-forage\'s ltr_library.py ( in the directory itself, its pipeline/ subdirectory, or ../../pipeline for a cargo target/release directory ).  When set, the LTR structural pipeline builds its families with ltr-forage in place of GenomeTools LTRharvest, LTR_retriever, MAFFT and NINJA, and merges them without cd-hit.',
+                                'description' => 'The path to the directory holding the ltr-forage program ( 0.2.0 or higher ): the bin/ directory of a release, or target/release of a source build.  ltr-forage\'s ltr_library.py is found beside it ( a release\'s bin/ltr_library.py ), in its pipeline/ subdirectory, or in ../../pipeline for target/release.  When set, the LTR structural pipeline builds its families with ltr-forage in place of GenomeTools LTRharvest, LTR_retriever, MAFFT and NINJA, and merges them without cd-hit; SUFR_DIR is then needed too.',
                                 'environment_override' => 'LTR_FORAGE_DIR',
                                 'expected_binaries' => [
-                                                         'ltr-forage',
-                                                         'sufr'
+                                                         'ltr-forage'
                                                        ],
                                 'expected_files' => [],
                                 'param_type' => 'directory',
@@ -239,6 +238,18 @@ BEGIN {
                             'required' => 1,
                             'value' => '/home/rhubley/projects/RepeatScout-1.0.7'
                           },
+          'SUFR_DIR' => {
+                          'command_line_override' => 'sufr_dir',
+                          'description' => 'The path to the directory holding the sufr suffix-array program ( 0.8.0 or higher ).  The ltr-forage LTR structural pipeline ( LTR_FORAGE_DIR ) indexes the genome with it.',
+                          'environment_override' => 'SUFR_DIR',
+                          'expected_binaries' => [
+                                                   'sufr'
+                                                 ],
+                          'expected_files' => [],
+                          'param_type' => 'directory',
+                          'required' => 0,
+                          'value' => ''
+                        },
           'TE_COMPOSER_DIR' => {
                                   'command_line_override' => 'te_composer_dir',
                                   'description' => 'The path to the directory holding the te-composer program.  RepeatModeler builds and extends family consensi with te-composer, in place of the Refiner script it once ran.',
@@ -898,6 +909,12 @@ BEGIN {
       #ExtendAlign Version 0.0.4 - build 436 date 20201118
       $tmpStr = `$value/RAMExtend -h 2>&1`;
       $tmpStr =~ /Version\s+(\d+\.\d+\.\d+)/;
+      $version = $1;
+    }elsif ( $param eq "SUFR_DIR" ) {
+      #sufr --version
+      #sufr 0.8.0
+      $tmpStr = `$value/sufr --version 2>&1`;
+      $tmpStr =~ /sufr\s+(\d+\.\d+\.\d+)/;
       $version = $1;
     }elsif ( $param eq "TE_COMPOSER_DIR" ) {
       #te-composer --version

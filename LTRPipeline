@@ -2,11 +2,13 @@
 ##---------------------------------------------------------------------------##
 ##  File:
 ##      @(#) LTRPipeline
-##  Author:
+##  Authors:
 ##      Robert M. Hubley   rhubley@systemsbiology.org
+##      Claude (Anthropic AI assistant)
 ##  Description:
-##      This is a port of Jullien Michelle Flynn's ensemble pipeline
-##      involving LTRDetector, LTR_retreiver, MAFFT, NINJA and CD-HIT
+##      Structural LTR retrotransposon discovery for RepeatModeler.
+##      Runs ltr-forage's family-library driver ( ltr_library.py ) on
+##      the genome and converts its library into RepeatModeler families.
 ##
 #******************************************************************************
 #*  This software is provided ``AS IS'' and any express or implied            *
@@ -22,33 +24,63 @@
 #*  if advised of the possibility of such damage.                             *
 #*                                                                            *
 #******************************************************************************
-#
-# To Do:
-#
 
 =head1 NAME
 
-LTRPipeline - Run a structural LTR finder on the genome and polish the results
+LTRPipeline - Build LTR retrotransposon families from a genome with ltr-forage
 
 =head1 SYNOPSIS
 
-  LTRPipeline [-version] [-threads #] [-ltr_hmm <file>] <input_sequence.fa>
+  LTRPipeline [-version] [-threads #] [-ltr_hmm <file>] [-giToID <file>]
+              [-tmpdir <dir>] [-debug] <input_sequence.fa>
 
 =head1 DESCRIPTION
 
-Finds LTR retrotransposon candidates in the input sequence, keeps the ones
-with structural or protein evidence, and builds families from them.  With
-LTR_FORAGE_DIR configured, ltr-forage's family-library driver
-(ltr_library.py) does all of it: detection, nested-insertion cleanup,
-families of one LTR and one internal model each, and a seed alignment per
-model (the model aligned to its best genome copies, unchanged, as #=GC RF).
-Without it, the earlier path runs GenomeTools LTRharvest and LTR_retriever
-and builds families with MAFFT, NINJA and te-composer.
+Finds LTR retrotransposons in the input sequence, keeps the ones with
+structural or protein evidence, and builds families from them.
+RepeatModeler runs it when given -LTRStruct.
 
-Writes <input>-ltrs.fa and <input>-ltrs.stk, one record per family model
-named ltr-1_family-#.  On the ltr-forage path it also writes
-<input>-ltrs.tsv: identifier, ltr-forage model, ltr-forage class and kind
-(LTR or INT), which RepeatModeler reads when it merges the families.
+All of the work is done by one call to ltr-forage's family-library driver,
+ltr_library.py:
+
+=over 4
+
+=item * sufr builds a suffix array of the sequence and ltr-forage finds
+LTR pairs, refines their ends, annotates protein domains (nail against the
+-ltr_hmm profiles), TSDs and primer binding sites, and masks tandem arrays
+from the seed search.
+
+=item * rmblastn searches of the candidates against the sequence excise
+nested insertions and drop candidates far deeper than their own family
+(other repeats caught between two LTRs).
+
+=item * mmseqs/rmblastn clustering groups the elements; segmental
+duplications and weakly supported singletons are dropped.
+
+=item * te-composer builds a consensus for each cluster, separately for the
+LTR and the internal region, and the models are grouped into 80-80
+families with Gypsy/Copia class names.  Each model is turned to its
+element's coding strand where the protein domains or the primer binding
+site give it.
+
+=item * te-composer aligns each model to its best genome copies, giving a
+seed alignment whose #=GC RF line is the model unchanged.
+
+=back
+
+LTRPipeline then renames the models ltr-1_family-# and writes:
+
+  <input>-ltrs.fa   ">ltr-1_family-# [ Type=LTR|INT, ltr-forage=<model>,
+                     Class=<class> ]", one record per model ( an LTR
+                     model and an internal model for most families )
+  <input>-ltrs.stk  the models' seed alignments, rows renamed from the
+                     gi-# identifiers back to the assembly's own (-giToID)
+  <input>-ltrs.tsv  identifier, ltr-forage model, class, kind (LTR|INT);
+                     RepeatModeler reads it when it merges the families
+
+The working directory, with ltr_library.py's screen log ( ltr_library.log )
+and its full log ( ltr_library/run.log ), is removed at the end unless
+-debug is given.
 
 The options are:
 
@@ -58,24 +90,49 @@ The options are:
 
 Displays the version of the program
 
+=item -threads #
+
+Number of threads for the tools the pipeline runs (default 1).
+
 =item -ltr_hmm <file>
 
-HMMER3 profile file for the protein-domain search when ltr-forage runs.
-Defaults to Libraries/TEfam.hmm under the RepeatModeler directory, then to
-database/TEfam.hmm under LTR_RETRIEVER_DIR, then to the TEfam.hmm that
-ships with ltr-forage.
+HMMER3 profile file for the protein-domain search.  Defaults to the one
+ltr-forage ships and was validated with ( data/TEdomains.hmm, 122 Pfam
+profiles of transposable-element proteins ).
+
+=item -giToID <file>
+
+The sequence-identifier translation file BuildDatabase writes.  Seed
+alignment rows are renamed from the gi-# identifiers of the input sequence
+back to the assembly's own names.  RepeatModeler passes it.
+
+=item -tmpdir <dir>
+
+Where to create the working directory.  Defaults to the directory of the
+input sequence, then the current directory.
+
+=item -debug
+
+Prints the command run and keeps the working directory, with
+ltr_library.py's intermediate files ( ltr_library/work ).
 
 =back
+
+Requires LTR_FORAGE_DIR ( ltr-forage 0.2.0 or higher, and its
+ltr_library.py ), SUFR_DIR ( sufr 0.8.0 or higher ), TE_COMPOSER_DIR,
+NAIL_DIR and MMseqs2.  RMBLAST_DIR is used when it holds
+the Rust rmblastn ( 3.0.9 or later ); otherwise ltr_library.py finds its
+own.
 
 =head1 CONFIGURATION OVERRIDES
 
 =head1 SEE ALSO
 
-RepeatModeler
+RepeatModeler, ltr-forage ( pipeline/ltr_library.py --help )
 
 =head1 COPYRIGHT
 
-Copyright 2019-2022 Institute for Systems Biology
+Copyright 2019-2026 Institute for Systems Biology
 
 =head1 LICENSE
 
@@ -85,7 +142,13 @@ http://opensource.org/licenses/OSL-3.0
 =head1 AUTHORS
 
  Robert Hubley          <rhubley@systemsbiology.org>
- Jullien Michelle Flynn <jmf422@cornell.edu>
+ Claude (Anthropic AI assistant)
+
+=head1 ACKNOWLEDGEMENTS
+
+Earlier versions of LTRPipeline ran GenomeTools LTRharvest, LTR_retriever,
+MAFFT, NINJA and CD-HIT, a port of the ensemble LTR pipeline developed by
+Jullien Michelle Flynn <jmf422@cornell.edu>.
 
 =cut
 
@@ -94,52 +157,32 @@ http://opensource.org/licenses/OSL-3.0
 #
 use strict;
 use Getopt::Long;
-use Data::Dumper;
 use Pod::Text;
 use File::Path;
 use File::Basename;
 use File::Spec;
 use FindBin;
 use Cwd;
-use Time::HiRes qw( gettimeofday tv_interval);
 use lib $FindBin::RealBin;
 use RepModelConfig;
-use SeedAlignment;
-use SeedAlignmentCollection;
-use RepeatUtil;
 
-#
-# Magic numbers/constants here
-#  ie. my $PI = 3.14159;
-#
 my $DEBUG = 0;
 $DEBUG = 1 if ( $RepModelConfig::DEBUGALL == 1 );
-$|     = 1;                                         # Turn autoflush on
+$| = 1;    # Turn autoflush on
 
-#### DEVELOPMENT ONLY #####
-my $useLtrDet = 0;
-
-#
-# Version
-#
 my $version = $RepModelConfig::VERSION;
 
 #
 # Option processing
-#  e.g.
-#   -t: Single letter binary option
-#   -t=s: String parameters
-#   -t=i: Number paramters
 #
 my @getopt_args = (
-                    '-version',          # print out the version and exit
+                    '-version',
                     '-tmpdir=s',
                     '-debug',
-                    '-LTRSeqLimit=i',
                     '-giToID=s',
-                    '-LTRMaxSeqLen=i',
                     '-threads=i',
                     '-ltr_hmm=s',
+                    '-LTRMaxSeqLen=i',    # obsolete; accepted and ignored
 );
 
 # Add configuration parameters as additional command-line options
@@ -154,11 +197,9 @@ unless ( GetOptions( \%options, @getopt_args ) ) {
 $DEBUG = 1 if ( exists $options{'debug'} );
 
 #
-# Provide the POD text from this file and
-# from the config file by merging them
-# together.  The heading "CONFIGURATION
-# OVERRIDES" provides the insertion point
-# for the configuration POD.
+# Provide the POD text from this file and from the config file by merging
+# them together.  The heading "CONFIGURATION OVERRIDES" provides the
+# insertion point for the configuration POD.
 #
 sub usage {
   my $p = Pod::Text->new();
@@ -169,9 +210,7 @@ sub usage {
   while ( <IN> ) {
     if ( /^=head1\s+CONFIGURATION OVERRIDES\s*$/ ) {
       my $c_pod = RepModelConfig::getPOD();
-      if ( $c_pod ) {
-        $pod_str .= $_ . $c_pod;
-      }
+      $pod_str .= $_ . $c_pod if ( $c_pod );
     }
     else {
       $pod_str .= $_;
@@ -190,533 +229,152 @@ if ( $options{'version'} ) {
 
 #
 # Resolve configuration settings using the following precedence:
-# command line first, then environment, followed by config
-# file.
+# command line first, then environment, followed by config file.
 #
 RepModelConfig::resolveConfiguration( \%options );
 my $config = $RepModelConfig::configuration;
-
-#my $LTR_DETECTOR_DIR = $config->{'LTR_DETECTOR_DIR'}->{'value'};
-my $LTR_DETECTOR_DIR;
-my $LTR_RETRIEVER_DIR = $config->{'LTR_RETRIEVER_DIR'}->{'value'};
-my $LTR_FORAGE_DIR    = $config->{'LTR_FORAGE_DIR'}->{'value'};
-my $MAFFT_DIR         = $config->{'MAFFT_DIR'}->{'value'};
-my $NINJA_DIR         = $config->{'NINJA_DIR'}->{'value'};
-my $GENOMETOOLS_DIR   = $config->{'GENOMETOOLS_DIR'}->{'value'};
-my $REPEATMASKER_DIR = $config->{'REPEATMASKER_DIR'}->{'value'};
-my $RMBLAST_DIR = $config->{'RMBLAST_DIR'}->{'value'};
-my $CDHIT_DIR = $config->{'CDHIT_DIR'}->{'value'};
-my $TRF_DIR = $config->{'TRF_DIR'}->{'value'};
-my $TE_COMPOSER_DIR = $config->{'TE_COMPOSER_DIR'}->{'value'};
-my $NAIL_DIR = $config->{'NAIL_DIR'}->{'value'};
-my $MMSEQS_DIR = $config->{'MMSEQS_DIR'}->{'value'};
-my $UCSCTOOLS_DIR = $config->{'UCSCTOOLS_DIR'}->{'value'};
-
-my $ltrSeqLimit = 10000;
-$ltrSeqLimit = $options{'LTRSeqLimit'} if ( $options{'LTRSeqLimit'} );
-
-#
-#   Run LTRDetector
-#   Run LTR_retreiver
-#      - runs RepeatMasker
-#      - runs cd-hit
-#   Run MAFFT
-#   Run NINJA
-#   Produce seed alignments and consensi
-#
-my $threads = 1;
-if ( $options{'threads'} ) {
-  $threads = $options{'threads'};
-}
 
 unless ( -s $ARGV[ 0 ] ) {
   usage();
 }
 my $inputFile = $ARGV[ 0 ];
 
-## Temp directory
-my $tempDir;
-if ( $options{'tmpdir'} ) {
-  $tempDir = &createTempDir( [ $options{'tmpdir'}, cwd() ], "LTR" );
-}
-else {
-  $tempDir = &createTempDir( [ dirname( $inputFile ), cwd() ], "LTR" );
-}
+print "LTRPipeline: -LTRMaxSeqLen is obsolete and ignored.\n"
+    if ( $options{'LTRMaxSeqLen'} );
 
-my %TimeBefore = ();
-elapsedTime( "runtime" );    # Setup the timers
-
-# Run LTR Detector
-elapsedTime( "step" );
-if ( $LTR_FORAGE_DIR ) {
-  print "Running ltr-forage ( ltr_library.py )...";
-  my $ltrHmm = $options{'ltr_hmm'};
-  if ( !$ltrHmm ) {
-    foreach my $cand ( "$FindBin::RealBin/Libraries/TEfam.hmm",
-                       "$LTR_RETRIEVER_DIR/database/TEfam.hmm" ) {
-      if ( -s $cand ) { $ltrHmm = $cand; last; }
-    }
+#
+# Dependencies
+#
+foreach my $param ( "LTR_FORAGE_DIR", "SUFR_DIR", "TE_COMPOSER_DIR", "NAIL_DIR" ) {
+  if ( !RepModelConfig::validateParam( $param ) ) {
+    die "LTRPipeline: $param is missing or incorrectly set ( '"
+        . ( $config->{$param}->{'value'} // "" ) . "' ).\n"
+        . "             Rerun ./configure or set it on the command line.\n";
   }
+}
+my $forageDir = $config->{'LTR_FORAGE_DIR'}->{'value'};
+my $sufrDir   = $config->{'SUFR_DIR'}->{'value'};
+
+# ltr-forage 0.2.0 reads sufr 0.8.0's index format and writes the output
+# layout convertLibrary() expects; ltr_library.py checks sufr's version.
+my $forageVersion = RepModelConfig::getDependencyVersion( "LTR_FORAGE_DIR" ) // "";
+my @fv = split( /\./, $forageVersion );
+die "LTRPipeline: ltr-forage in $forageDir is version "
+    . ( $forageVersion || "unknown" ) . "; 0.2.0 or higher is needed.\n"
+    if ( @fv != 3 || $fv[ 0 ] == 0 && $fv[ 1 ] < 2 );
+my $mmseqs    = RepModelConfig::findMMseqs()
+    or die "LTRPipeline: Could not find mmseqs in MMSEQS_DIR or on the PATH.\n";
+
+# ltr_library.py beside the binaries, in pipeline/, or for binaries in a
+# cargo target/release directory, ../../pipeline
+my $script;
+foreach my $cand ( "$forageDir/ltr_library.py",
+                   "$forageDir/pipeline/ltr_library.py",
+                   "$forageDir/../../pipeline/ltr_library.py" ) {
+  if ( -s $cand ) { $script = $cand; last; }
+}
+die "LTRPipeline: Could not find ltr_library.py in $forageDir, its pipeline/\n"
+    . "             directory or $forageDir/../../pipeline.\n"
+    if ( !$script );
+
+my $ltrHmm = $options{'ltr_hmm'};
+if ( $ltrHmm ) {
   die "LTRPipeline: The profile HMM file $ltrHmm is missing or empty.\n"
-      if ( $ltrHmm && !-s $ltrHmm );
-  print "\nLTRPipeline: -LTRMaxSeqLen applies to the LTR_retriever path only; ignored.\n"
-      if ( $options{'LTRMaxSeqLen'} );
-  my $famCount = &runLtrLibrary( forageDir   => $LTR_FORAGE_DIR,
-                                 seqFile     => $inputFile,
-                                 hmmFile     => $ltrHmm,
-                                 threads     => $threads,
-                                 wrkDir      => $tempDir,
-                                 translation => $options{'giToID'},
-                                 outPrefix   => "$inputFile-ltrs" );
-  if ( $famCount == 0 ) {
-    print "\nLTRPipeline: No families built by ltr-forage.\n";
-    exit;
-  }
-  print " : $famCount family models, " . elapsedTime( "step" ) . "\n";
-  print "Program Time: " . elapsedTime( "runtime" ) . "\n";
-  unless ( $DEBUG ) {
-    rmtree( $tempDir );
-  }
-  exit;
-}
-elsif ( $useLtrDet ) {
-  print "Running LtrDetector...";
-  my $numAnnots =
-      &runLtrDetector( $LTR_DETECTOR_DIR, $inputFile,
-                       "$tempDir/raw-struct-results.txt",
-                       $threads, $tempDir );
-  if ( $numAnnots == 0 ) {
-    print
-"LTRPipeline: No results returned from LTR structural finder ( LtrDetector ).\n";
-    exit;
-  }
-}
-else {
-  print "Running LtrHarvest...";
-  my $numAnnots =
-      &runLtrHarvest( $GENOMETOOLS_DIR, $inputFile,
-                      "$tempDir/raw-struct-results.txt",
-                      $threads, $tempDir );
-  if ( $numAnnots == 0 ) {
-    print
-"LTRPipeline: No results returned from LTR structural finder ( LtrHarvest ).\n";
-    exit;
-  }
+      if ( !-s $ltrHmm );
 }
 
-# Postprocess results using LTR_Retriever ( not needed after ltr-forage )
-if ( !$LTR_FORAGE_DIR ) {
-  print "     : " . elapsedTime( "step" ) . "\n";
-  elapsedTime( "step" );
-  print "Running Ltr_retriever...";
-  my $ltrCount = &runLtrRetriever(
-                    $LTR_RETRIEVER_DIR,
-                    $inputFile,
-                    "$tempDir/raw-struct-results.txt",
-                    "$tempDir/LtrRetriever-redundant-results.fa",
-                    $threads,
-                    $ltrSeqLimit
-  );
-  if ( $ltrCount == 0 || ! -s "$tempDir/LtrRetriever-redundant-results.fa" ) {
-    print "LTRPipeline: No results after LTR_Retriever filtering.\n";
-    exit;
-  }
-  print "  : " . elapsedTime( "step" ) . "\n";
-}
+my $threads = $options{'threads'} || 1;
 
 #
-# Filter out sequences greater than LTRMaxSeqLen if requested
+# Working directory
 #
-if ( $options{'LTRMaxSeqLen'} && $options{'LTRMaxSeqLen'} =~ /\d+/ ) {
-  system(
-"mv $tempDir/LtrRetriever-redundant-results.fa $tempDir/LtrRetriever-redundant-results-orig.fa"
-  );
-  open IN, "<$tempDir/LtrRetriever-redundant-results-orig.fa"
-      or die
-"Could not open $tempDir/LtrRetriever-redundant-results-orig.fa for reading!\n";
-  open OUT, ">$tempDir/LtrRetriever-redundant-results.fa"
-      or die
-"Could not open $tempDir/LtrRetriever-redundant-results.fa for writing!\n";
-  my $seq = "";
-  my $id  = "";
-  while ( <IN> ) {
-    if ( /^>(\S+)/ ) {
-      my $tmpID = $1;
-      if ( $seq ) {
-        if ( length( $seq ) <= $options{'LTRMaxSeqLen'} ) {
-          print OUT ">$id\n$seq\n";
-        }
-      }
-      $seq = "";
-      $id  = $tmpID;
-      next;
-    }
-    s/[\n\r\s]+//g;
-    $seq .= $_;
-  }
-  if ( $seq ) {
-    if ( length( $seq ) <= $options{'LTRMaxSeqLen'} ) {
-      print OUT ">$id\n$seq\n";
-    }
-  }
-  close IN;
-  close OUT;
-}
-
-# Group elements into families using a scoring system that accounts for common deletion products
-elapsedTime( "step" );
-print "Aligning instances...";
-&runMafft( $MAFFT_DIR, "$tempDir/LtrRetriever-redundant-results.fa",
-           "$tempDir/mafft-alignment.fa", $threads );
-if ( !-s "$tempDir/mafft-alignment.fa" ) {
-  print
-"LTRPipeline: Error - could not produce a multiple alignment from the denovo LTR results.\n";
-  exit;
-}
-print "     : " . elapsedTime( "step" ) . "\n";
+my $tempDir = &createTempDir(
+                    [ ( $options{'tmpdir'} // dirname( $inputFile ) ), cwd() ],
+                    "LTR" );
+die "LTRPipeline: Could not create a working directory.\n" if ( !$tempDir );
+my $outDir = "$tempDir/ltr_library";
+my $log    = "$tempDir/ltr_library.log";
 
 #
-elapsedTime( "step" );
-print "Clustering...";
-&runNinja( $NINJA_DIR, "$tempDir/mafft-alignment.fa", "$tempDir/clusters.dat",
-           $threads );
-if ( !-s "$tempDir/clusters.dat" ) {
-  print "LTRPipeline: Error - could not cluster MAFFT results.\n";
-}
-print "             : " . elapsedTime( "step" ) . "\n";
-
+# Run ltr_library.py
 #
-#   Here Jullien screened out families which have similarity to DNA Transposons or LINE elements by searching
-#   with RepeatMasker.  Since this is a de-novo approach we do not expect there to be a library available.
-#   One could search against all known LINE/DNA elements but that will need further thought.
-#
-# Read in cluster data
-open IN, "<$tempDir/clusters.dat"
-    or die "LTRPipeline : Error - could not open $tempDir/clusters.dat!";
-my %clusters;
-while ( <IN> ) {
-
-  # 0	utg7180_2262700..2263120_LTR#LTR/Gypsy
-  if ( /^(\d+)\s+(\S+)\s*$/ ) {
-    push @{ $clusters{$1} }, $2;
-  }
+my $startTime = time;
+my $cmd = "python3 $script " . File::Spec->rel2abs( $inputFile )
+    . " -o $outDir -t $threads"
+    . " --ltr-forage $forageDir/ltr-forage --sufr-bin $sufrDir/sufr"
+    . " --te-composer $config->{'TE_COMPOSER_DIR'}->{'value'}/te-composer"
+    . " --nail $config->{'NAIL_DIR'}->{'value'}/nail --mmseqs $mmseqs";
+$cmd .= " --domain-hmm $ltrHmm" if ( $ltrHmm );
+$cmd .= " --keep-work" if ( $DEBUG );
+my $rmblastn = "$config->{'RMBLAST_DIR'}->{'value'}/rmblastn";
+if ( -x $rmblastn
+     && `$rmblastn -version 2>&1` =~ /rmblastn\s+(\d+)\.(\d+)\.(\d+)/
+     && ( $1 > 3 || ( $1 == 3 && ( $2 > 0 || $3 >= 9 ) ) ) ) {
+  $cmd .= " --rmblastn $rmblastn";
 }
-close IN;
+$cmd .= " > $log 2>&1";
 
-# Read in Ltr_Retriever sequences
-open IN, "<$tempDir/LtrRetriever-redundant-results.fa"
-    or die
-"LTRPipeline : Error - could not open $tempDir/LtrRetriever-redundant-results.fa!";
-my %seeds = ();
-my $seq   = "";
-my $id    = "";
-while ( <IN> ) {
-  if ( /^>(\S+)/ ) {
-    my $tmpID = $1;
-    if ( $seq ) {
-      $seeds{$id} = $seq;
-    }
-    $seq = "";
-    $id  = $tmpID;
-    next;
-  }
-  s/[\n\r\s]+//g;
-  $seq .= $_;
-}
-if ( $seq ) {
-  $seeds{$id} = $seq;
-}
-close IN;
-
-# Process each cluster
-elapsedTime( "step" );
-print "Refining families...";
-open OUTSTK, ">$tempDir/families.stk"
-    or die "Could not create $tempDir/families.stk!\n";
-open OUTCON, ">$tempDir/families.fa"
-    or die "Could not create $tempDir/families.fa!\n";
-foreach my $cluster ( sort keys %clusters ) {
-  my $idx = $cluster + 1;
-
-  # Make a fasta file for family ( cluster ).
-  open OUT, ">$tempDir/ltr-1_family-$idx.fa"
-      or die "LTRPipeline : Could not create $tempDir/ltr-1_family-$idx.fa!";
-  my $intCount = 0;
-  my $ltrCount = 0;
-  foreach my $seedID ( @{ $clusters{$cluster} } ) {
-    if ( $seedID =~ /_LTR/ ) {
-      $ltrCount++;
-    }
-    else { $intCount++; }
-    print OUT ">$seedID\n$seeds{$seedID}\n";
-  }
-  close OUT;
-  my $famType = "LTR";
-  $famType = "INT" if ( $intCount > $ltrCount );
-
-  # Build the consensus for the cluster
-  RepeatUtil::refineFamily(
-                        instancesFile => "$tempDir/ltr-1_family-$idx.fa",
-                        name          => "ltr-1_family-$idx",
-                        translation   => $options{'giToID'},
-                        quiet         => ( $DEBUG ? 0 : 1 ),
-                        debug         => $DEBUG );
-
-  # family-72.fa.refiner.stk
-  if ( -s "$tempDir/ltr-1_family-$idx.fa.refiner_cons" ) {
-    my $cons;
-    my $maSize;
-    open INREF, "<$tempDir/ltr-1_family-$idx.fa.refiner_cons"
-        or die "LTRPipeline"
-        . ": Could not open refined model $tempDir/ltr-1_family-$idx.fa.refiner_cons!\n";
-    while ( <INREF> ) {
-      if ( /Final Multiple Alignment Size = (\d+)/ ) {
-        $maSize = $1;
-      }
-      else {
-        $cons .= $_;
-      }
-    }
-    close INREF;
-
-    # Clean up consensi starting/ending with Ns
-    #   - These are sections of the multiple alignment
-    #     where there is no support for a consensus.
-    $cons =~ s/^[Nn]*([^Nn].*[^Nn])[Nn]*$/$1/;
-    if ( -s "$tempDir/ltr-1_family-$idx.fa.refiner.stk" ) {
-      my $stockholmFile = SeedAlignmentCollection->new();
-      my $IN;
-      open $IN, "<$tempDir/ltr-1_family-$idx.fa.refiner.stk"
-          or die
-"Could not open $tempDir/ltr-1_family-$idx.fa.refiner.stk for reading!\n";
-      $stockholmFile->read_stockholm( $IN );
-      close $IN;
-
-      # File only contains one family
-      my $seedAlign = $stockholmFile->get( 0 );
-
-      # Add details to DE/CC lines
-      $seedAlign->setDescription( "RepeatModeler Generated - ltr-1"
-        . "_family-$idx"
-      );
-      $seedAlign->setComment( " LTR-Pipeline [ Type=$famType, Final Multiple Alignment Size = $maSize ]"
-      );
-
-      print OUTSTK "" . $seedAlign->toString();
-    }
-
-    # Save the consensus to the consensi file.
-    print OUTCON ">ltr-1_family-$idx [ Type=$famType, "
-        . "Final Multiple Alignment Size = "
-        . $maSize . " ]\n";
-    print OUTCON "$cons\n";
-  }
-}
-print "      : " . elapsedTime( "step" ) . "\n";
-close OUTCON;
-close OUTSTK;
-system( "cp $tempDir/families.fa $inputFile-ltrs.fa" )
-    if ( -s "$tempDir/families.fa" );
-system( "cp $tempDir/families.stk $inputFile-ltrs.stk" )
-    if ( -s "$tempDir/families.stk" );
-
-print "Program Time: " . elapsedTime( "runtime" ) . "\n";
-exit;
-
-###############################################################################################
-
-sub runNinja {
-  my $binDir  = shift;
-  my $alnFile = shift;
-  my $outFile = shift;
-  my $threads = shift;
-  my $wrkDir  = shift;
-
-  die "LTRPipeline::runNinja : Could not find sequence input file $alnFile\n"
-      if ( !-s $alnFile );
-
-  # Create temporary directory
-  my $tmpDir;
-  if ( !defined $wrkDir || !-d $wrkDir ) {
-    $tmpDir = &createTempDir( [ dirname( $alnFile ), cwd() ], "NINJA" );
-  }
-  else {
-    $tmpDir = &createTempDir( [ $wrkDir ], "NINJA" );
-  }
-  print "LTRPipeline::runNinja : tmpdir = $tmpDir\n" if ( $DEBUG );
-
-  my $cmd =
-"$binDir/Ninja --in $alnFile --out $tmpDir/cluster.dat --out_type c --corr_type m --cluster_cutoff 0.2";
-  if ( defined $threads && $threads > 1 ) {
-    $cmd .= " --threads $threads";
-  }
-  $cmd .= " > $tmpDir/Ninja.log 2>&1";
-
-  print "LTRPipeline::runNinja : Running analysis $cmd\n" if ( $DEBUG );
-  system( $cmd);
-
-  if ( -s "$tmpDir/cluster.dat" ) {
-    system( "mv $tmpDir/cluster.dat $outFile" );
-  }
-
-  # TODO: Consider keeping on error
-  unless ( $DEBUG ) {
-    rmtree( $tmpDir );
-  }
-
+print "Running ltr-forage ( ltr_library.py )...";
+print "\nLTRPipeline: Running $cmd\n" if ( $DEBUG );
+if ( system( $cmd ) != 0 ) {
+  die "\nLTRPipeline: ltr_library.py failed ( exit code " . ( $? >> 8 )
+      . " ).  See $log\n"
+      . "             and $outDir/run.log\n";
 }
 
-sub runMafft {
-  my $binDir  = shift;
-  my $seqFile = shift;
-  my $outFile = shift;
-  my $threads = shift;
-  my $wrkDir  = shift;
-
-  die "LTRPipeline::runMafft : Could not find sequence input file $seqFile\n"
-      if ( !-s $seqFile );
-
-  # Create temporary directory
-  my $tmpDir;
-  if ( !defined $wrkDir || !-d $wrkDir ) {
-    $tmpDir = &createTempDir( [ dirname( $seqFile ), cwd() ], "MAFFT" );
-  }
-  else {
-    $tmpDir = &createTempDir( [ $wrkDir ], "MAFFT" );
-  }
-  $ENV{MAFFT_TMPDIR} = $tmpDir;
-  print "LTRPipeline::runMafft : tmpdir = $tmpDir\n" if ( $DEBUG );
-
-# NOTE: --quiet hides some error reporting.  Need to develop a way
-#       to catch common errors like:
-#
-#       nthread = 20
-#       nthreadpair = 20
-#       nthreadtb = 16
-#       ppenalty_ex = 0
-#       stacksize: 8192 kb
-#       generating a scoring matrix for nucleotide (dist=200) ... done
-#       Gap Penalty = -1.53, +0.00, +0.00
-#       =========================================================================
-#       =========================================================================
-#       ===
-#       === Alphabet 'i' is unknown.
-#       === Please check site 8234 in sequence 2.
-#       ===
-#       === To make an alignment that has unusual characters (U, @, #, etc), try
-#       === % mafft --anysymbol input > output
-#       ===
-#       =========================================================================
-#       =========================================================================
-#       Illegal character i
-#
-  my $cmd = "$binDir/mafft --large --quiet";
-  if ( defined $threads && $threads > 1 ) {
-    $cmd .= " --thread $threads";
-  }
-  $cmd .= " $seqFile > $tmpDir/mafft-alignment.fa";
-  print "LTRPipeline::runMafft : Running analysis $cmd\n" if ( $DEBUG );
-  system( $cmd);
-
-  if ( -s "$tmpDir/mafft-alignment.fa" ) {
-    system( "mv $tmpDir/mafft-alignment.fa $outFile" );
-  }
-
-  # TODO: Consider keeping on error
-  unless ( $DEBUG ) {
-    rmtree( $tmpDir );
-  }
-
-}
-
-##-------------------------------------------------------------------------##
-## Use: my $count = runLtrLibrary( forageDir   => $dir,
-##                                 seqFile     => $seqFile,
-##                                 hmmFile     => $hmmFile,
-##                                 threads     => #,
-##                                 wrkDir      => $dir,
-##                                 translation => $translationFile,
-##                                 outPrefix   => $prefix );
-##
-##   Run ltr-forage's family-library driver, ltr_library.py, on the sequence
-##   file and write its families as RepeatModeler families:
-##
-##     $prefix.fa   ">ltr-1_family-# [ Type=LTR|INT, ltr-forage=<model>,
-##                   Class=<class> ]", one record per model ( an LTR model
-##                   and an internal model for most families )
-##     $prefix.stk  the models' seed alignments, rows renamed from the
-##                   gi-# identifiers the sequence file carries back to the
-##                   assembly's own ( translation file from BuildDatabase )
-##     $prefix.tsv  identifier, model, class, kind
-##
-##   ltr_library.py is looked for in $dir, $dir/pipeline and, for binaries
-##   in a cargo target/release directory, $dir/../../pipeline.  It gets the
-##   ltr-forage and sufr binaries from $dir and te-composer, nail and mmseqs
-##   from RepeatModeler's configuration; rmblastn too when RMBLAST_DIR holds
-##   the Rust port ( 3.0.9 or later ), which it requires, and otherwise it
-##   finds its own.  Returns the number of models written.
-##
-##-------------------------------------------------------------------------##
-sub runLtrLibrary {
-  my %p = @_;
-
-  die "LTRPipeline::runLtrLibrary : Could not find input file $p{'seqFile'}\n"
-      if ( !-s $p{'seqFile'} );
-
-  my $script;
-  foreach my $cand ( "$p{'forageDir'}/ltr_library.py",
-                     "$p{'forageDir'}/pipeline/ltr_library.py",
-                     "$p{'forageDir'}/../../pipeline/ltr_library.py" ) {
-    if ( -s $cand ) { $script = $cand; last; }
-  }
-  die "LTRPipeline: Could not find ltr_library.py in $p{'forageDir'}, its pipeline/\n"
-      . "             directory or $p{'forageDir'}/../../pipeline.\n"
-      if ( !$script );
-
-  my $outDir = "$p{'wrkDir'}/ltr_library";
-  my $cmd = "python3 $script " . File::Spec->rel2abs( $p{'seqFile'} )
-      . " -o $outDir -t $p{'threads'}"
-      . " --ltr-forage $p{'forageDir'}/ltr-forage --sufr-bin $p{'forageDir'}/sufr"
-      . " --te-composer $TE_COMPOSER_DIR/te-composer"
-      . " --nail $NAIL_DIR/nail --mmseqs $MMSEQS_DIR/mmseqs";
-  $cmd .= " --domain-hmm $p{'hmmFile'}" if ( $p{'hmmFile'} );
-  my $rmbVersion = `$RMBLAST_DIR/rmblastn -version 2>&1`;
-  if ( $rmbVersion =~ /rmblastn\s+(\d+)\.(\d+)\.(\d+)/
-       && ( $1 > 3 || ( $1 == 3 && ( $2 > 0 || $3 >= 9 ) ) ) ) {
-    $cmd .= " --rmblastn $RMBLAST_DIR/rmblastn";
-  }
-  $cmd .= " > $p{'wrkDir'}/ltr_library.log 2>&1";
-  print "LTRPipeline::runLtrLibrary : Running $cmd\n" if ( $DEBUG );
-  if ( system( $cmd ) != 0 ) {
-    warn "\nLTRPipeline: ltr_library.py failed. Error code: " . ( $? >> 8 )
-        . "  See $p{'wrkDir'}/ltr_library.log\n";
-    return 0;
-  }
-  return 0 if ( !-s "$outDir/library.fa" );
-  die "LTRPipeline: ltr_library.py wrote no seed alignments ( $outDir/library.stk );\n"
+my $numModels = 0;
+if ( -s "$outDir/library.fa" ) {
+  die "\nLTRPipeline: ltr_library.py wrote no seed alignments ( $outDir/library.stk );\n"
       . "             it needs ltr-forage with step 23b.\n"
       if ( !-s "$outDir/library.stk" );
+  $numModels = &convertLibrary( $outDir, $options{'giToID'}, "$inputFile-ltrs" );
+}
 
-  # gi-# ( as RepeatModeler writes the sequence file ) back to the assembly's names
+if ( $numModels == 0 ) {
+  print "\nLTRPipeline: No families built by ltr-forage.\n";
+}
+else {
+  print " : $numModels family models, " . &elapsed( $startTime ) . "\n";
+}
+rmtree( $tempDir ) unless ( $DEBUG );
+exit;
+
+######################## S U B R O U T I N E S ############################
+
+##-------------------------------------------------------------------------##
+## Use: my $numModels = &convertLibrary( $outDir, $translationFile,
+##                                       $outPrefix );
+##
+##   Rewrite ltr_library.py's library.fa/library.stk as RepeatModeler
+##   families: $outPrefix.fa, $outPrefix.stk and $outPrefix.tsv ( see the
+##   DESCRIPTION ).  Models are numbered in library order.  Returns the
+##   number of models written.
+##
+##-------------------------------------------------------------------------##
+sub convertLibrary {
+  my ( $outDir, $translation, $outPrefix ) = @_;
+
+  # gi-# ( as RepeatModeler writes the sequence file ) back to the
+  # assembly's names
   my %giMap = ();
-  if ( $p{'translation'} && -s $p{'translation'} ) {
-    open my $TR, "<$p{'translation'}"
-        or die "LTRPipeline: Could not open $p{'translation'}!\n";
+  if ( $translation && -s $translation ) {
+    open my $TR, "<$translation"
+        or die "LTRPipeline: Could not open $translation!\n";
     while ( <$TR> ) {
       $giMap{"gi-$2"} = $1 if ( /^(\S+)\t(\d+)/ );
     }
     close $TR;
   }
 
-  # Models in library order: fam0001_v1_LTR#LTR/Gypsy origin=...
+  # Records: >fam0001_v1_LTR#LTR/Gypsy origin=...
   my %newID = ();
   my $num   = 0;
-  open my $IN,  "<$outDir/library.fa"
+  open my $IN, "<$outDir/library.fa"
       or die "LTRPipeline: Could not open $outDir/library.fa!\n";
-  open my $FA,  ">$p{'outPrefix'}.fa"
-      or die "LTRPipeline: Could not open $p{'outPrefix'}.fa for writing!\n";
-  open my $TSV, ">$p{'outPrefix'}.tsv"
-      or die "LTRPipeline: Could not open $p{'outPrefix'}.tsv for writing!\n";
+  open my $FA, ">$outPrefix.fa"
+      or die "LTRPipeline: Could not open $outPrefix.fa for writing!\n";
+  open my $TSV, ">$outPrefix.tsv"
+      or die "LTRPipeline: Could not open $outPrefix.tsv for writing!\n";
   while ( <$IN> ) {
     if ( /^>(\S+)/ ) {
       my ( $model, $class ) = split( /#/, $1, 2 );
@@ -736,13 +394,12 @@ sub runLtrLibrary {
 
   open $IN, "<$outDir/library.stk"
       or die "LTRPipeline: Could not open $outDir/library.stk!\n";
-  open my $STK, ">$p{'outPrefix'}.stk"
-      or die "LTRPipeline: Could not open $p{'outPrefix'}.stk for writing!\n";
-  my $id;
+  open my $STK, ">$outPrefix.stk"
+      or die "LTRPipeline: Could not open $outPrefix.stk for writing!\n";
   while ( <$IN> ) {
     if ( /^#=GF\s+ID\s+(\S+)/ ) {
       my $model = $1;
-      $id = $newID{$model}
+      my $id    = $newID{$model}
           or die "LTRPipeline: $model in library.stk is not in library.fa!\n";
       print $STK "#=GF ID $id\n";
       print $STK "#=GF DE RepeatModeler Generated - $id\n";
@@ -758,675 +415,47 @@ sub runLtrLibrary {
   close $IN;
   close $STK;
 
-  unless ( $DEBUG ) {
-    rmtree( $outDir );
-  }
-  print "LTRPipeline::runLtrLibrary : Returning $num models.\n" if ( $DEBUG );
   return $num;
 }
 
-sub runLtrRetriever {
-  my $binDir      = shift;
-  my $seqFile     = shift;
-  my $annotFile   = shift;
-  my $outFile     = shift;
-  my $threads     = shift;
-  my $ltrSeqLimit = shift;
-  my $wrkDir      = shift;
-
-  die
-"LTRPipeline::runLtrRetriever : Could not find sequence input file $seqFile\n"
-      if ( !-s $seqFile );
-
-  die
-"LTRPipeline::runLtrRetriever : Could not find annotation input file $annotFile\n"
-      if ( !-s $annotFile );
-
-  # Create temporary directory
-  my $tmpDir;
-  if ( !defined $wrkDir || !-d $wrkDir ) {
-    $tmpDir = &createTempDir( [ dirname( $annotFile ), cwd() ], "LRET" );
-  }
-  else {
-    $tmpDir = &createTempDir( [ $wrkDir ], "LRET" );
-  }
-  print "LTRPipeline::runLtrRetriever : tmpdir = $tmpDir\n" if ( $DEBUG );
-
-  # 7/15/24: LTR_retriever will rename sequence identifiers >13 characters
-  #          long but does not restore these names in the output. In order
-  #          to fix this we will rename the identifiers and restore them
-  #          outside the call to LTR_retriever
-  # Create a symlink inside the temp directory called "seq.fa" pointing
-  # to the sequence file ( using full path ).  LTR_retriever creates
-  # a prodigous amount of temporary files and output files in the same
-  # directory as the sequence file.  This ensures they all get created
-  # inside the temporary directory.
-  #my $full_seqFile = File::Spec->rel2abs( $seqFile );
-  #symlink( $full_seqFile, "$tmpDir/seq.fa" );
-  open IN, "<$seqFile" or die "LTRPipeline::runLtrRetriever : Could not open $seqFile for reading!";
-  open OUT, ">$tmpDir/seq.fa" or die "LTRPipeline::runLtrRetriever : Could not open $tmpDir/seq.fa for writing!";
-  my $seqIdx = 0;
-  my %seqIDMap = ();
-  while ( <IN> ) {
-    if ( /^>(\S+)/ ) {
-      $seqIdx++;
-      $seqIDMap{"seq".$seqIdx} = $1;
-      print OUT ">seq$seqIdx\n";
-    }else {
-      print OUT $_;
-    }
-  }
-  close IN;
-  close OUT;
-
-  my $full_annotFile = File::Spec->rel2abs( $annotFile );
-
-  # NOTE: in LTR_retriever 3.0.0 trf_path is not the path
-  #       to the directory containing the binary but rather 
-  #       the full path to the binary itself.
-  # LTR_retriever runs blastn and makeblastdb from the directory given
-  # to -blastplus.  A 2.x RMBlast directory holds them; a 3.x one does not.
-  my $blastn = RepModelConfig::findNCBIProgram( "blastn" );
-  die "LTRPipeline::runLtrRetriever: "
-      . RepModelConfig::ncbiProgramMissingMessage( "blastn",
-                         "LTR_retriever runs during the LTR structural search" )
-      if ( !defined $blastn );
-  my $blastPlusDir = dirname( $blastn );
-
-  my $cmd            = "cd $tmpDir; $binDir/LTR_retriever " .
-                       " -repeatmasker $REPEATMASKER_DIR" .
-                       " -blastplus $blastPlusDir" .
-                       " -cdhit_path $CDHIT_DIR" .
-                       " -trf_path $TRF_DIR/trf" . 
-                       " -genome seq.fa -inharvest $full_annotFile -noanno";
-  if ( $threads > 1 ) {
-    $cmd .= " -threads $threads";
-  }
-  $cmd .= " > LTR_retriever.log 2>&1";
-  print "LTRPipeline::runLtrRetriever : Running analysis $cmd\n" if ( $DEBUG );
-
-  my $cwd = cwd();
-  system( $cmd);
-  chdir $cwd
-      or die
-"LTRPipeline::runLtrRetriever : Could not change directory back to $cwd : $!";
-
-  # Check for return status
-  if ( -s "$tmpDir/LTR_retriever.log" ) {
-    open IN, "<$tmpDir/LTR_retriever.log"
-        or die;
-    while(<IN>) {
-      if ( /No LTR-RT was found in your data./ ) {
-        # No LTR-RT was found so return 0
-        rmtree($tmpDir) unless ( $DEBUG );
-        unlink( "$tmpDir/seq.fa" );
-        return 0;
-      }
-    }
-    close IN;
-  }
-
-  my $error = 0;
-  my $redundantLibFile = "";
-  if ( -s "$tmpDir/seq.fa.LTRlib.redundant.fa" ) {
-    $redundantLibFile = "$tmpDir/seq.fa.LTRlib.redundant.fa";
-  }
-  elsif ( -s "$tmpDir/seq.fa.mod.LTRlib.redundant.fa" ) {
-    $redundantLibFile = "$tmpDir/seq.fa.mod.LTRlib.redundant.fa";
-  }
-  else {
-    $error = 1;
-  }
-
-  my $count = 0;
-  if ( $redundantLibFile ) {
-    open IN, "<$redundantLibFile"
-        or die
-"LTRPipeline::runLtrRetriever : Could not open $redundantLibFile for reading!\n";
-    my $numRedundant = 0;
-    while ( <IN> ) {
-      $numRedundant++ if ( /^>/ );
-    }
-    close IN;
-    if ( $numRedundant > $ltrSeqLimit ) {
-      my $nonRedundantLibFile;
-      if ( -s "$tmpDir/seq.fa.mod.LTRlib.fa" ) {
-        $nonRedundantLibFile = "$tmpDir/seq.fa.mod.LTRlib.fa";
-      }
-      elsif ( -s "$tmpDir/seq.fa.LTRlib.fa" ) {
-        $nonRedundantLibFile = "$tmpDir/seq.fa.LTRlib.fa";
-      }
-      if ( $nonRedundantLibFile ) {
-        open IN, "<$nonRedundantLibFile"
-            or die
-"LTRPipeline::runLtrRetriever : Could not open $nonRedundantLibFile for reading!\n";
-        my $numNonRedundant = 0;
-        while ( <IN> ) {
-          $numNonRedundant++ if ( /^>/ );
-        }
-        close IN;
-        if ( $numNonRedundant < $ltrSeqLimit ) {
-          print
-"INFO: LTRPipeline - redundant library too large ( $numRedundant ).  Falling back to non-redundant library ( $numNonRedundant ).\n";
-          system( "mv $nonRedundantLibFile $outFile" );
-          $count = $numRedundant;
-        }
-        else {
-          print
-"ERROR: LTRPipeline::runLtrRetriever : LTR libraries ( redundant: $numRedundant, non-redundant: $numNonRedundant ) are larger than permissible threshold $ltrSeqLimit ).  See $tmpDir for details.\n";
-          $error = 1;
-        }
-      }
-      else {
-        print
-"ERROR: LTRPipeline::runLtrRetriever : Could not find non-redundant library $tmpDir/seq.fa.mod.LTRlib.fa or $tmpDir/seq.fa.LTRlib.fa!\n";
-        $error = 1;
-      }
-    }
-    elsif ( $numRedundant > 0 ) {
-      system( "mv $redundantLibFile $outFile" );
-      $count = $numRedundant;
-    }
-
-    if ( -s $outFile ) {
-      # Currently there isn't a way to get the orientation of the sequences other than comparing them with
-      # the input.  So here we go:
-      # Read in the library sequences and ranges
-      open IN,"<$outFile" or die "LTR_retriever failed to generate a file.  Please check $tmpDir/LTR_retriever.log for details.";
-      my $seqID = "";
-      my $start = 0;
-      my $end = 0;
-      my $seq = "";
-      my $suffix = "";
-      my @lib = ();
-      while ( <IN> ) {
-        # e.g.  >utg7180:3885179..3890145_INT#LTR/Gypsy
-        if ( /^>(\S+):(\d+)\.\.(\d+)(.*)/ ) {
-          my $tmpSeqID = $1;
-          my $tmpStart = $2;
-          my $tmpEnd = $3;
-          my $tmpSuffix = $4;
-          if ( $seqID ne "" ) {
-            push @lib,[ $seqID, $start, $end, $seq, $suffix];
-          }
-          $seqID = $tmpSeqID;
-          $start = $tmpStart;
-          $end = $tmpEnd;
-          $seq = "";
-          $suffix = $tmpSuffix;
-          next;
-        }
-        s/[\n\r\s]+//g;
-        $seq .= $_;
-      }
-      if ($seqID ne ""){
-        push @lib,[ $seqID, $start, $end, $seq, $suffix];
-      }
-      close IN;
-
-      # Using the sequence file determine the orientation of each sequence
-      # NOTE: This also validates the sequence ranges and flags LTR_retriever
-      # results that have incorrect ranges
-      getOrientation(\@lib, "$tmpDir/seq.fa");
-      
-      # Backup original outFile and regenerate with oriented ranges.
-      system("mv $outFile $outFile.no_orient");
-      open OUT,">$outFile" or die;
-      foreach my $entry ( @lib ) {
-        my $type = "";
-        if ( $entry->[4] =~ /_LTR/ ) {
-          $type = "_LTR";
-        }elsif ( $entry->[4] =~ /_INT/ ) {
-          $type = "_INT";
-        }
-
-        # Convert ids back to original
-        my $id;
-        if ( $seqIDMap{$entry->[0]} ) {
-          $id = $seqIDMap{$entry->[0]} . ":";
-        }else { die "Could not convert temporary id $entry->[0] back to original id!\n"; }
-        if ( $entry->[5] eq "!" ) {
-          $id .= $entry->[1] . ".." . $entry->[2] . "$type [warning: bad ltr_retriever range]";
-        }elsif ( $entry->[5] eq "+" ) {
-          $id .= $entry->[1] . ".." . $entry->[2] . "$type [forward]";
-        }else {
-          $id .= $entry->[2] . ".." . $entry->[1] . "$type [reverse]";
-        }
-        print OUT ">$id\n$entry->[3]\n";
-      }
-      close OUT;
-    }
- }
-
-  unless ( $DEBUG || $error ) {
-    rmtree( $tmpDir );
-  }
-
-  # Cleanup
-  unlink( "$tmpDir/seq.fa" );
-
-  return $count;
-}
-
-
-sub getOrientation {
-  my $lib = shift;
-  my $seqFile = shift;
-
-  system("$UCSCTOOLS_DIR/faToTwoBit -long $seqFile $seqFile.2bit");
-  if ( ! -s "$seqFile.2bit" ) {
-    die "getOrientation: Something went wrong calling $UCSCTOOLS_DIR/faToTwoBit on $seqFile!\n";
-  }
-  my %lookup = ();
-  open OUT,">$seqFile.seqlist" or die;
-  foreach my $entry ( @{$lib} ) {
-    my $twoBitID = "$entry->[0]:" . ($entry->[1]-1) . "-$entry->[2]";
-    print OUT "$twoBitID\n";
-    $lookup{$twoBitID} = $entry;
-  }
-  close OUT;
-
-  open IN,"$UCSCTOOLS_DIR/twoBitToFa -seqList=$seqFile.seqlist $seqFile.2bit stdout|" or 
-      die "getOrientation: Something went wrong calling $UCSCTOOLS_DIR/twoBitToFa on $seqFile.2bit!\n";
-  my $resID = "";
-  my $seq;
-  while ( <IN> ) {
-    if ( /^>(\S+)/ ) {
-      my $tID = $1;
-      if ( $seq ne "" )
-      {
-        if ( exists $lookup{$resID} )
-        {
-          if ( $seq eq $lookup{$resID}->[3] ) {
-            # Forward range
-            push @{$lookup{$resID}}, "+";
-          }else {
-            $seq = reverse($seq);
-            $seq =~ tr/ACGTN/TGCAN/;
-            if ( $seq eq $lookup{$resID}->[3] ) {
-              # Reverse range
-              push @{$lookup{$resID}}, "-";
-            }else {
-              # Invalid range
-              push @{$lookup{$resID}}, "!";
-            }
-          }
-        }else {
-          warn "Oops...couldn't locate match to $resID in lookup table!\n";
-        }
-      }
-      $resID = $tID;
-      $seq = "";
-      next;
-    }
-    s/[\n\r\s]+//g;
-    $seq .= $_;
-  }
-  if ( $seq ne "" )
-  {
-    if ( exists $lookup{$resID} )
-    {
-      if ( $seq eq $lookup{$resID}->[3] ) {
-        # Forward range
-        push @{$lookup{$resID}}, "+";
-      }else {
-        $seq = reverse($seq);
-        $seq =~ tr/ACGTN/TGCAN/;
-        if ( $seq eq $lookup{$resID}->[3] ) {
-          # Reverse range
-          push @{$lookup{$resID}}, "-";
-        }else {
-          # Invalid range
-          push @{$lookup{$resID}}, "!";
-        }
-      }
-    }else {
-      warn "getOrientation: Oops...couldn't locate match to $resID in lookup table!\n";
-    }
-  }
-  close IN;
-}
-
-
-sub runLtrHarvest {
-  my $binDir  = shift;
-  my $seqFile = shift;
-  my $outFile = shift;
-  my $threads = shift;
-  my $wrkDir  = shift;
-
-  die "LTRPipeline::runLtrHarvest : Could not find input file $seqFile\n"
-      if ( !-s $seqFile );
-
-  # Flag to maintain files should an error occur
-  my $errorFlag = 0;
-
-  # Total number of annotations found
-  my $annotCnt = 0;
-
-  # Create temporary directory
-  my $tmpDir;
-  if ( !defined $wrkDir || !-d $wrkDir ) {
-    $tmpDir = &createTempDir( [ dirname( $seqFile ), cwd() ], "LHAR" );
-  }
-  else {
-    $tmpDir = &createTempDir( [ $wrkDir ], "LHAR" );
-  }
-  print "LTRPipeline::runLtrHarvest : tmpdir = $tmpDir\n" if ( $DEBUG );
-
-  # Build enhanced suffix array datastructure for Ltr_harvest
-  # Must run in the tmpDir as this program will insist on creating
-  # esa_* files in the working directory only
-  my $full_seqFile = File::Spec->rel2abs( $seqFile );
-  my $origDir      = getcwd();
-  my $addlOpts     = "";
-
-# There is a bug in 1.5.9 and 1.5.10 that appears to not generate the correct files
-# if -j is used.
-#$addlOpts = "-j $options{'threads'} " if ( $options{'threads'} );
-  chdir( $tmpDir );
-  my $cmd =
-"$binDir/gt $addlOpts suffixerator -db $full_seqFile -indexname esa_index -tis -suf -lcp -des -ssp -sds -dna > suffixerator.log 2>&1";
-  my $retCode = system( $cmd);
-  if ( $retCode != 0 ) {
-    warn
-"LtrPipeline: GenomeTools failed to build suffixtree datastructure.  This is frequently\n"
-        . "             caused by a lack of disk space. Error code: "
-        . ( $? >> 8 ) . "\n";
-    $errorFlag = 1;
-    chdir( $origDir );
-  }
-  else {
-
-    # Run ltrharvest
-    $cmd =
-"$binDir/gt $addlOpts ltrharvest -index esa_index -out ltrharvest.out > ltrharvest.log 2>&1";
-    $retCode = system( $cmd);
-    chdir( $origDir );
-    if ( $retCode != 0 ) {
-      warn "LtrPipeline: GenomeTools failed to run ltrharvest. Error code: "
-          . ( $? >> 8 ) . " Run on esa-index created from: $full_seqFile\n";
-      $errorFlag = 1;
-    }
-    if ( -s "$tmpDir/ltrharvest.log" ) {
-      open IN, "<$tmpDir/ltrharvest.log"
-          or die "Could not open $tmpDir/ltrharvest.log for reading!\n";
-      open OUT, ">$outFile" or die "Could not open $outFile for writing!\n";
-      while ( <IN> ) {
-        if ( /^#/ ) {
-          print OUT;
-        }
-        elsif ( /^\d+\s+\d+\s+\d+\s+\d+/ ) {
-          $annotCnt++;
-          print OUT;
-        }
-        elsif ( /^\s*$/ ) {
-
-          # Don't save
-        }
-        else {
-          warn
-              "LtrPipeline: Ltrharvest returned an unexpected result line:\n$_";
-          $errorFlag = 1;
-        }
-      }
-      close IN;
-      close OUT;
-    }
-    else {
-
-      # Expected some sort of output
-      $errorFlag = 1;
-    }
-  }
-
-  unless ( $DEBUG || $errorFlag ) {
-    rmtree( $tmpDir );
-  }
-
-  print "LTRPipeline::runLtrHarvest : Returning $annotCnt annotations.\n"
-      if ( $DEBUG );
-  return $annotCnt;
-}
-
-sub runLtrDetector {
-  my $binDir  = shift;
-  my $seqFile = shift;
-  my $outFile = shift;
-  my $threads = shift;
-  my $wrkDir  = shift;
-
-  die "LTRPipeline::runLtrDetector : Could not find input file $seqFile\n"
-      if ( !-s $seqFile );
-
-  # The initial release of LtrDetector appears to only want one
-  # sequence per input file.
-  open INN, "<$seqFile"
-      or die
-      "LTRPipeline::runLtrDetector : Could not find open input file $seqFile\n";
-
-  # Create temporary directory
-  my $tmpDir;
-  if ( !defined $wrkDir || !-d $wrkDir ) {
-    $tmpDir = &createTempDir( [ dirname( $seqFile ), cwd() ], "LDET" );
-  }
-  else {
-    $tmpDir = &createTempDir( [ $wrkDir ], "LDET" );
-  }
-  print "LTRPipeline::runLtrDetector : tmpdir = $tmpDir\n" if ( $DEBUG );
-
-  my $id;
-  my $seq;
-  my $i = 1;
-  while ( <INN> ) {
-    if ( /^>(\S+)/ ) {
-      my $tmpID = $1;
-      if ( $seq ) {
-
-        # Create temporary files
-        open OUT, ">$tmpDir/ltrdetector-batch-$i.fa"
-            or die
-"LTRPipeline::runLtrDetector : Could not create $tmpDir/ltrdetector-batch-$i.fa\n";
-        print OUT ">$id\n$seq\n";
-        close OUT;
-        $i++;
-      }
-      $id  = $tmpID;
-      $seq = "";
-      next;
-    }
-    s/[\n\r\s]+//g;
-    $seq .= $_;
-  }
-  close INN;
-  if ( $seq ) {
-
-    # Create temporary files
-    open OUT, ">$tmpDir/ltrdetector-batch-$i.fa"
-        or die
-"LTRPipeline::runLtrDetector : Could not create $tmpDir/ltrdetector-batch-$i.fa\n";
-    print OUT ">$id\n$seq\n";
-    close OUT;
-    $i++;
-  }
-
-  # Run LtrDetector
-  my $cmd = "$binDir/LtrDetector -fasta $tmpDir -destDir $tmpDir";
-  if ( $threads > 1 ) {
-    $cmd .= " -nThreads $threads";
-  }
-  $cmd .= " > $tmpDir/ltrdetector.log 2>&1";
-  print "LTRPipeline::runLtrDetector : Running $cmd\n" if ( $DEBUG );
-  system( $cmd);
-
-  # The program creates a non-standard BED *.bed file per *.fa file.
-  # Read in all *.bed files and create a combined-results.bed file.
-  opendir DIR, "$tmpDir"
-      or die
-"LTRPipeline::runLtrDetector : Could not open $tmpDir for reading results!\n";
-  open OUT, ">$tmpDir/combined-results.bed"
-      or die
-"LTRPipeline::runLtrDetector : Could not create $tmpDir/combined-results.bed!\n";
-
-# Print one copy of the header
-#print OUT "SeqID	Retrotransposon	Left_LTR	Right_LTR		Left_TSD	Right_TSD	Polypurine Tract		TG	CA\n";
-#print OUT "	Start	End	Start	End	Start	End	ID	Start	End	Start	End	Start	End	Strand	Purine%	Start	End\n";
-  my $annotCnt = 0;
-  while ( my $entry = readdir( DIR ) ) {
-    if ( $entry =~ /^ltrdetector-batch-(\d+)Detector.bed/ ) {
-      my $batchNum = $1;
-      open IN, "<$tmpDir/$entry"
-          or die
-"LTRPipeline::runLtrDetector : Could not open $tmpDir/$entry for reading!\n";
-      while ( <IN> ) {
-
-# The following non-BED header preceeds the output:
-# SeqID	Retrotransposon	Left_LTR	Right_LTR		Left_TSD	Right_TSD	Polypurine Tract		TG	CA
-# Start	End	Start	End	Start	End	ID	Start	End	Start	End	Start	End	Strand	Purine%	Start	End
-# seq	130161	137139	130161	130459	136840	137139	87	130156	130160	137140	137144	130521	130553	-	72	130178	137123
-# seq	461361	468864	461361	461647	468579	468864	93	---	---	---	---	461683	461700	-	72	461368	468854
-#  ATCTTAGGCCGGGCGCGA        CTCAAAAAAAAAAAAAAA
-#  TTCTTGGCCAGGCGTGG   CTCCGTCTCAAAAAAAAAAAAAAA
-        if ( /^\S+\s+\d+\s+\d+/ ) {
-          my @flds = split;
-
-# LTR Harvest output format ( one-based, fully-closed )
-# LTRDetector output format ( zero-based, half-open )
-# Output Columns: range_start range_end ltr_len left_start left_end left_len right_start right_end right_len identity seq_num
-#  In LTR Harvest format these are not provided: seq_id direction NA left_TSD right_TSD
-          my $range_start = $flds[ 1 ] + 1;
-          $range_start = $flds[ 8 ] + 1
-              if ( $flds[ 8 ] !~ /---/ );    # Be inclusive of TSD if provided
-          my $range_end = $flds[ 2 ];
-          $range_end = $flds[ 11 ] if ( $flds[ 11 ] !~ /---/ );    # TSD
-          my $range_len  = $range_end - $range_start + 1;
-          my $left_start = $flds[ 3 ] + 1;
-          $left_start = $flds[ 8 ] + 1 if ( $flds[ 8 ] !~ /---/ );    # TSD
-          my $left_end    = $flds[ 4 ];
-          my $left_len    = $left_end - $left_start + 1;
-          my $right_start = $flds[ 5 ] + 1;
-          my $right_end   = $flds[ 6 ];
-          $right_end = $flds[ 11 ] if ( $flds[ 11 ] !~ /---/ );       # TSD
-          my $right_len = $right_end - $right_start + 1;
-          my $identity  = $flds[ 7 ];
-          my $seq_id    = $flds[ 0 ];
-          my $seq_num   = $batchNum - 1;
-          print OUT join(
-                          "\t",
-                          (
-                            $range_start, $range_end,
-                            $range_len,   $left_start,
-                            $left_end,    $left_len,
-                            $right_start, $right_end,
-                            $right_len, sprintf( "%0.2f", $identity ),
-                            $seq_num
-                          )
-              )
-              . "\n";
-          $annotCnt++;
-        }
-      }
-      close IN;
-    }
-  }
-  closedir DIR;
-  close OUT;
-
-  if ( -s "$tmpDir/combined-results.bed" ) {
-    system( "mv $tmpDir/combined-results.bed $outFile" );
-  }
-
-  # TODO: Consider keeping on error
-  unless ( $DEBUG ) {
-    rmtree( $tmpDir );
-  }
-
-  print "LTRPipeline::runLtrDetector : Returning $annotCnt annotations.\n"
-      if ( $DEBUG );
-  return $annotCnt;
-}
-
-######################## S U B R O U T I N E S ############################
-
 ##-------------------------------------------------------------------------##
-## Use:  my ( $tempDir ) = &createTempDir( \@tmpPath, $prefix );
+## Use: my $tempDir = &createTempDir( \@tmpPath, $prefix );
 ##
-## Attempt to create a temporary directory of the form:
-##
-##     $prefix_$PID.$DATE/
-##
-## Where:
-##     $prefix : Option prefix string or "RM" if not provided
-##     $PID    : The process ID of this perl script
-##     $DATE   : The date in DayOfWeek, Month, Day, Hour, Min
-##               Second, Year
-## Returns:
-##    The name of the temporary directory or "" if it cannot be
-##    created or written to.
+##   Create a writable directory $prefix_$PID.$DATE in the first of
+##   @tmpPath that allows it.  Returns its path, or "" if none does.
 ##
 ##-------------------------------------------------------------------------##
 sub createTempDir {
-  my $tmpPathRef = shift;
-  my $optPrefix  = shift;
-
-  ## Get date
-  my $date = localtime( time() );
+  my ( $tmpPathRef, $prefix ) = @_;
 
   # Windows does not support the use of ":" in a filename.
+  my $date = localtime( time() );
   $date =~ s/[ ,\t,\n:]//g;
-
-  # Set optional prefix
-  my $prefix = "RM";
-  $prefix = $optPrefix if ( $optPrefix ne "" );
-
   my $runnumber = "$$" . ".$date";
-  my $tempDir   = "";
+
   foreach my $directory ( @{$tmpPathRef} ) {
-
-    if ( $directory =~ /\/$/ ) {
-      $tempDir = $directory . $prefix . "_$runnumber";
-    }
-    else {
-      $tempDir = $directory . "/$prefix" . "_$runnumber";
-    }
-
-    if ( -d "$tempDir" || mkdir $tempDir, 0777 ) {
-      if ( open( IN, ">$tempDir/deleteMe" ) ) {
-        close IN;
+    $directory =~ s/\/$//;
+    my $tempDir = "$directory/${prefix}_$runnumber";
+    if ( -d $tempDir || mkdir $tempDir, 0777 ) {
+      if ( open( my $T, ">$tempDir/deleteMe" ) ) {
+        close $T;
         unlink( "$tempDir/deleteMe" );
-        last;
+        return $tempDir;
       }
     }
-    $tempDir = "";
   }
-  return ( $tempDir );
+  return "";
 }
 
 ##-------------------------------------------------------------------------##
-## Use: my $string = elapsedTime( $index );
+## Use: my $string = &elapsed( $startTime );
 ##
-##   Returns
-##
-##      Great little utility for measuring the elapsed
-##      time between one or more sections of perl code.
+##   The time since $startTime as "hh:mm:ss (hh:mm:ss) Elapsed Time".
 ##
 ##-------------------------------------------------------------------------##
-sub elapsedTime {
-  my ( $TimeHistIdx ) = @_;
-  if ( defined $TimeBefore{$TimeHistIdx} ) {
-    my $DiffTime = time - $TimeBefore{$TimeHistIdx};
-    $TimeBefore{$TimeHistIdx} = time;
-    my $Min = int( $DiffTime / 60 );
-    $DiffTime -= $Min * 60;
-    my $Hours = int( $Min / 60 );
-    $Min -= $Hours * 60;
-    my $Sec = $DiffTime;
-    my $timeStr = sprintf( "%02d:%02d:%02d", $Hours, $Min, $Sec );
-    return "$timeStr (hh:mm:ss) Elapsed Time";
-  }
-  else {
-    $TimeBefore{$TimeHistIdx} = time;
-    return 0;
-  }
+sub elapsed {
+  my $secs = time - shift;
+  return sprintf( "%02d:%02d:%02d (hh:mm:ss) Elapsed Time",
+                  int( $secs / 3600 ), int( ( $secs % 3600 ) / 60 ),
+                  $secs % 60 );
 }
-
