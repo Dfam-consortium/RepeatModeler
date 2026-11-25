@@ -54,18 +54,18 @@ BEGIN {
 ##                                                                      ##
   ## STCFG --do-not-remove--
   $configuration = {
-          'CDHIT_DIR' => {
-                           'command_line_override' => 'cdhit_dir',
-                           'description' => 'The path to the installation of the CD-Hit sequence clustering package.',
-                           'environment_override' => 'CDHIT_DIR',
-                           'expected_binaries' => [
-                                                    'cd-hit'
-                                                  ],
-                           'expected_files' => [],
-                           'param_type' => 'directory',
-                           'required' => 1,
-                           'value' => '/usr/local/cd-hit-4.8.1'
-                         },
+          'DFAM_CURATOR_DIR' => {
+                                   'command_line_override' => 'dfam_curator_dir',
+                                   'description' => 'The path to the directory holding the dfam-curator programs ( 0.6.6 or higher ).  RepeatModeler builds and extends family consensi with its te-composer, in place of the Refiner script it once ran, and the LTR structural pipeline builds its consensus models and seed alignments with it.',
+                                   'environment_override' => 'DFAM_CURATOR_DIR',
+                                   'expected_binaries' => [
+                                                            'te-composer'
+                                                          ],
+                                   'expected_files' => [],
+                                   'param_type' => 'directory',
+                                   'required' => 1,
+                                   'value' => '/home/rhubley/projects/Claude/dfam-curator/target/release'
+                                 },
           'FAMDB_DIR' => {
                            'command_line_override' => 'famdb_dir',
                            'description' => 'The path to the installation of the FamDB program (V3.0.0) or higher.',
@@ -78,54 +78,18 @@ BEGIN {
                            'required' => 1,
                            'value' => '/usr/local/FamDB-Dfam-4.0_RB'
                          },
-          'GENOMETOOLS_DIR' => {
-                                 'command_line_override' => 'genometools_dir',
-                                 'description' => 'The path to the installation of the GenomeTools package.',
-                                 'environment_override' => 'GENOMETOOLS_DIR',
-                                 'expected_binaries' => [
-                                                          'gt'
-                                                        ],
-                                 'expected_files' => [],
-                                 'param_type' => 'directory',
-                                 'required' => 0,
-                                 'value' => '/usr/local/genometools-1.6.2/bin'
-                               },
-          'LTR_RETRIEVER_DIR' => {
-                                   'command_line_override' => 'ltr_retriever_dir',
-                                   'description' => 'The path to the installation of the LTR_Retriever v2.9.0 structural LTR analysis package.',
-                                   'environment_override' => 'LTR_RETRIEVER_DIR',
-                                   'expected_binaries' => [
-                                                            'LTR_retriever'
-                                                          ],
-                                   'expected_files' => [],
-                                   'param_type' => 'directory',
-                                   'required' => 0,
-                                   'value' => '/usr/local/LTR_retriever-2.9.0'
-                                 },
           'LTR_FORAGE_DIR' => {
                                 'command_line_override' => 'ltr_forage_dir',
-                                'description' => 'The path to the directory holding the ltr-forage program ( 0.2.0 or higher ): the bin/ directory of a release, or target/release of a source build.  ltr-forage\'s ltr_library.py is found beside it ( a release\'s bin/ltr_library.py ), in its pipeline/ subdirectory, or in ../../pipeline for target/release.  When set, the LTR structural pipeline builds its families with ltr-forage in place of GenomeTools LTRharvest, LTR_retriever, MAFFT and NINJA, and merges them without cd-hit; SUFR_DIR is then needed too.',
+                                'description' => 'The path to the directory holding the ltr-forage program ( 0.2.0 or higher ): the bin/ directory of a release, or target/release of a source build.  ltr-forage\'s ltr_library.py is found beside it ( a release\'s bin/ltr_library.py ), in its pipeline/ subdirectory, or in ../../pipeline for target/release.  The LTR structural pipeline ( -LTRStruct ) builds its families with ltr-forage\'s family-library driver.',
                                 'environment_override' => 'LTR_FORAGE_DIR',
                                 'expected_binaries' => [
                                                          'ltr-forage'
                                                        ],
                                 'expected_files' => [],
                                 'param_type' => 'directory',
-                                'required' => 0,
+                                'required' => 1,
                                 'value' => ''
                               },
-          'MAFFT_DIR' => {
-                           'command_line_override' => 'mafft_dir',
-                           'description' => 'The path to the installation of the MAFFT multiple alignment program.',
-                           'environment_override' => 'MAFFT_DIR',
-                           'expected_binaries' => [
-                                                    'mafft'
-                                                  ],
-                           'expected_files' => [],
-                           'param_type' => 'directory',
-                           'required' => 0,
-                           'value' => '/usr/local/mafft/bin'
-                         },
           'MMSEQS_DIR' => {
                             'command_line_override' => 'mmseqs_dir',
                             'description' => 'The path to the bin directory of the MMseqs2 installation.  nail uses mmseqs to seed its protein search.  nail will absorb mmseqs in a future release, and this setting goes with it.',
@@ -150,31 +114,6 @@ BEGIN {
                           'required' => 1,
                           'value' => '/usr/local/nail-v0.7.1'
                         },
-          'NCBIBLAST_DIR' => {
-                               'command_line_override' => 'ncbiblast_dir',
-                               'description' => 'The path to the bin directory of the NCBI BLAST+ toolkit.  The LTR structural pipeline needs it, for the blastn and makeblastdb that LTR_retriever runs, and RepeatModeler needs its blastdbcmd only to convert a database an earlier release built.  Leave it unset otherwise.  Leave unset also to look in RMBLAST_DIR and then on PATH; a 2.x RMBlast installation ships the toolkit, so this only needs setting alongside a 3.x RMBlast.',
-                               'environment_override' => 'NCBIBLAST_DIR',
-                               'expected_binaries' => [
-                                                        'blastn',
-                                                        'makeblastdb'
-                                                      ],
-                               'expected_files' => [],
-                               'param_type' => 'directory',
-                               'required' => 0,
-                               'value' => ''
-                             },
-          'NINJA_DIR' => {
-                           'command_line_override' => 'ninja_dir',
-                           'description' => 'The path to the installation of the Ninja phylogenetic analysis package.',
-                           'environment_override' => 'NINJA_DIR',
-                           'expected_binaries' => [
-                                                    'Ninja'
-                                                  ],
-                           'expected_files' => [],
-                           'param_type' => 'directory',
-                           'required' => 0,
-                           'value' => '/usr/local/Ninja-0.98-cluster_only'
-                         },
           'RECON_DIR' => {
                            'command_line_override' => 'recon_dir',
                            'description' => 'The path to the installation of the RECON de-novo repeatfinding program.',
@@ -240,28 +179,16 @@ BEGIN {
                           },
           'SUFR_DIR' => {
                           'command_line_override' => 'sufr_dir',
-                          'description' => 'The path to the directory holding the sufr suffix-array program ( 0.8.0 or higher ).  The ltr-forage LTR structural pipeline ( LTR_FORAGE_DIR ) indexes the genome with it.',
+                          'description' => 'The path to the directory holding the sufr suffix-array program ( 0.8.0 or higher ).  The LTR structural pipeline ( -LTRStruct ) indexes the genome with it for ltr-forage.',
                           'environment_override' => 'SUFR_DIR',
                           'expected_binaries' => [
                                                    'sufr'
                                                  ],
                           'expected_files' => [],
                           'param_type' => 'directory',
-                          'required' => 0,
+                          'required' => 1,
                           'value' => ''
                         },
-          'TE_COMPOSER_DIR' => {
-                                  'command_line_override' => 'te_composer_dir',
-                                  'description' => 'The path to the directory holding the te-composer program.  RepeatModeler builds and extends family consensi with te-composer, in place of the Refiner script it once ran.',
-                                  'environment_override' => 'TE_COMPOSER_DIR',
-                                  'expected_binaries' => [
-                                                           'te-composer'
-                                                         ],
-                                  'expected_files' => [],
-                                  'param_type' => 'directory',
-                                  'required' => 1,
-                                  'value' => '/home/rhubley/projects/Claude/dfam-curator/target/release'
-                                },
           'TRF_DIR' => {
                          'command_line_override' => 'trf_dir',
                          'description' => 'The full path to TRF program.  TRF must be named "trf". ( 4.0.9 or higher )',
@@ -626,20 +553,20 @@ BEGIN {
   }
 
   #
-  # Locate a program from the NCBI BLAST+ toolkit.  The 3.x series of
-  # RMBlast does not ship the toolkit, so the few places that still need
-  # one of its programs look here rather than in RMBLAST_DIR.
+  # Locate a program from the NCBI BLAST+ toolkit ( only blastdbcmd, to
+  # convert a database an earlier release built ).  A 2.x RMBlast ships the
+  # toolkit; the 3.x series does not.
   #
-  #   my $path = RepModelConfig::findNCBIProgram( "blastx" );
+  #   my $path = RepModelConfig::findNCBIProgram( "blastdbcmd" );
   #
-  # Returns the path of the first executable found in NCBIBLAST_DIR,
-  # then RMBLAST_DIR, then the directories on PATH, or undef.
+  # Returns the path of the first executable found in RMBLAST_DIR, then the
+  # directories on PATH, or undef.
   #
   sub findNCBIProgram {
     my $name = shift;
 
     my @dirs = ();
-    foreach my $param ( "NCBIBLAST_DIR", "RMBLAST_DIR" ) {
+    foreach my $param ( "RMBLAST_DIR" ) {
       my $dir = $configuration->{$param}->{'value'};
       push @dirs, $dir if ( defined $dir && $dir ne "" );
     }
@@ -661,10 +588,9 @@ BEGIN {
     my $purpose = shift;
 
     return "Could not find the NCBI BLAST+ program '$name', which $purpose.\n"
-        . "It was not found in NCBIBLAST_DIR, RMBLAST_DIR, or on PATH.\n"
-        . "Install the NCBI BLAST+ toolkit and point NCBIBLAST_DIR at its\n"
-        . "bin directory ( rerun ./configure, set the NCBIBLAST_DIR\n"
-        . "environment variable, or pass -ncbiblast_dir ).\n";
+        . "It was not found in RMBLAST_DIR or on PATH.  Install the NCBI\n"
+        . "BLAST+ toolkit ( or a 2.x RMBlast ) and put its bin directory on\n"
+        . "PATH.\n";
   }
 
   #
@@ -845,58 +771,11 @@ BEGIN {
       $tmpStr = `strings $value/twoBitInfo | grep "kent source version"`;
       $version = "unknown";
       $version = $1 if ( $tmpStr =~ /kent source version\s+(\d+)/ );
-    }elsif ( $param eq "CDHIT_DIR" ) {
-      #cd-hit -blah
-      # 	====== CD-HIT version 4.8.1 (built on Mar 21 2019) ======
-      $tmpStr = `$value/cd-hit -blah 2>&1`;
-      $tmpStr =~ /CD-HIT version\s+(\d+\.\d+\.\d+)/;
-      $version = $1;
-    }elsif ( $param eq "GENOMETOOLS_DIR" ) {
-      #gt -version
-      #/home/rhubley/src/genometools-1.5.9/bin/gt (GenomeTools) 1.5.9
-      #Copyright (c) 2003-2016 G. Gremme, S. Steinbiss, S. Kurtz, and CONTRIBUTORS
-      #Copyright (c) 2003-2016 Center for Bioinformatics, University of Hamburg
-      #See LICENSE file or http://genometools.org/license.html for license details.
-      #
-      #Used compiler: cc (GCC) 4.8.5 20150623 (Red Hat 4.8.5-36.0.1)
-      #Compile flags:  -g -Wall -Wunused-parameter -pipe -fPIC -Wpointer-arith -Wno-unknown-pragmas -O3 -Werror
-      $tmpStr = `$value/gt -version 2>&1`;
-      $tmpStr =~ /\(GenomeTools\)\s+(\d+\.\d+\.\d+)/;
-      $version = $1;
     }elsif ( $param eq "LTR_FORAGE_DIR" ) {
       # ltr-forage --version
       # ltr-forage 0.1.0
       $tmpStr = `$value/ltr-forage --version 2>&1`;
       $tmpStr =~ /ltr-forage\s+(\d+\.\d+\.\d+)/;
-      $version = $1;
-    }elsif ( $param eq "LTR_RETRIEVER_DIR" ) {
-      # More complex.  Older versions only printed the version in the
-      # output. This is fragile...but we are going to try and pull it
-      # out of the script:
-      open IN,"<$value/LTR_retriever" or die;
-      while (<IN>){
-        if (/^my\s+\$version\s*=\s*\"(\S+)\";/)
-        {
-          $version = $1;
-          last;
-        }
-      }
-      close IN;
-    }elsif ( $param eq "MAFFT_DIR" ) {
-      #mafft -blah
-      #------------------------------------------------------------------------------
-      #  MAFFT v7.407 (2018/Jul/23)
-      #  https://mafft.cbrc.jp/alignment/software/
-      #  MBE 30:772-780 (2013), NAR 30:3059-3066 (2002)
-      #------------------------------------------------------------------------------
-      $tmpStr = `$value/mafft -blah 2>&1`;
-      $tmpStr =~ /MAFFT\s+v(\d+\.\d+)/;
-      $version = $1;
-    }elsif ( $param eq "NINJA_DIR" ) {
-      #Ninja -v
-      #Version 0.97-cluster_only
-      $tmpStr = `$value/Ninja -v 2>&1`;
-      $tmpStr =~ /Version\s+(\d+\.\d+\S+)/;
       $version = $1;
     }elsif ( $param eq "REPEATMASKER_DIR" ) {
       #RepeatMasker -v
@@ -916,7 +795,7 @@ BEGIN {
       $tmpStr = `$value/sufr --version 2>&1`;
       $tmpStr =~ /sufr\s+(\d+\.\d+\.\d+)/;
       $version = $1;
-    }elsif ( $param eq "TE_COMPOSER_DIR" ) {
+    }elsif ( $param eq "DFAM_CURATOR_DIR" ) {
       #te-composer --version
       #te-composer 0.6.6
       $tmpStr = `$value/te-composer --version 2>&1`;

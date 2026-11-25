@@ -12,7 +12,7 @@ RepeatModeler
 
 RepeatModeler is a de novo transposable element (TE) family identification and 
 modeling package. At the heart of RepeatModeler are three de-novo repeat finding
-programs ( RECON, RepeatScout and LtrHarvest/Ltr_retriever ) which employ 
+programs ( RECON, RepeatScout and ltr-forage ) which employ 
 complementary computational methods for identifying repeat element boundaries
 and family relationships from sequence data.
 
@@ -83,44 +83,31 @@ Source Distribution Installation
     This is available for download at: https://github.com/Dfam-consortium/RepeatAfterMe.
     We recommend 0.0.6 or higher.
 
-  te-composer - Builds and extends the consensus for each family discovered.
-    Part of the dfam-curator toolkit, available for download at:
+  dfam-curator - Its te-composer builds and extends the consensus for each
+    family discovered.  Available for download at:
     https://github.com/Dfam-consortium/dfam-curator.
-    We recommend 0.6.6 or higher.
+    Requires 0.6.6 or higher.
+
+  nail and MMseqs2 - RepeatClassifier and the LTR structural pipeline
+    search protein profiles with nail, which seeds its search with MMseqs2.
+    https://github.com/TravisWheelerLab/nail ( 0.7.1 or higher )
+    https://github.com/soedinglab/MMseqs2
+
+  ltr-forage - Finds LTR retrotransposons and builds their family library
+    for the LTR structural pipeline ( -LTRStruct ).  Available for download
+    at: https://github.com/Dfam-consortium/ltr-forage.  Requires 0.2.0 or
+    higher; configure asks for the directory holding the ltr-forage program
+    ( a release's bin/ directory ).
+
+  sufr - Builds the suffix array ltr-forage searches.  Available for
+    download at: https://github.com/TravisWheelerLab/sufr.  Requires 0.8.0
+    or higher.
 
   UCSC genome browser command-line utilities - Some tools included with
     RepeatModeler work with files in the 'twobit' file format using
     these programs: twoBitToFa, faToTwoBit, and twoBitInfo.
     Precompiled binaries and source for these programs can be found at
     http://hgdownload.soe.ucsc.edu/downloads.html#utilities_downloads.
-
-**Optional. Required for running LTR structural search pipeline:**
-
-  LtrHarvest - The LtrHarvest program is part of the GenomeTools suite.  We
-    have developed this release of RepeatModeler on GenomeTools version 1.5.9 
-    available for download from here: http://genometools.org/pub/
-    NOTE: use the "make threads=yes" build options to enable multi-threaded
-          runs.
-          
-  Ltr_retriever - A LTR discovery post-processing and filtering tool.  We
-    currently **require the 2.9.0** version of LTR retreiver, newer versions
-    of LTR_retriever will not currently work with RepeatModeler.
-    https://github.com/oushujun/LTR_retriever/releases
-
-  MAFFT - A multiple sequence alignment program.  We developed and tested
-    RepeatModeler using mafft version 7.505.  Please use this verison or
-    higher from here:
-    https://mafft.cbrc.jp/alignment/software/
-
-  CD-HIT - A sequence clustering package.  We developed and tested
-    RepeatModeler using version 4.8.1.  Please use this version or higher
-    from:
-    https://github.com/weizhongli/cdhit
-
-  Ninja - A tool for large-scale neighbor-joining phylogeny inference and 
-    clustering.  We developed and tested RepeatModeler using Ninja version
-    "0.98-cluster_only". Please obtain a copy from:
-    https://github.com/TravisWheelerLab/NINJA/releases/tag/0.98-cluster_only
 
 **Installation**
 

@@ -76,9 +76,9 @@ should be an integer number.
 Run the LTR structural discovery pipeline and combine its families with the
 RepeatScout/RECON families. [optional]
 
-With LTR_FORAGE_DIR configured the pipeline is ltr-forage's family library
-( one LTR and one internal model per family, with seed alignments ), and the
-families are combined as follows:
+The pipeline is ltr-forage's family library ( one LTR and one internal model
+per family, with seed alignments ), and the families are combined as
+follows:
 
   - A RepeatScout/RECON family is dropped when it and some ltr-forage model
     align at 80% identity or better over at least 80% of the shorter of the
@@ -93,9 +93,7 @@ families are combined as follows:
     models cover at least 50% of it ( 20% when it is Unknown ) at 70%
     identity or better.
 
-The decisions are listed in ltr-merge.tsv in the working directory.  Without
-LTR_FORAGE_DIR the pipeline is GenomeTools LTRharvest and LTR_retriever, and
-its families are combined with cd-hit-est.
+The decisions are listed in ltr-merge.tsv in the working directory.
 
 =item -organelles <fasta>
 
@@ -291,7 +289,6 @@ my $RMBLASTN_PRGM   = $config->{'RMBLAST_DIR'}->{'value'} . "/rmblastn";
 my $TRF_DIR         = $config->{'TRF_DIR'}->{'value'};
 my $RSCOUT_DIR      = $config->{'RSCOUT_DIR'}->{'value'};
 my $RECON_DIR       = $config->{'RECON_DIR'}->{'value'};
-my $CDHIT_DIR       = $config->{'CDHIT_DIR'}->{'value'};
 my $FATOTWOBIT      = $config->{'UCSCTOOLS_DIR'}->{'value'} . "/faToTwoBit";
 
 ## validate params
@@ -304,30 +301,16 @@ foreach my $param ( "RMBLAST_DIR", "TRF_DIR", "RSCOUT_DIR", "RECON_DIR",
   }
 }
 
-# LTRPipeline dependencies.  With LTR_FORAGE_DIR set, ltr-forage's family
-# library replaces GenomeTools, LTR_retriever and the MAFFT/NINJA family
-# building ( and the perl threads LTR_retriever needs ), and the merge uses
-# rmblastn rather than cd-hit; it needs sufr, te-composer, nail and MMseqs2.
+# LTRPipeline dependencies: ltr-forage's family library, built with sufr,
+# dfam-curator's te-composer, nail and MMseqs2.
 if ( $options{'LTRStruct'} ) {
-  my $useForage = ( $config->{'LTR_FORAGE_DIR'}->{'value'} ne "" );
-  my @ltrDeps;
-  if ( $useForage ) {
-    @ltrDeps = ( "LTR_FORAGE_DIR", "SUFR_DIR", "TE_COMPOSER_DIR", "NAIL_DIR", "MMSEQS_DIR" );
-  } else {
-    @ltrDeps = ( "MAFFT_DIR", "NINJA_DIR", "CDHIT_DIR", "GENOMETOOLS_DIR",
-                 "LTR_RETRIEVER_DIR" );
-  }
-  foreach my $param ( @ltrDeps )
+  foreach my $param ( "LTR_FORAGE_DIR", "SUFR_DIR", "DFAM_CURATOR_DIR", "NAIL_DIR",
+                      "MMSEQS_DIR" )
   {
     if ( !RepModelConfig::validateParam( $param ) ) {
       die
 "\n  LTRPipeline dependency missing or incorrectly set for $param!\n   Rerun ./configure or check your command line to ensure that RepeatModeler\n  has access to and the correct version of this dependency.\n\n";
     }
-  }
-  unless ( $useForage || eval "require threads;" ) 
-  {
-    die "LTRRetriever used in the LTRPipeline depends on perl threads.  This version of\n".
-        "perl does not appear to be compiled with the thread option.\n";
   }
 }
 
@@ -572,19 +555,11 @@ log_print "=" x length( $title ) . "\n";
 log_print "Using output directory = $tmpDir\n";
 log_print "Search Engine = $engine $engineVersion\n";
 log_print "Threads = " . $options{'threads'} . "\n" if ( $options{'threads'} );
-log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_DIR") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . ", RepeatAfterMe " . RepModelConfig::getDependencyVersion("REPEATAFTERME_DIR") . ", te-composer " . RepModelConfig::getDependencyVersion("TE_COMPOSER_DIR") . "\n";
-if ( $options{'LTRStruct'} && $config->{'LTR_FORAGE_DIR'}->{'value'} ne "" ) {
+log_print "Dependencies: TRF " . RepModelConfig::getDependencyVersion("TRF_DIR") . ", RECON " . RepModelConfig::getDependencyVersion("RECON_DIR") . ", RepeatScout " . RepModelConfig::getDependencyVersion("RSCOUT_DIR") . ", RepeatMasker " . RepModelConfig::getDependencyVersion("REPEATMASKER_DIR") . ", RepeatAfterMe " . RepModelConfig::getDependencyVersion("REPEATAFTERME_DIR") . ", dfam-curator ( te-composer ) " . RepModelConfig::getDependencyVersion("DFAM_CURATOR_DIR") . "\n";
+if ( $options{'LTRStruct'} ) {
   log_print "LTR Structural Analysis: Enabled ( ltr-forage "
       . RepModelConfig::getDependencyVersion("LTR_FORAGE_DIR") . ", sufr "
       . RepModelConfig::getDependencyVersion("SUFR_DIR") . " )\n";
-}
-elsif ( $options{'LTRStruct'} ) {
-  log_print "LTR Structural Analysis: Enabled ( " . 
-      "GenomeTools " . RepModelConfig::getDependencyVersion("GENOMETOOLS_DIR") . ", " .
-      "LTR_Retriever " . RepModelConfig::getDependencyVersion("LTR_RETRIEVER_DIR") . ",\n" .
-      "                                   Ninja " . RepModelConfig::getDependencyVersion("NINJA_DIR") . ", " .
-      "MAFFT " . RepModelConfig::getDependencyVersion("MAFFT_DIR") . ",\n" .
-      "                                   CD-HIT " . RepModelConfig::getDependencyVersion("CDHIT_DIR") . " )\n";
 }
 else {
   log_print "LTR Structural Analysis: Disabled [use -LTRStruct to enable]\n";
@@ -1521,8 +1496,8 @@ if ( $options{'LTRStruct'} ) {
   my $SEQ = $genomeSeqDB->openFastaStream();
   while ( <$SEQ> ) {
     if ( /^>/ ) {
-      # Replace >gi|232 with >gi-232 so that LTR_retriever is happy.  This is
-      # a known issue with LTR_retriever-2.6
+      # Replace >gi|232 with >gi-232: LTRPipeline's -giToID translation
+      # renames the seed-alignment rows from gi-# identifiers.
       s/\|/-/;
     }
     print OUT;
@@ -1545,238 +1520,13 @@ if ( $options{'LTRStruct'} ) {
     print "Calling LTRPipeline as: $FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq\n" if ( $DEBUG );
     system( "$FindBin::RealBin/LTRPipeline $optionalArgs $tmpDir/tmpInputSeq" );
     unlink "$tmpDir/tmpInputSeq" unless ( $DEBUG );
-    if ( -s "$tmpDir/tmpInputSeq-ltrs.fa"
-         && $config->{'LTR_FORAGE_DIR'}->{'value'} ne "" ) {
+    if ( -s "$tmpDir/tmpInputSeq-ltrs.fa" ) {
       log_print "  -- Merging the ltr-forage families with previous rounds...\n";
       $ltrMerge = &mergeLtrForageFamilies(
                                  workDir    => $tmpDir,
                                  ltrPrefix  => "$tmpDir/tmpInputSeq-ltrs",
                                  organelles => &collectOrganelles( $tmpDir ),
                                  threads    => $threads );
-    }
-    elsif ( -s "$tmpDir/tmpInputSeq-ltrs.fa" ) {
-
-      # Combine results between both pipelines
-      # run CDhit
-      # /usr/local/cd-hit/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000
-      #         -i all_consensi.fasta -o all_consensi.clusters1.fasta -T 20
-      #   T is threads, 0 = unlimited
-      #
-      # >Cluster 0
-      # 0	8283nt, >rnd-3_family-2#LINE... *
-      # 1	3592nt, >rnd-4_family-1#LINE... at 1:3592:4587:8184/+/98.72%
-      # 2	2990nt, >rnd-5_family-1#LINE... at 1:2990:4994:7985/+/97.46%
-      # 3	1641nt, >rnd-5_family-22#LIN... at 2:1623:10:1632/+/87.13%
-      #
-      # Jullien clustered and removed RECON/RepeatScout hits that overlapped
-      # Then she clustered a second time and collapsed clusters using Refiner.
-      #
-      # What we are doing:
-      #   Cluster the sequences with RepeatModeler's RECON/RepeatScout pipeline.
-      #   Identify non-singletons and collapse in favor of the longest sequence
-      #   ( for RECON/RepeatScout clusters ) or in favor of LTRPipeline in mixed
-      #   clusters.  Keep all LtrPipeline produced results.
-      #
-      log_print "  -- Clustering results with previous rounds...\n";
-
-      # 1. Combine results from both pipelines into a file
-      system(
-"cat $tmpDir/tmpInputSeq-ltrs.fa $tmpDir/consensi.fa > $tmpDir/combined.fa" );
-      system(
-"cat $tmpDir/tmpInputSeq-ltrs.stk $tmpDir/families.stk > $tmpDir/combined.stk"
-      );
-
-      # 2. Cluster results
-      my $cmd =
-            "$CDHIT_DIR/cd-hit-est -aS 0.8 -c 0.8 -g 1 -G 0 -A 80 -M 10000 "
-          . "-i $tmpDir/combined.fa -o $tmpDir/cd-hit-out -T $threads "
-          . "> $tmpDir/cd-hit-stdout 2>&1";
-      system( $cmd);
-      unlink( "$tmpDir/cd-hit-stdout" ) if ( -e "$tmpDir/cd-hit-stdout" );
-      unlink( "$tmpDir/cd-hit-out" )    if ( -e "$tmpDir/cd-hit-out" );
-
-      # 3. Process clusters and remove redundancy
-      my %redundant_families;
-      my %putative_subfamilies;
-      my $ltrFamCnt = 0;
-      my $rrFamCnt  = 0;
-      if ( -s "$tmpDir/cd-hit-out.clstr" ) {
-        open IN, "<$tmpDir/cd-hit-out.clstr"
-            or die
-"RepeatModeler: Could not open $tmpDir/cd-hit-out.clstr for reading!\n";
-        my @cluster = ();
-        my $longest_ltr_id;
-        my $longest_ltr_size;
-        my $longest_rnd_id;
-        my $longest_rnd_size;
-        while ( <IN> ) {
-          if ( /^>Cluster/ ) {
-            if ( @cluster > 1 ) {
-
-              # I started out by picking the longest LTRPipeline
-              # derived family as the cluster rep.  Now we
-              # consider all LTRPipeline candidates as dominant.
-              # The only reason two more more LTRPipeline candidates
-              # would show up in a cluster would be due to
-              # overlap between LTR/INT sequences that didn't get
-              # removed by LTR_retriever.
-              #
-              # Keeping the longest_ltr_id variable as an indicator
-              # that there is at least one LTRPipeline candidate in the
-              # cluster.
-              if ( $longest_ltr_id ) {
-                foreach my $id ( @cluster ) {
-
-                  # Now...remove only overlapping RECON/RepeatScout
-                  # candidates ( rnd-#_family-# ).
-                  if ( $id !~ /^ltr-\d+_family-\d+/ ) {
-
-            # Use the longest as the "reason" why we are removing it.
-            #print "Removing $id because it's redundant with $longest_ltr_id\n";
-                    $redundant_families{$id}++;
-                  }
-                }
-              }
-              elsif ( $longest_rnd_id ) {
-                foreach my $id ( @cluster ) {
-                  if ( $id ne $longest_rnd_id ) {
-
-               #print "Labeling $id as putative subfamily of $longest_rnd_id\n";
-                    $putative_subfamilies{$id} = $longest_rnd_id;
-                  }
-                }
-              }
-            }
-            $longest_ltr_id   = undef;
-            $longest_ltr_size = 0;
-            $longest_rnd_id   = undef;
-            $longest_rnd_size = 0;
-            @cluster          = ();
-            next;
-          }
-          if ( /^\d+\s+(\d+)nt,\s*>((rnd|ltr)-\d+_family-\d+)/ ) {
-            my $size = $1;
-            my $id   = $2;
-            my $type = $3;
-            if ( $type eq "ltr" ) {
-              $ltrFamCnt++;
-              if ( $size > $longest_ltr_size ) {
-                $longest_ltr_id   = $id;
-                $longest_ltr_size = $size;
-              }
-            }
-            if ( $type eq "rnd" ) {
-              $rrFamCnt++;
-              if ( $size > $longest_rnd_size ) {
-                $longest_rnd_id   = $id;
-                $longest_rnd_size = $size;
-              }
-            }
-            push @cluster, $id;
-          }
-        }
-        close IN;
-
-        # TODO: Do we really want to keep this?
-        #unlink("$tmpDir/cd-hit-out.clstr" );
-      }
-      log_print "       - $rrFamCnt RepeatScout/RECON families\n";
-      log_print "       - $ltrFamCnt LTRPipeline families\n";
-      if ( keys( %redundant_families ) ) {
-        system(
-               "mv $tmpDir/consensi.fa $tmpDir/consensi.fa.recon_rscout_only" );
-        system( "mv $tmpDir/combined.fa $tmpDir/consensi.fa.with_redundancy" );
-
-        # Filter consensi.fa and families.stk
-        open IN, "<$tmpDir/consensi.fa.with_redundancy"
-            or die
-"RepeatModeler: Could not open $tmpDir/consensi.fa.with_redundancy for reading";
-        open OUT, ">$tmpDir/consensi.fa"
-            or die
-            "RepeatModeler: Could not open $tmpDir/consensi.fa for writing";
-        my $id;
-        my $data;
-        while ( <IN> ) {
-          if ( /^>(\S+)/ ) {
-            my $tmpID = $1;
-            if ( $data ) {
-              if ( !exists $redundant_families{$id} ) {
-                print OUT $data;
-              }
-            }
-            if ( exists $putative_subfamilies{$tmpID} ) {
-              my $tstr = $_;
-              $tstr =~ s/[\n\r]//g;
-              $data =
-                  "$tstr [ putative subfamily of "
-                  . $putative_subfamilies{$tmpID} . " ]\n";
-            }
-            else {
-              $data = $_;
-            }
-            $id = $tmpID;
-            next;
-          }
-          $data .= $_;
-        }
-        if ( $data ) {
-          if ( !exists $redundant_families{$id} ) {
-            print OUT $data;
-          }
-        }
-        close IN;
-        close OUT;
-        system(
-             "mv $tmpDir/families.stk $tmpDir/families.stk.recon_rscout_only" );
-        system(
-               "mv $tmpDir/combined.stk $tmpDir/families.stk.with_redundancy" );
-        open IN, "<$tmpDir/families.stk.with_redundancy"
-            or die
-"RepeatModeler: Could not open $tmpDir/families.stk.with_redundancy for reading";
-        open OUT, ">$tmpDir/families.stk"
-            or die
-            "RepeatModeler: Could not open $tmpDir/families.stk for writing";
-        $id   = "";
-        $data = "";
-
-        while ( <IN> ) {
-          if ( /^#=GF\s+ID\s+(\S+)/ ) {
-            $id = $1;
-          }
-
-          if ( /^#=GF\s+DE\s+(\S.*)/ ) {
-            if ( exists $putative_subfamilies{$id} ) {
-              my $tstr = $_;
-              $tstr =~ s/[\n\r]//g;
-              $data .=
-                  "$tstr [ putative subfamily of "
-                  . $putative_subfamilies{$id} . " ]\n";
-            }
-            else {
-              $data .= $_;
-            }
-          }
-          else {
-            $data .= $_;
-          }
-
-          if ( /^\/\// ) {
-            if ( !exists $redundant_families{$id} ) {
-              print OUT $data;
-            }
-            $data = "";
-          }
-        }
-        close IN;
-        close OUT;
-        log_print "       - Removed "
-            . scalar( keys( %redundant_families ) )
-            . " redundant LTR families.\n";
-        log_print "       - Final family count = "
-            . (
-            ( $rrFamCnt + $ltrFamCnt ) - scalar( keys( %redundant_families ) ) )
-            . "\n";
-      }
     }else {
       log_print "  -- No LTRs identified through structural analysis\n";
     }

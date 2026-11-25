@@ -781,10 +781,10 @@ sub refineFamily {
     return 1;
   }
 
-  my $tcDir = $config->{'TE_COMPOSER_DIR'}->{'value'};
+  my $tcDir = $config->{'DFAM_CURATOR_DIR'}->{'value'};
   die $CLASS
       . "::$fName(): te-composer is not configured.  Run ./configure or "
-      . "set TE_COMPOSER_DIR.\n"
+      . "set DFAM_CURATOR_DIR.\n"
       if ( !defined $tcDir || !-x "$tcDir/te-composer" );
 
   my $tcInput = "$instancesFile.te-composer.fa";

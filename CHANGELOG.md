@@ -24,31 +24,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   search subjects through RepeatMasker's search engine objects and needs
   RepeatMasker 4.2.5 or higher; configure checks for it.
 - TwoBitDB.pm, a read-only SeqDBI implementation over a UCSC 2bit file.
-- NCBIBLAST_DIR, an optional setting naming an NCBI BLAST+ bin directory for
-  RepeatClassifier's blastx and LTR_retriever's blastn. When unset, RepeatModeler
-  looks in RMBLAST_DIR and then on PATH.
-- TE_COMPOSER_DIR, the directory holding the te-composer program. configure
-  prompts for it and RepeatModeler prints its version in the startup banner.
-- SUFR_DIR, the directory holding sufr (0.8.0 or higher). The ltr-forage LTR
-  pipeline indexes the genome with it; with LTR_FORAGE_DIR set, -LTRStruct needs
-  it, and the startup banner prints its version. LTR_FORAGE_DIR now needs to hold
-  only ltr-forage, such as the bin/ directory of an ltr-forage release.
+- DFAM_CURATOR_DIR, the directory holding the dfam-curator programs (its
+  te-composer, 0.6.6 or higher). configure prompts for it and RepeatModeler
+  prints its version in the startup banner.
+- LTR_FORAGE_DIR and SUFR_DIR, the directories holding ltr-forage (0.2.0 or
+  higher; a release's bin/ directory) and sufr (0.8.0 or higher), for the LTR
+  structural pipeline. configure prompts for both and checks their versions, and
+  the startup banner prints them with -LTRStruct.
 
 ### Changed
-- With LTR_FORAGE_DIR set, LTRPipeline runs ltr-forage's family-library driver
-  (ltr_library.py) in place of raw ltr-forage plus MAFFT, NINJA and te-composer.
-  Each family has one LTR model and one internal model. Each model gets a seed
-  alignment of its genome copies, with the model as the RF line. It writes
-  <input>-ltrs.tsv mapping each ltr-1_family-# to its ltr-forage model and class.
-  MAFFT, NINJA, CD-HIT, GenomeTools and LTR_retriever are no longer needed on this
-  path; te-composer (0.6.8 or higher for the seed alignments), nail and MMseqs2
-  are.
+- LTRPipeline runs ltr-forage's family-library driver (ltr_library.py) in place
+  of GenomeTools LTRharvest, LTR_retriever, MAFFT, NINJA and CD-HIT. Each family
+  has one LTR model and one internal model. Each model gets a seed alignment of
+  its genome copies, with the model as the RF line. It writes <input>-ltrs.tsv
+  mapping each ltr-1_family-# to its ltr-forage model and class. It needs
+  ltr-forage, sufr, te-composer (0.6.8 or higher for the seed alignments), nail
+  and MMseqs2.
 - LTRPipeline needs ltr-forage 0.2.0 or higher, which reads sufr 0.8.0's index
   format and turns each model to its element's coding strand. Its protein
   profiles default to ltr-forage's own (data/TEdomains.hmm), not a TEfam.hmm in
   Libraries/. -debug also keeps ltr_library.py's intermediate files.
-- With LTR_FORAGE_DIR set, RepeatModeler merges the LTRPipeline families
-  differently. It no longer clusters with cd-hit-est. Instead:
+- RepeatModeler merges the LTRPipeline families differently. It no longer clusters with cd-hit-est. Instead:
     - A RepeatScout/RECON family is dropped when it aligns to a single
       ltr-forage model at 80% identity or better over 80% of the shorter of the
       two. This is the cd-hit rule applied pair by pair.
@@ -108,6 +104,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   500 and 2000 bp were passing the filter and reaching Refiner as families of
   overlapping 20 kb windows. The thresholds and counting are otherwise the
   script's. The per-round log is now repeatscout-filter.log.
+
+### Removed
+- GENOMETOOLS_DIR, LTR_RETRIEVER_DIR, MAFFT_DIR, NINJA_DIR and CDHIT_DIR, with
+  the LTRharvest/LTR_retriever pipeline, the cd-hit-est merge of its families and
+  its need for a perl built with threads. util/ClusterPartialMatchingSubs.pl
+  finds cd-hit through the CDHIT_DIR environment variable or PATH.
+- NCBIBLAST_DIR. Only converting a database an earlier release built needs an
+  NCBI BLAST+ program (blastdbcmd), which RepeatModeler looks for in RMBLAST_DIR
+  and then on PATH.
 
 ### Fixed
 - generateSeedAlignments.pl marked the wrong alignment as invalid when a range

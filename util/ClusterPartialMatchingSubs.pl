@@ -172,9 +172,13 @@ my $Version = $RepModelConfig::VERSION;
 #
 # Paths
 #
+# cd-hit and its clstr_rev.pl from the CDHIT_DIR environment variable, else
+# PATH ( RepeatModeler itself no longer runs cd-hit, so it is not configured ).
 my $config           = $RepModelConfig::configuration;
-my $CDHIT_PRGM       = $config->{'CDHIT_DIR'}->{'value'} . "/cd-hit";
-my $CDHIT_CLSTR_PRGM = $config->{'CDHIT_DIR'}->{'value'} . "/clstr_rev.pl";
+my $CDHIT_DIR        = $ENV{'CDHIT_DIR'}
+    // dirname( RepModelConfig::findProgramOnPath( "cd-hit" ) // "" );
+my $CDHIT_PRGM       = "$CDHIT_DIR/cd-hit";
+my $CDHIT_CLSTR_PRGM = "$CDHIT_DIR/clstr_rev.pl";
 
 #
 # Option processing
@@ -367,6 +371,9 @@ while ($id >= $minid) {
   my $tag = 100*$id;
   my $outfile = "$fafile\_$tag";
   print OUTCL "$CDHIT_PRGM -i $infile -o $outfile -c $id $band -M 1600 -T $threads -d 0 $accurate\n" if $options{'debug'};
+  die "ClusterPartialMatchingSubs: Could not find cd-hit; set CDHIT_DIR or put "
+      . "it on PATH.\n"
+      if ( !-x $CDHIT_PRGM );
   system "$CDHIT_PRGM -i $infile -o $outfile -c $id $band -M 1600 -T $threads -d 0 $accurate >> cdhitnoises$epoc";
   if ($round) {
     my $firstclstr = "$infile.clstr";

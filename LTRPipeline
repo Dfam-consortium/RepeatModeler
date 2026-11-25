@@ -119,8 +119,8 @@ ltr_library.py's intermediate files ( ltr_library/work ).
 =back
 
 Requires LTR_FORAGE_DIR ( ltr-forage 0.2.0 or higher, and its
-ltr_library.py ), SUFR_DIR ( sufr 0.8.0 or higher ), TE_COMPOSER_DIR,
-NAIL_DIR and MMseqs2.  RMBLAST_DIR is used when it holds
+ltr_library.py ), SUFR_DIR ( sufr 0.8.0 or higher ), DFAM_CURATOR_DIR
+( te-composer ), NAIL_DIR and MMseqs2.  RMBLAST_DIR is used when it holds
 the Rust rmblastn ( 3.0.9 or later ); otherwise ltr_library.py finds its
 own.
 
@@ -245,7 +245,7 @@ print "LTRPipeline: -LTRMaxSeqLen is obsolete and ignored.\n"
 #
 # Dependencies
 #
-foreach my $param ( "LTR_FORAGE_DIR", "SUFR_DIR", "TE_COMPOSER_DIR", "NAIL_DIR" ) {
+foreach my $param ( "LTR_FORAGE_DIR", "SUFR_DIR", "DFAM_CURATOR_DIR", "NAIL_DIR" ) {
   if ( !RepModelConfig::validateParam( $param ) ) {
     die "LTRPipeline: $param is missing or incorrectly set ( '"
         . ( $config->{$param}->{'value'} // "" ) . "' ).\n"
@@ -302,7 +302,7 @@ my $startTime = time;
 my $cmd = "python3 $script " . File::Spec->rel2abs( $inputFile )
     . " -o $outDir -t $threads"
     . " --ltr-forage $forageDir/ltr-forage --sufr-bin $sufrDir/sufr"
-    . " --te-composer $config->{'TE_COMPOSER_DIR'}->{'value'}/te-composer"
+    . " --te-composer $config->{'DFAM_CURATOR_DIR'}->{'value'}/te-composer"
     . " --nail $config->{'NAIL_DIR'}->{'value'}/nail --mmseqs $mmseqs";
 $cmd .= " --domain-hmm $ltrHmm" if ( $ltrHmm );
 $cmd .= " --keep-work" if ( $DEBUG );

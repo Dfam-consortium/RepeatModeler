@@ -50,12 +50,6 @@ Path to the FamDB installation directory (containing famdb.py).
 
 Path to the RMBlast bin directory.
 
-=item -ncbiblast_dir <path>
-
-Path to the NCBI BLAST+ bin directory (optional).  RepeatClassifier and the
-LTR pipeline need programs from the toolkit that the 3.x series of RMBlast
-does not ship.  When unset, RMBLAST_DIR and then PATH are searched.
-
 =item -rscout_dir <path>
 
 Path to the RepeatScout installation directory.
@@ -68,40 +62,34 @@ Path to the RECON installation directory.
 
 Path to the RepeatAfterMe installation directory.
 
+=item -dfam_curator_dir <path>
+
+Path to the directory holding the dfam-curator programs ( te-composer ).
+
+=item -ltr_forage_dir <path>
+
+Path to the directory holding ltr-forage ( 0.2.0 or higher ): a release's bin/
+directory, or target/release of a source build.  The LTR structural pipeline
+( -LTRStruct ) runs it.
+
+=item -sufr_dir <path>
+
+Path to the directory holding sufr ( 0.8.0 or higher ), which indexes the genome
+for ltr-forage.
+
 =item -trf_dir <path>
 
 Path to the directory containing the trf executable.
-
-=item -cdhit_dir <path>
-
-Path to the CD-HIT installation directory.
 
 =item -ucsctools_dir <path>
 
 Path to the UCSC TwoBit tools directory.
 
-=item -genometools_dir <path>
-
-Path to the GenomeTools bin directory (optional, for LTR pipeline).
-
-=item -ltr_retriever_dir <path>
-
-Path to the LTR_Retriever installation directory (optional, for LTR pipeline).
-
-=item -mafft_dir <path>
-
-Path to the MAFFT bin directory (optional, for LTR pipeline).
-
-=item -ninja_dir <path>
-
-Path to the Ninja installation directory (optional, for LTR pipeline).
-
 =item -no_prompt
 
 Non-interactive mode. Never prompts for input. Succeeds silently when all
 required values are supplied via command-line options or already configured.
-Dies with an error message if any required value is missing or invalid, or
-if a partial LTR pipeline specification is supplied.
+Dies with an error message if any required value is missing or invalid.
 
 =back
 
@@ -188,15 +176,13 @@ configure_repeatmasker();
 configure_famdb();
 configure_rmblast();
 configure_nail();
-configure_ncbiblast();
 configure_repeatscout();
 configure_recon();
 configure_repeatafterme();
-configure_te_composer();
+configure_dfam_curator();
+configure_ltr_forage();
 configure_trf();
-configure_cdhit();
 configure_ucsctools();
-configure_ltr_pipeline();
 
 ##
 ## Phase 4: Save configuration and summarise
@@ -584,80 +570,6 @@ sub configure_rmblast {
 }
 
 ##
-## Configure the NCBI BLAST+ toolkit (optional).
-##
-## RepeatClassifier runs blastx and the LTR pipeline hands LTR_retriever a
-## blastn.  A 2.x RMBlast directory holds both, so most installations need
-## nothing here; a 3.x RMBlast ships only rmblastn and dustmasker.
-##
-sub configure_ncbiblast {
-  my $key     = 'NCBIBLAST_DIR';
-  my $label   = 'NCBI BLAST+';
-  my $opt_key = $config->{$key}->{'command_line_override'};
-
-  section_header("$label  (optional)");
-  print "\n  Only the LTR structural pipeline needs this, for the blastn\n";
-  print "  and makeblastdb that LTR_retriever runs.  Skip it if you do not\n";
-  print "  use -LTRStruct.  A 2.x RMBlast installation already provides\n";
-  print "  them.\n";
-  print "  https://blast.ncbi.nlm.nih.gov/\n\n";
-
-  if ( $opts{$opt_key} ) {
-    if ( RepModelConfig::validateParam($key) ) {
-      status_ok( "$label: " . $config->{$key}->{'value'} );
-      return;
-    }
-    if ( $no_prompt ) {
-      die "\n  ERROR: $label path '$opts{$opt_key}' is not valid.\n"
-        . "         Expected blastn and makeblastdb in that directory.\n\n";
-    }
-    status_warn("Specified $label path is not valid: $opts{$opt_key}");
-    print "\n";
-  }
-
-  my $current = $config->{$key}->{'value'} // "";
-  if ( $current && RepModelConfig::validateParam($key) ) {
-    print "  Currently configured: $current\n\n";
-    if ( prompt_yn( "Keep this $label configuration?", "y" ) ) {
-      status_ok("$label: $current");
-      return;
-    }
-    print "\n";
-  }
-
-  # Nothing to do when the RMBlast directory or PATH already has the tools.
-  my $blastn = RepModelConfig::findNCBIProgram("blastn");
-  if ( $blastn ) {
-    $config->{$key}->{'value'} = "";
-    status_ok( "$label: found in " . dirname($blastn) );
-    return;
-  }
-
-  if ( $no_prompt ) {
-    $config->{$key}->{'value'} = "";
-    status_warn("$label not found. The LTR structural pipeline will not "
-              . "run until -$opt_key is set.");
-    return;
-  }
-
-  while (1) {
-    my $dir = prompt( "Path to $label bin directory (Enter to skip)", "" );
-    if ( !$dir ) {
-      $config->{$key}->{'value'} = "";
-      status_warn("$label not configured. The LTR structural pipeline "
-                . "will not run until it is.");
-      return;
-    }
-    $config->{$key}->{'value'} = $dir;
-    if ( RepModelConfig::validateParam($key) ) {
-      status_ok("$label: $dir");
-      return;
-    }
-    print "\n  Could not find blastn and makeblastdb in '$dir'.\n\n";
-  }
-}
-
-##
 ## Configure RepeatScout (required).
 ##
 sub configure_repeatscout {
@@ -707,16 +619,62 @@ sub configure_repeatafterme {
 }
 
 ##
-## Configure te-composer (required).
+## Configure dfam-curator (required).
 ##
-sub configure_te_composer {
+sub configure_dfam_curator {
   _configure_dir(
-    key   => 'TE_COMPOSER_DIR',
-    label => 'te-composer',
-    desc  => 'te-composer builds and extends the consensus for each family, '
-           . 'in place of the Refiner script RepeatModeler once ran.',
+    key   => 'DFAM_CURATOR_DIR',
+    label => 'dfam-curator',
+    desc  => 'dfam-curator\'s te-composer builds and extends the consensus for '
+           . 'each family, in place of the Refiner script RepeatModeler once '
+           . 'ran. (0.6.6 or higher)',
     url   => 'https://github.com/Dfam-consortium/dfam-curator',
+    version_check => sub { _check_version( 'DFAM_CURATOR_DIR', 'dfam-curator', '0.6.6' ) },
   );
+}
+
+##
+## Configure ltr-forage and sufr (required), the LTR structural pipeline.
+##
+sub configure_ltr_forage {
+  _configure_dir(
+    key   => 'LTR_FORAGE_DIR',
+    label => 'ltr-forage',
+    desc  => 'ltr-forage finds LTR retrotransposons and builds their family '
+           . 'library for the LTR structural pipeline (-LTRStruct). Give the '
+           . 'directory holding the ltr-forage program: a release\'s bin/, or '
+           . 'target/release of a source build. (0.2.0 or higher)',
+    url   => 'https://github.com/Dfam-consortium/ltr-forage',
+    version_check => sub { _check_version( 'LTR_FORAGE_DIR', 'ltr-forage', '0.2.0' ) },
+  );
+  _configure_dir(
+    key   => 'SUFR_DIR',
+    label => 'sufr',
+    desc  => 'sufr builds the suffix array ltr-forage searches. (0.8.0 or '
+           . 'higher)',
+    url   => 'https://github.com/TravisWheelerLab/sufr',
+    version_check => sub { _check_version( 'SUFR_DIR', 'sufr', '0.8.0' ) },
+  );
+}
+
+##
+## Die unless the program configured under $key is at least version $min.
+##
+sub _check_version {
+  my ( $key, $label, $min ) = @_;
+  my $ver = RepModelConfig::getDependencyVersion($key) // "";
+  my @v = split( /\./, $ver );
+  my @m = split( /\./, $min );
+  my $cmp = 0;
+  for my $i ( 0 .. 2 ) {
+    $cmp = ( $v[$i] // -1 ) <=> $m[$i];
+    last if $cmp;
+  }
+  if ( $cmp < 0 ) {
+    die "\n  ERROR: $label " . ( $ver || "of unknown version" )
+      . " is too old; $min or higher is required.\n\n";
+  }
+  status_info("Version: $ver");
 }
 
 ##
@@ -729,18 +687,6 @@ sub configure_trf {
     desc  => 'Tandem Repeat Finder identifies tandem repeats. '
            . 'The executable must be named "trf". (4.0.9 or higher)',
     url   => 'https://github.com/Benson-Genomics-Lab/TRF',
-  );
-}
-
-##
-## Configure CD-HIT (required).
-##
-sub configure_cdhit {
-  _configure_dir(
-    key   => 'CDHIT_DIR',
-    label => 'CD-HIT',
-    desc  => 'CD-HIT clusters sequences to reduce redundancy.',
-    url   => 'https://github.com/weizhongli/cdhit',
   );
 }
 
@@ -785,119 +731,6 @@ sub configure_ucsctools {
 }
 
 ##
-## Optionally configure the LTR structural identification pipeline.
-##
-sub configure_ltr_pipeline {
-  section_header("LTR Structural Identification Pipeline  (optional)");
-
-  my @ltr_keys   = qw( GENOMETOOLS_DIR LTR_RETRIEVER_DIR MAFFT_DIR NINJA_DIR );
-  my @ltr_opts   = qw( genometools_dir ltr_retriever_dir mafft_dir ninja_dir );
-  my @ltr_labels = ( 'GenomeTools', 'LTR_Retriever', 'MAFFT', 'NINJA' );
-
-  my $n_provided = grep { $opts{$_} } @ltr_opts;
-
-  # Partial specification is always an error
-  if ( $n_provided > 0 && $n_provided < 4 ) {
-    my @missing = map { "-$ltr_opts[$_]" }
-                  grep { !$opts{$ltr_opts[$_]} } 0..$#ltr_opts;
-    die "\n  ERROR: Partial LTR pipeline specification. "
-      . "Supply all four options or none.\n"
-      . "  Missing: " . join(", ", @missing) . "\n\n";
-  }
-
-  # All four CLI opts provided: validate and configure non-interactively
-  if ( $n_provided == 4 ) {
-    my @invalid;
-    for my $i ( 0..$#ltr_keys ) {
-      push @invalid, "  $ltr_labels[$i] (-$ltr_opts[$i]): $opts{$ltr_opts[$i]}"
-        unless RepModelConfig::validateParam($ltr_keys[$i]);
-    }
-    if ( @invalid ) {
-      die "\n  ERROR: The following LTR pipeline paths are not valid:\n"
-        . join("\n", @invalid) . "\n\n";
-    }
-    for my $k ( @ltr_keys ) {
-      status_ok( "$k: " . $config->{$k}->{'value'} );
-    }
-    return;
-  }
-
-  # None provided: fall back to interactive (or no_prompt auto-default) flow
-  print "\n  RepeatModeler can use an LTR structural pipeline to identify\n";
-  print "  LTR retrotransposons with greater sensitivity. Requires:\n";
-  print "  GenomeTools, LTR_Retriever (v2.9.0), MAFFT, and NINJA.\n\n";
-
-  my $all_valid = !grep { !RepModelConfig::validateParam($_) } @ltr_keys;
-
-  if ( $all_valid ) {
-    print "  LTR pipeline currently configured:\n";
-    for my $k ( @ltr_keys ) {
-      printf "    %-18s  %s\n", $k, $config->{$k}->{'value'};
-    }
-    print "\n";
-    if ( prompt_yn( "Keep this LTR pipeline configuration?", "y" ) ) {
-      for my $k ( @ltr_keys ) {
-        status_ok( "$k: " . $config->{$k}->{'value'} );
-      }
-      return;
-    }
-    print "\n";
-  }
-
-  unless ( prompt_yn( "Configure the LTR pipeline?", "n" ) ) {
-    status_info("LTR pipeline not configured (optional).");
-    return;
-  }
-
-  print "\n";
-
-  _configure_dir(
-    key   => 'GENOMETOOLS_DIR',
-    label => 'GenomeTools',
-    desc  => 'GenomeTools provides structural LTR detection (gt ltrharvest).',
-    url   => 'http://genometools.org/',
-  );
-
-  _configure_dir(
-    key   => 'LTR_RETRIEVER_DIR',
-    label => 'LTR_Retriever',
-    desc  => 'LTR_Retriever identifies and classifies LTR elements. (v2.9.0)',
-    url   => 'https://github.com/oushujun/LTR_retriever',
-    version_check => sub {
-      my $val = $config->{'LTR_RETRIEVER_DIR'}->{'value'};
-      my $ver = "";
-      if ( open( my $fh, "<", "$val/LTR_retriever" ) ) {
-        while ( <$fh> ) {
-          if ( /^my\s+\$version\s*=\s*"(\S+)"/ ) { $ver = $1; last; }
-        }
-        close $fh;
-      }
-      if ( $ver ) {
-        unless ( $ver eq "v2.9.0" ) {
-          die "\n  ERROR: LTR_Retriever $ver is not the required version. "
-            . "Please use v2.9.0.\n\n";
-        }
-        status_info("Version: $ver");
-      }
-    },
-  );
-
-  _configure_dir(
-    key   => 'MAFFT_DIR',
-    label => 'MAFFT',
-    desc  => 'MAFFT performs multiple sequence alignment.',
-    url   => 'https://mafft.cbrc.jp/alignment/software/',
-  );
-
-  _configure_dir(
-    key   => 'NINJA_DIR',
-    label => 'NINJA',
-    desc  => 'NINJA performs rapid phylogenetic analysis.',
-    url   => 'https://github.com/TravisWheelerLab/NINJA',
-  );
-}
-
-##
 ## Extract FamDB libraries and build BLAST databases in Libraries/.
 ## Called once at configure time so RepeatClassifier can rely on them.
 ##
@@ -916,9 +749,10 @@ sub print_summary {
     [ 'RSCOUT_DIR',       'RepeatScout'    ],
     [ 'RECON_DIR',        'RECON'          ],
     [ 'REPEATAFTERME_DIR','RepeatAfterMe'  ],
-    [ 'TE_COMPOSER_DIR',  'te-composer'    ],
+    [ 'DFAM_CURATOR_DIR', 'dfam-curator'   ],
+    [ 'LTR_FORAGE_DIR',   'ltr-forage'     ],
+    [ 'SUFR_DIR',         'sufr'           ],
     [ 'TRF_DIR',          'TRF'            ],
-    [ 'CDHIT_DIR',        'CD-HIT'         ],
     [ 'UCSCTOOLS_DIR',    'UCSC TwoBit'    ],
   );
 
@@ -931,16 +765,6 @@ sub print_summary {
     else {
       printf "  %-16s  (not configured)\n", "$label:";
     }
-  }
-
-  # The toolkit may come from NCBIBLAST_DIR, the RMBlast directory or PATH.
-  my $blastx = RepModelConfig::findNCBIProgram("blastx");
-  if ( $blastx ) {
-    printf "  %-16s  %s\n", "NCBI BLAST+:", dirname($blastx);
-  }
-  else {
-    printf "  %-16s  (not found; needed by RepeatClassifier and -LTRStruct)\n",
-        "NCBI BLAST+:";
   }
 
   # FamDB database details from famdb.py info
@@ -959,28 +783,6 @@ sub print_summary {
             $db_name, $db_ver // "", $db_date // "";
         printf "  %-16s  %s families\n", "",
             _commify($db_count) if $db_count;
-      }
-    }
-  }
-
-  # Optional LTR pipeline tools
-  my @ltr_keys = qw( GENOMETOOLS_DIR LTR_RETRIEVER_DIR MAFFT_DIR NINJA_DIR );
-  my $any_ltr  = 0;
-  for my $k ( @ltr_keys ) {
-    $any_ltr = 1 if RepModelConfig::validateParam($k);
-  }
-
-  if ( $any_ltr ) {
-    my %ltr_labels = (
-      GENOMETOOLS_DIR   => 'GenomeTools',
-      LTR_RETRIEVER_DIR => 'LTR_Retriever',
-      MAFFT_DIR         => 'MAFFT',
-      NINJA_DIR         => 'NINJA',
-    );
-    print "\n  LTR Pipeline:\n";
-    for my $k ( @ltr_keys ) {
-      if ( RepModelConfig::validateParam($k) ) {
-        printf "  %-16s  %s\n", "  $ltr_labels{$k}:", $config->{$k}->{'value'};
       }
     }
   }
